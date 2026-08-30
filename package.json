@@ -1,0 +1,13 @@
+{
+  "name": "tmrw-phone-v3-beta",
+  "version": "0.0.0-phase19-checkpoint",
+  "private": true,
+  "type": "module",
+  "description": "Isolated TMRW—Phone v3 through Phase 19: provider-neutral Voice Profile architecture/UI/schema over verified text Calls; no real Voice/TTS runtime and no Phase 20 work.",
+  "scripts": {
+    "test": "node --test tests/phase22/*.test.mjs",
+    "test:phase22": "node --test tests/phase22/*.test.mjs",
+    "build:production-package": "node dev/production-package/build-production-package.mjs",
+    "verify:production-package": "node dev/production-package/verify-production-package.mjs"
+  }
+}

@@ -1,0 +1,2 @@
+export const LIVE_RUNTIME_POLICY = Object.freeze({ projectionEnabled: true, uiEnabledByDefault: false, autonomousJobsEnabled: false, backgroundPollingEnabled: false, closedLiveGenerationEnabled: false });
+export function liveRuntimeState(overrides = {}) { return Object.freeze({ ...LIVE_RUNTIME_POLICY, ...overrides, autonomousJobsEnabled: false, backgroundPollingEnabled: false, closedLiveGenerationEnabled: false }); }

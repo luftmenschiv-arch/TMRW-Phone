@@ -1,0 +1,31 @@
+# Secrets / local overrides
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+secrets/
+
+# Dependencies / generated test output
+node_modules/
+coverage/
+.nyc_output/
+*.log
+*.tmp
+*.temp
+
+# Local QA / agent / browser state
+.serena/
+playwright-report/
+test-results/
+browser-profile*/
+edge-profile*/
+evidence/
+checkpoints/
+
+# Editor / OS junk
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini

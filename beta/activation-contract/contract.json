@@ -1,0 +1,55 @@
+{
+  "contractVersion": 1,
+  "status": "LOCKED_PHASE_0_CONTRACT_ONLY",
+  "releasePosture": "OPT_IN_BETA_ALONGSIDE_PREVIEW_37",
+  "defaultRuntime": "preview37",
+  "preview37": {
+    "mustRemainInstalled": true,
+    "mustRemainAvailable": true,
+    "sourceBehaviorMustRemainUnchanged": true,
+    "legacyStorageMustRemainReadable": true,
+    "legacyStorageMayBeDeletedDuringBeta": false,
+    "legacyStorageMayBeMigratedInPlaceDuringBeta": false
+  },
+  "futureV3": {
+    "defaultEnabled": false,
+    "mustBeDisableable": true,
+    "storageMustBeIsolated": true,
+    "mayWritePreviewStorage": false,
+    "migrationModeDuringBeta": "COPY_OR_READ_ONLY",
+    "rollbackRequiresManualBackup": false,
+    "disableMustStop": [
+      "ui",
+      "listeners",
+      "jobs",
+      "timers",
+      "adapters",
+      "writes",
+      "context-injection"
+    ]
+  },
+  "coexistence": {
+    "exactlyOneAuthoringRuntimePerStory": true,
+    "exactlyOneContextInjectorPerSourceEvent": true,
+    "previewAndV3MayWriteCanonSimultaneously": false,
+    "switchBackMergesV3CanonIntoPreviewAutomatically": false
+  },
+  "retirement": {
+    "preview37MayRetireDuringInitialBeta": false,
+    "requiredEvidence": [
+      "rollback",
+      "copy-migration",
+      "privacy",
+      "performance",
+      "stability",
+      "agreed-feature-parity",
+      "real-beta-evidence"
+    ]
+  },
+  "phase0": {
+    "implementsActivation": false,
+    "implementsStorage": false,
+    "implementsMigration": false,
+    "purpose": "Freeze executable validation expectations only."
+  }
+}

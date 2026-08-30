@@ -1,0 +1,38 @@
+@import url('./v3/ui/styles.css');
+
+/* Production-only viewport ownership. Preview 37 is intentionally untouched. */
+#tmrw-v3-phone-root,
+#tmrw-v3-phone-launcher {
+  box-sizing: border-box;
+}
+
+#tmrw-v3-phone-root {
+  --tmrw-v3-viewport-gap: clamp(8px, 2vw, 24px);
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  padding: var(--tmrw-v3-viewport-gap);
+  overflow: auto;
+}
+
+#tmrw-v3-phone-root[hidden] {
+  display: none;
+}
+
+#tmrw-v3-phone-root > .tmrw-v3-shell {
+  min-height: min(620px, calc(100dvh - var(--tmrw-v3-viewport-gap) - var(--tmrw-v3-viewport-gap)));
+  max-height: calc(100dvh - var(--tmrw-v3-viewport-gap) - var(--tmrw-v3-viewport-gap));
+  overflow: auto;
+}
+
+#tmrw-v3-phone-launcher {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  top: calc(100dvh - max(16px, env(safe-area-inset-bottom)));
+  bottom: auto;
+  transform: translateY(-100%);
+  z-index: 2147483001;
+}

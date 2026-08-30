@@ -1,0 +1,5 @@
+import { requireText } from '../identity/identity-record.mjs';
+
+export const SOCIAL_RELATION = Object.freeze({ FOLLOW: 'follow', CLOSE_FRIEND: 'close-friend', BLOCK: 'block', RESTRICT: 'restrict', FRIEND: 'friend', COWORKER: 'coworker', FAN: 'fan', STRANGER: 'stranger', ANTI: 'anti', RECURRING_COMMENTER: 'recurring-commenter' });
+const relations = new Set(Object.values(SOCIAL_RELATION));
+export function normalizeSocialGraphEdge(input) { const relation = requireText(input?.relation, 'relation'); if (!relations.has(relation)) throw new TypeError(`Unsupported social relation: ${relation}`); const ownerAccountId = requireText(input?.ownerAccountId, 'ownerAccountId'); const targetAccountId = requireText(input?.targetAccountId, 'targetAccountId'); if (ownerAccountId === targetAccountId) throw new TypeError('A social edge cannot target its owner Account'); return Object.freeze({ edgeId: requireText(input?.edgeId, 'edgeId'), ownerAccountId, targetAccountId, relation, active: input?.active !== false }); }

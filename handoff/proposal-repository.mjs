@@ -1,0 +1,13 @@
+import { V3UnitOfWork } from '../storage/unit-of-work.mjs';
+import { requireEventScope } from '../domain/events/event-validator.mjs';
+import { HANDOFF_PROPOSAL_STATUS } from './proposal.mjs';
+
+export class HandoffProposalRepository {
+  #unitOfWork;
+  constructor({ database }) { if (!database) throw new TypeError('HandoffProposalRepository requires isolated v3 storage'); this.#unitOfWork = new V3UnitOfWork(database); }
+  async save(scopeInput, proposal) { const scope = requireEventScope(scopeInput); return this.#unitOfWork.readwrite({ stores: ['handoffProposals'], scope }, async repositories => { const existing = await repositories.handoffProposals.get(proposal.proposalId); const row = Object.freeze({ ...proposal, id: proposal.proposalId, createdAt: existing?.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString(), canonicalEventId: existing?.canonicalEventId || null, canonicalEventRevision: existing?.canonicalEventRevision || null, status: existing?.status === HANDOFF_PROPOSAL_STATUS.ACCEPTED && existing.sourceVersionId === proposal.sourceVersionId ? existing.status : proposal.status }); await repositories.handoffProposals.put(row); return row; }); }
+  async get(scopeInput, proposalId) { const scope = requireEventScope(scopeInput); return this.#unitOfWork.readonly({ stores: ['handoffProposals'], scope }, repositories => repositories.handoffProposals.get(proposalId)); }
+  async getByLineage(scopeInput, { sourceAuthority, sourceMessageId, actionKey }) { const scope = requireEventScope(scopeInput); return this.#unitOfWork.readonly({ stores: ['handoffProposals'], scope }, repositories => repositories.handoffProposals.getByIndex('by_scope_source_lineage', [scope.storyId, scope.branchId, sourceAuthority, sourceMessageId, actionKey])); }
+  async listForSource(scopeInput, { sourceAuthority, sourceMessageId }) { const scope = requireEventScope(scopeInput); return this.#unitOfWork.readonly({ stores: ['handoffProposals'], scope }, repositories => repositories.handoffProposals.listByIndex('by_scope_source_message', [scope.storyId, scope.branchId, sourceAuthority, sourceMessageId])); }
+  async updateStatus(scopeInput, proposalId, status, reason = null) { const scope = requireEventScope(scopeInput); return this.#unitOfWork.readwrite({ stores: ['handoffProposals'], scope }, async repositories => { const row = await repositories.handoffProposals.get(proposalId); if (!row) throw new Error('Unknown scoped handoff proposal'); const next = Object.freeze({ ...row, status, reason, updatedAt: new Date().toISOString() }); await repositories.handoffProposals.put(next); return next; }); }
+}

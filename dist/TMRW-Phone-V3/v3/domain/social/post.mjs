@@ -1,0 +1,5 @@
+import { requireText } from '../identity/identity-record.mjs';
+import { normalizeSocialAudience } from './audience.mjs';
+
+export function normalizeSocialPost(input) { const text = String(input?.text ?? '').trim(); if (!text && !(input?.assetRefs || []).length) throw new TypeError('A post requires text or an asset reference'); if (text.length > 5000) throw new TypeError('Post text exceeds 5000 characters'); return Object.freeze({ postId: requireText(input?.postId, 'postId'), authorAccountId: requireText(input?.authorAccountId, 'authorAccountId'), actualAuthorActorId: requireText(input?.actualAuthorActorId, 'actualAuthorActorId'), actualAuthorInstanceId: requireText(input?.actualAuthorInstanceId, 'actualAuthorInstanceId'), deviceId: requireText(input?.deviceId, 'deviceId'), text, assetRefs: Object.freeze([...(input?.assetRefs || [])].map(String)), audience: normalizeSocialAudience(input?.audience), storyTimeRef: input?.storyTimeRef == null ? null : Object.freeze(structuredClone(input.storyTimeRef)), aiJobId: input?.aiJobId || null }); }
+export const socialPostHeadId = (scope, postId) => `social-post:${scope.storyId}:${scope.branchId}:${postId}`;

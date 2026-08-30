@@ -1,0 +1,5 @@
+import { requireText } from '../identity/identity-record.mjs';
+export const VIEWER_TYPE = Object.freeze({ KNOWN_ACCOUNT: 'known-account', CHARACTER: 'character', USER: 'user' });
+const types = new Set(Object.values(VIEWER_TYPE));
+export function normalizeViewerPersona(input) { const viewerType = input?.viewerType || VIEWER_TYPE.KNOWN_ACCOUNT; if (!types.has(viewerType)) throw new TypeError('Unsupported explicit Live viewer type'); return Object.freeze({ sessionId: requireText(input?.sessionId, 'sessionId'), viewerAccountId: requireText(input?.viewerAccountId, 'viewerAccountId'), viewerActorId: requireText(input?.viewerActorId, 'viewerActorId'), viewerInstanceId: requireText(input?.viewerInstanceId, 'viewerInstanceId'), viewerType, microPersona: input?.microPersona ? String(input.microPersona).trim().slice(0, 120) : null }); }
+export function normalizeViewerState(input) { return Object.freeze({ ...normalizeViewerPersona(input), present: input?.present !== false, joinedStoryTimeRef: Object.freeze(structuredClone(input?.joinedStoryTimeRef)), leftStoryTimeRef: input?.leftStoryTimeRef ? Object.freeze(structuredClone(input.leftStoryTimeRef)) : null }); }
