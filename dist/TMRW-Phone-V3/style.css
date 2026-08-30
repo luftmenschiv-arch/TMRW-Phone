@@ -36,3 +36,37 @@
   transform: translateY(-100%);
   z-index: 2147483001;
 }
+
+#tmrw-v3-production-control {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#tmrw-v3-production-control .tmrw-v3-production-control__status-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+#tmrw-v3-production-control .tmrw-v3-production-control__label {
+  font-weight: 600;
+}
+
+#tmrw-v3-production-control .tmrw-v3-production-control__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  min-width: 0;
+}
+
+#tmrw-v3-production-control .tmrw-v3-production-control__actions > button {
+  flex: 1 1 12rem;
+  min-width: 0;
+  min-height: 44px;
+  white-space: normal;
+}

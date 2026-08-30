@@ -4,6 +4,7 @@ import {
 } from './constants.mjs';
 import { createProductionPackagePreflightSession } from './passive-preflight.mjs';
 import { createProductionActiveStartupSession } from './active-startup.mjs';
+import { createProductionUserControl } from './user-control.mjs';
 
 const PASSIVE_SHIM_MARKER = Symbol.for('tmrw.v3.production.passive-generation-interceptor');
 
@@ -21,6 +22,7 @@ let preflightSession = null;
 let preflightSessionPromise = null;
 let activeStartupSession = null;
 let activeStartupSessionPromise = null;
+let userControl = null;
 
 async function passiveGenerationInterceptor() {
   // The static SillyTavern manifest may visit this shim while Preview remains
@@ -84,6 +86,30 @@ function snapshot() {
   });
 }
 
+function ensureProductionUserControl() {
+  if (userControl) return userControl;
+  userControl = createProductionUserControl({
+    entryApi: {
+      getProductionEntryStatus,
+      configureProductionPreflight,
+      runProductionPreflight,
+      requestProductionTakeover,
+      checkProductionPostReloadSelection,
+      disposeProductionPreflight,
+      configureProductionActiveStartup,
+      startProductionActiveRuntime,
+      returnProductionToPreview37,
+    },
+  });
+  return userControl;
+}
+
+function scheduleProductionUserControl() {
+  Promise.resolve()
+    .then(() => ensureProductionUserControl().handleExtensionHook())
+    .catch(error => console.error('[TMRW Phone V3] User control initialization failed safely:', error));
+}
+
 // Passive load still has exactly one evaluation side effect: install/adopt the
 // known no-op generation shim. No DB, lease, timer, listener, root, launcher,
 // preflight, or authoring graph is created until an explicit control call.
@@ -92,17 +118,21 @@ ensurePassiveGenerationShim();
 export function onActivate() {
   activated = true;
   ensurePassiveGenerationShim();
+  scheduleProductionUserControl();
   return snapshot();
 }
 
 export function onEnable() {
   enabled = true;
   ensurePassiveGenerationShim();
+  scheduleProductionUserControl();
   return snapshot();
 }
 
 export function onDisable() {
   enabled = false;
+  userControl?.dispose?.();
+  userControl = null;
   if (!preflightSession && !preflightSessionPromise && !activeStartupSession && !activeStartupSessionPromise) return snapshot();
   return (async () => {
     await shutdownProductionActiveRuntime('extension-disabled');
@@ -113,6 +143,10 @@ export function onDisable() {
 
 export function getProductionEntryStatus() {
   return snapshot();
+}
+
+export function getProductionUserControlStatus() {
+  return userControl?.status || Object.freeze({ mounted: false, busy: false, lastError: null, requested: false, productionActive: false, userStatus: 'Preview' });
 }
 
 export async function configureProductionPreflight(options = {}) {
