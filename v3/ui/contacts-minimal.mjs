@@ -1,0 +1,1 @@
+export function contactsViewModel(contacts) { return Object.freeze(contacts.map(contact => Object.freeze({ id: contact.contactPointId, primary: contact.savedName || contact.number, secondary: contact.savedName ? contact.number : 'Unknown owner', identified: contact.identificationStatus === 'identified', provenanceKind: contact.provenanceKind }))); }

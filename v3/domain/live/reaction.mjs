@@ -1,0 +1,4 @@
+import { requireText } from '../identity/identity-record.mjs';
+export const LIVE_REACTION_KIND = Object.freeze({ LIKE: 'like', HEART: 'heart' });
+const kinds = new Set(Object.values(LIVE_REACTION_KIND));
+export function normalizeLiveReaction(input) { const kind = requireText(input?.kind, 'reaction.kind'); if (!kinds.has(kind)) throw new TypeError('Unsupported bounded Live reaction'); return Object.freeze({ reactionId: requireText(input?.reactionId, 'reactionId'), sessionId: requireText(input?.sessionId, 'sessionId'), kind, actorAccountId: requireText(input?.actorAccountId, 'actorAccountId'), actualActorId: requireText(input?.actualActorId, 'actualActorId'), actualInstanceId: requireText(input?.actualInstanceId, 'actualInstanceId'), active: input?.active !== false, storyTimeRef: Object.freeze(structuredClone(input?.storyTimeRef)) }); }

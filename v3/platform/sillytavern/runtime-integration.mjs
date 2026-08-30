@@ -1,0 +1,186 @@
+import { normalizeMainRpSource } from './message-events.mjs';
+
+const REGISTRATIONS = new WeakMap();
+const QUIET_TYPES = /quiet/i;
+const IMPERSONATE_TYPES = /impersonate/i;
+const requireFn = (value, name) => { if (typeof value !== 'function') throw new TypeError(`${name} is required`); return value; };
+const digest = async text => { const hash = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text || ''))); return [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, '0')).join('').slice(0, 16); };
+
+export class SillyTavernV3RuntimeIntegration {
+  #eventSource;
+  #types;
+  #getContext;
+  #scopeResolver;
+  #bindingResolver;
+  #handoff;
+  #phoneContext;
+  #callStoryIntegration;
+  #discardPartialAssistant;
+  #authoringEnabled;
+  #listeners = [];
+  #registered = false;
+  #metrics = { processed: 0, skipped: 0, duplicateRegistrations: 0, abortCalls: 0, roleCallsIntercepted: 0, activeCallGenerationBlocks: 0 };
+
+  constructor({ eventSource, eventTypes, getContext, scopeResolver, bindingResolver, handoffCoordinator, phoneContextBuilder, callStoryIntegration = null, discardPartialAssistant = null, authoringEnabled = () => false }) {
+    if (!eventSource?.on || !eventSource?.removeListener) throw new TypeError('Real SillyTavern eventSource API is required');
+    this.#eventSource = eventSource;
+    this.#types = eventTypes || {};
+    this.#getContext = requireFn(getContext, 'getContext');
+    this.#scopeResolver = requireFn(scopeResolver, 'scopeResolver');
+    this.#bindingResolver = requireFn(bindingResolver, 'bindingResolver');
+    this.#handoff = handoffCoordinator;
+    this.#phoneContext = phoneContextBuilder;
+    this.#callStoryIntegration = callStoryIntegration;
+    this.#discardPartialAssistant = typeof discardPartialAssistant === 'function' ? discardPartialAssistant : async ({ afterSourceOrdinal } = {}) => {
+      const chat = this.#getContext()?.chat;
+      if (!Array.isArray(chat) || !Number.isInteger(afterSourceOrdinal)) return 0;
+      let removed = 0;
+      for (let index = chat.length - 1; index > afterSourceOrdinal; index -= 1) {
+        if (chat[index]?.is_user) continue;
+        chat.splice(index, 1); removed += 1;
+      }
+      return removed;
+    };
+    this.#authoringEnabled = requireFn(authoringEnabled, 'authoringEnabled');
+    if (!handoffCoordinator?.processSource || !handoffCoordinator?.retractSource) throw new TypeError('Phase 10 handoff coordinator is required');
+  }
+
+  get metrics() { return structuredClone(this.#metrics); }
+
+  register() {
+    if (this.#registered) return false;
+    const owner = REGISTRATIONS.get(this.#eventSource);
+    if (owner && owner !== this) { this.#metrics.duplicateRegistrations += 1; return false; }
+    const on = (key, handler) => {
+      const type = this.#types[key];
+      if (!type) throw new Error(`Installed SillyTavern lacks event type ${key}`);
+      this.#eventSource.on(type, handler);
+      this.#listeners.push([type, handler]);
+    };
+    on('MESSAGE_SENT', index => this.#processIndex(index, { changeKind: 'new', role: 'user', mode: 'normal' }));
+    on('MESSAGE_RECEIVED', (index, generationType) => this.#processIndex(index, { changeKind: 'new', role: 'assistant', mode: this.#mode(generationType) }));
+    on('MESSAGE_SWIPED', index => this.#processIndex(index, { changeKind: 'swipe', role: 'assistant', mode: 'normal' }));
+    on('MESSAGE_EDITED', index => this.#processIndex(index, { changeKind: 'revision', mode: 'normal' }));
+    on('MESSAGE_DELETED', index => this.#retractIndex(index));
+    on('IMPERSONATE_READY', () => { this.#metrics.skipped += 1; });
+    this.#registered = true;
+    REGISTRATIONS.set(this.#eventSource, this);
+    return true;
+  }
+
+  unregister() {
+    if (!this.#registered) return false;
+    for (const [type, handler] of this.#listeners.splice(0)) this.#eventSource.removeListener(type, handler);
+    this.#registered = false;
+    if (REGISTRATIONS.get(this.#eventSource) === this) REGISTRATIONS.delete(this.#eventSource);
+    return true;
+  }
+
+  #mode(type) {
+    const value = String(type || '');
+    if (QUIET_TYPES.test(value)) return 'quiet';
+    if (IMPERSONATE_TYPES.test(value)) return 'impersonate';
+    return 'normal';
+  }
+
+  async #source(index, options) {
+    const context = this.#getContext();
+    const message = context?.chat?.[index];
+    if (!message) return null;
+    const scope = await this.#scopeResolver(context);
+    const binding = await this.#bindingResolver({ context, scope, message, index, role: options.role || (message.is_user ? 'user' : 'assistant') });
+    if (!binding?.actorBinding) return null;
+    const chatKey = String(context.chatId ?? context.getCurrentChatId?.() ?? context.groupId ?? 'unscoped');
+    const version = `${Number(message.swipe_id || 0)}:${await digest(message.mes)}`;
+    return {
+      scope,
+      source: normalizeMainRpSource({
+        sourceAuthority: 'sillytavern-main-rp',
+        sourceMessageId: `${chatKey}:${index}`,
+        sourceVersionId: version,
+        sourceOrdinal: Number(index),
+        role: options.role || (message.is_user ? 'user' : 'assistant'),
+        mode: options.mode,
+        origin: 'main-rp',
+        text: String(message.mes || ''),
+        changeKind: options.changeKind,
+        actorBinding: binding.actorBinding,
+        mentionBindings: binding.mentionBindings || {},
+        explicitPhoneActions: binding.explicitPhoneActions || message.extra?.tmrwPhoneActions || [],
+      }),
+    };
+  }
+
+  async #latestUserSource() {
+    const context = this.#getContext();
+    const chat = context?.chat || [];
+    for (let index = chat.length - 1; index >= 0; index -= 1) {
+      if (chat[index]?.is_user) return this.#source(index, { changeKind: 'new', role: 'user', mode: 'normal' });
+    }
+    return null;
+  }
+
+  async #processIndex(index, options) {
+    if (!this.#authoringEnabled()) { this.#metrics.skipped += 1; return { skipped: 'authoring-disabled' }; }
+    if (options.mode !== 'normal') { this.#metrics.skipped += 1; return { skipped: options.mode }; }
+    const input = await this.#source(Number(index), options);
+    if (!input) { this.#metrics.skipped += 1; return { skipped: 'unresolved' }; }
+
+    if (options.role === 'user' && this.#callStoryIntegration?.interceptRoleTriggeredCall) {
+      const intercepted = await this.#callStoryIntegration.interceptRoleTriggeredCall({ scope: input.scope, source: input.source });
+      if (intercepted.intercepted) {
+        this.#metrics.processed += 1;
+        this.#metrics.roleCallsIntercepted += 1;
+        return intercepted;
+      }
+    }
+
+    const result = await this.#handoff.processSource(input);
+    this.#metrics.processed += 1;
+    return result;
+  }
+
+  async #retractIndex(index) {
+    if (!this.#authoringEnabled()) { this.#metrics.skipped += 1; return []; }
+    const context = this.#getContext();
+    const scope = await this.#scopeResolver(context);
+    const chatKey = String(context.chatId ?? context.getCurrentChatId?.() ?? context.groupId ?? 'unscoped');
+    const result = await this.#handoff.retractSource({ scope, sourceAuthority: 'sillytavern-main-rp', sourceMessageId: `${chatKey}:${Number(index)}`, reason: 'SillyTavern source message deleted' });
+    this.#metrics.processed += 1;
+    return result;
+  }
+
+  async generateInterceptor(chat, contextSize, abort, type) {
+    if (this.#mode(type) !== 'normal' || !this.#authoringEnabled()) { this.#metrics.skipped += 1; return; }
+    const context = this.#getContext();
+    const scope = await this.#scopeResolver(context);
+    const userInput = await this.#latestUserSource();
+    const abortGeneration = immediately => { this.#metrics.abortCalls += 1; abort(immediately); };
+
+    if (this.#callStoryIntegration && userInput) {
+      const guard = await this.#callStoryIntegration.guardMainRpGeneration({
+        scope,
+        accountId: userInput.source.actorBinding.accountId,
+        abortGeneration,
+        discardPartialAssistant: details => this.#discardPartialAssistant?.({ ...details, afterSourceOrdinal: userInput.source.sourceOrdinal, sourceMessageId: userInput.source.sourceMessageId }),
+      });
+      if (guard.blocked) { this.#metrics.activeCallGenerationBlocks += 1; return; }
+
+      const intercepted = await this.#callStoryIntegration.interceptRoleTriggeredCall({
+        scope,
+        source: userInput.source,
+        abortGeneration,
+        discardPartialAssistant: this.#discardPartialAssistant,
+      });
+      if (intercepted.intercepted) { this.#metrics.roleCallsIntercepted += 1; return; }
+    }
+
+    const target = await this.#bindingResolver({ context, scope, message: context?.chat?.at(-1), index: context?.chat?.length - 1, role: 'assistant-target', promptTarget: true });
+    if (!target?.actorBinding || !this.#phoneContext?.build) return;
+    const block = await this.#phoneContext.build({ scope, actorId: target.actorBinding.actorId, instanceId: target.actorBinding.instanceId });
+    if (!block.text || chat.some(row => row?.tmrwV3Context === true)) return;
+    chat.splice(0, 0, { role: 'system', name: 'TMRW—Phone v3', content: block.text, mes: block.text, is_system: true, is_user: false, tmrwV3Context: true });
+  }
+}
+
+export function createSillyTavernV3RuntimeIntegration(options) { return new SillyTavernV3RuntimeIntegration(options); }

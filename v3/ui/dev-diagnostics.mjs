@@ -1,0 +1,4 @@
+export function developerDiagnostics({ enabled, scope, perspective, lifecycle, renderMetrics }) {
+  if (!enabled) return null;
+  return Object.freeze({ scope: Object.freeze({ storyId: scope.storyId, branchId: scope.branchId }), selected: Object.freeze({ actorId: perspective.deviceOwnerActorId, characterInstanceId: perspective.deviceOwnerInstanceId, deviceId: perspective.deviceId, accountId: perspective.accountId, perspective: perspective.kind }), lifecycle: Object.freeze({ openDeviceCount: lifecycle.openDeviceCount, activeTimers: lifecycle.activeTimers, activePollers: lifecycle.activePollers }), health: Object.freeze({ eventHistoryScans: renderMetrics.canonicalEventHistoryScans, selectedPhoneReads: renderMetrics.selectedPhoneReads, privateContentDumped: false }) });
+}

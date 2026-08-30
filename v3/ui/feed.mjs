@@ -1,0 +1,1 @@
+export function feedViewModel(page) { return Object.freeze((page?.items || []).map(post => Object.freeze({ key: post.postId, postId: post.postId, authorAccountId: post.authorAccountId, text: post.text, audience: post.audience.kind, storyTimeRef: post.storyTimeRef, assetRefs: post.assetRefs }))); }
