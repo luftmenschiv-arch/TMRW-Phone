@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { MemoryKeyValueStorage, V3BetaFeatureFlag } from '../../beta/feature-flag.mjs';
 import { PRODUCTION_RUNTIME_STATE } from '../../production/runtime-arbiter.mjs';
 import {
   PRODUCTION_USER_CONTROL_ID,
+  PRODUCTION_USER_DIAGNOSTIC_ID,
   PRODUCTION_USER_RETURN_BUTTON_ID,
   PRODUCTION_USER_STATUS_ID,
   PRODUCTION_USER_USE_BUTTON_ID,
@@ -99,6 +101,7 @@ function context() {
 function harness({ failStart = false, exerciseIdentityPin = false } = {}) {
   const document = new FakeDocument();
   const storage = new MemoryKeyValueStorage();
+  const sessionStorage = new MemoryKeyValueStorage();
   const flag = new V3BetaFeatureFlag({ storage, now: () => '2026-08-30T00:00:00.000Z' });
   const calls = [];
   let active = false;
@@ -173,11 +176,11 @@ function harness({ failStart = false, exerciseIdentityPin = false } = {}) {
     entryApi,
     hostApiLoader: async () => host,
     document,
-    globalObject: {},
+    globalObject: { sessionStorage },
     featureFlagStorage: storage,
     previewReadSourceFactory: () => async () => ({ available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecord() }),
   });
-  return { control, document, storage, flag, calls, entryApi, configuredActiveOptions, get identityDuringStart() { return identityDuringStart; }, get active() { return active; }, get previewEnabled() { return previewEnabled; }, set previewEnabled(value) { previewEnabled = value; } };
+  return { control, document, storage, sessionStorage, flag, calls, entryApi, configuredActiveOptions, get identityDuringStart() { return identityDuringStart; }, get active() { return active; }, get previewEnabled() { return previewEnabled; }, set previewEnabled(value) { previewEnabled = value; } };
 }
 
 test('passive control mounts once, exposes explicit activation, and performs no takeover before user action', async () => {
@@ -186,6 +189,7 @@ test('passive control mounts once, exposes explicit activation, and performs no 
   assert.equal(h.control.mount(), true);
   assert.equal(h.document.querySelectorAll(`#${PRODUCTION_USER_CONTROL_ID}`).length, 1);
   assert.equal(h.document.querySelector(`#${PRODUCTION_USER_STATUS_ID}`).textContent, 'Preview');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`).hidden, true);
   assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, false);
   assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, true);
   assert.deepEqual(h.calls, []);
@@ -217,6 +221,8 @@ test('post-reload explicit intent reuses selection/startup contracts exactly onc
   assert.equal(h.calls.filter(value => value === 'start-active').length, 1);
   assert.equal(h.active, true);
   assert.equal(h.control.status.userStatus, 'TMRW Phone V3');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, true);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, false);
   assert.equal(h.configuredActiveOptions.length, 1);
   assert.equal(Object.hasOwn(h.configuredActiveOptions[0], 'imageProviderConfig'), false);
   assert.equal(Object.keys(h.configuredActiveOptions[0]).some(key => /api.?key|pixabay|provider.?config/i.test(key)), false);
@@ -251,6 +257,33 @@ test('authority failure stays closed, never fakes a launcher, and leaves Preview
   assert.equal(h.flag.read().requested, false);
   assert.equal(h.document.querySelector('#tmrw-v3-phone-launcher'), null);
   assert.match(h.control.status.userStatus, /^Unavailable/);
+});
+
+test('failure diagnostic exposes only stage plus short reason and keeps inactive Return hidden', async () => {
+  const h = harness({ failStart: true });
+  h.flag.requestEnable();
+  h.previewEnabled = false;
+  h.control.mount();
+  await h.control.handleExtensionHook();
+  const diagnostic = h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`);
+  assert.equal(diagnostic.hidden, false);
+  assert.match(diagnostic.textContent, /^Diagnostic: ACTIVE_STARTUP/);
+  assert.match(diagnostic.textContent, /injected authority failure/);
+  assert.equal(h.control.status.diagnosticStage, 'ACTIVE_STARTUP');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, false);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, true);
+  const persisted = JSON.stringify(h.sessionStorage.snapshot());
+  assert.match(persisted, /ACTIVE_STARTUP/);
+  assert.equal(persisted.includes('stack'), false);
+  assert.equal(persisted.includes('C:\\\\'), false);
+  assert.equal(persisted.includes('http://'), false);
+  assert.equal(persisted.includes('https://'), false);
+});
+
+test('Production settings CSS force-hides only hidden controls inside the Production control', () => {
+  const css = readFileSync(new URL('../../production/package/style.css', import.meta.url), 'utf8');
+  assert.equal(css.includes('#tmrw-v3-production-control [hidden]'), true);
+  assert.equal(css.includes('display: none !important;'), true);
 });
 
 test('Return to Preview uses the formal Production return API', async () => {

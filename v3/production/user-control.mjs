@@ -5,7 +5,9 @@ export const PRODUCTION_USER_CONTROL_ID = 'tmrw-v3-production-control';
 export const PRODUCTION_USER_STATUS_ID = 'tmrw-v3-production-status';
 export const PRODUCTION_USER_USE_BUTTON_ID = 'tmrw-v3-production-use';
 export const PRODUCTION_USER_RETURN_BUTTON_ID = 'tmrw-v3-production-return';
+export const PRODUCTION_USER_DIAGNOSTIC_ID = 'tmrw-v3-production-diagnostic';
 
+const DIAGNOSTIC_SESSION_KEY = 'tmrw-v3-production-last-diagnostic-v1';
 const PREVIEW_ROOT_ID = 'tmrw-phone-root';
 const PREVIEW_LAUNCHER_ID = 'tmrw-phone-launcher';
 const PREVIEW_DATABASE_NAME = 'tmrw-phone-project-storage-v1';
@@ -19,6 +21,46 @@ function genericUnavailableMessage() {
 
 function normalizeError(error) {
   return String(error?.message || error || 'unknown Production activation failure');
+}
+
+function sanitizeDiagnosticStage(stage) {
+  const value = String(stage || 'UNKNOWN').toUpperCase().replace(/[^A-Z0-9:_-]+/g, '_').slice(0, 72);
+  return value || 'UNKNOWN';
+}
+
+function sanitizeDiagnosticReason(error) {
+  let value = normalizeError(error)
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/\b[A-Za-z]:[\\/][^\s"'<>]+/g, '[path]')
+    .replace(/\/(?:data\/data|storage\/emulated|home|Users|ai)\/[^\s"'<>]+/g, '[path]')
+    .replace(/\b(?:github_pat_|gh[pousr]_|sk-)[A-Za-z0-9_-]{12,}\b/g, '[redacted]')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!value) value = 'unknown Production activation failure';
+  return value.slice(0, 240);
+}
+
+function readDiagnosticSession(storage) {
+  try {
+    const raw = storage?.getItem?.(DIAGNOSTIC_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return Object.freeze({
+      stage: sanitizeDiagnosticStage(parsed.stage),
+      reason: sanitizeDiagnosticReason(parsed.reason),
+    });
+  } catch {
+    return null;
+  }
+}
+
+function writeDiagnosticSession(storage, diagnostic) {
+  try {
+    if (!diagnostic) storage?.removeItem?.(DIAGNOSTIC_SESSION_KEY);
+    else storage?.setItem?.(DIAGNOSTIC_SESSION_KEY, JSON.stringify(diagnostic));
+  } catch {}
 }
 
 function requireFunction(value, name) {
@@ -158,10 +200,12 @@ export class ProductionUserControl {
   #previewReadSourceFactory;
   #root = null;
   #status = null;
+  #diagnostic = null;
   #useButton = null;
   #returnButton = null;
   #busy = false;
   #lastError = null;
+  #stage = 'IDLE';
   #resumePromise = null;
 
   constructor({
@@ -183,6 +227,11 @@ export class ProductionUserControl {
     this.#featureFlagStorage = featureFlagStorage;
     this.#previewReadSourceFactory = requireFunction(previewReadSourceFactory, 'previewReadSourceFactory');
     if (featureFlagStorage?.getItem && featureFlagStorage?.setItem) this.#featureFlag = new V3BetaFeatureFlag({ storage: featureFlagStorage });
+    const restoredDiagnostic = readDiagnosticSession(globalObject?.sessionStorage);
+    if (restoredDiagnostic) {
+      this.#stage = restoredDiagnostic.stage;
+      this.#lastError = restoredDiagnostic.reason;
+    }
   }
 
   get status() {
@@ -191,6 +240,8 @@ export class ProductionUserControl {
       mounted: Boolean(this.#root?.isConnected ?? this.#root),
       busy: this.#busy,
       lastError: this.#lastError,
+      diagnosticStage: this.#lastError ? this.#stage : null,
+      diagnosticReason: this.#lastError ? sanitizeDiagnosticReason(this.#lastError) : null,
       requested: this.#featureFlag?.read().requested === true,
       productionActive: entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true,
       userStatus: this.#status?.textContent || this.#deriveUserStatus(entry),
@@ -214,6 +265,8 @@ export class ProductionUserControl {
     const statusWrap = createElement(document, 'div', { className: 'tmrw-v3-production-control__status-wrap' });
     const statusLabel = createElement(document, 'span', { className: 'tmrw-v3-production-control__label', text: 'Status:' });
     const status = createElement(document, 'span', { id: PRODUCTION_USER_STATUS_ID, className: 'tmrw-v3-production-control__status' });
+    const diagnostic = createElement(document, 'p', { id: PRODUCTION_USER_DIAGNOSTIC_ID, className: 'tmrw-v3-production-control__diagnostic' });
+    diagnostic.hidden = true;
     const actions = createElement(document, 'div', { className: 'tmrw-v3-production-control__actions' });
     const useButton = createElement(document, 'button', { id: PRODUCTION_USER_USE_BUTTON_ID, className: 'menu_button', text: 'Use TMRW Phone V3' });
     const returnButton = createElement(document, 'button', { id: PRODUCTION_USER_RETURN_BUTTON_ID, className: 'menu_button', text: 'Return to Preview 37' });
@@ -223,10 +276,11 @@ export class ProductionUserControl {
     returnButton.addEventListener('click', () => { void this.returnToPreview(); });
     statusWrap.append(statusLabel, status);
     actions.append(useButton, returnButton);
-    root.append(title, statusWrap, actions);
+    root.append(title, statusWrap, diagnostic, actions);
     host.append(root);
     this.#root = root;
     this.#status = status;
+    this.#diagnostic = diagnostic;
     this.#useButton = useButton;
     this.#returnButton = returnButton;
     this.refresh();
@@ -236,6 +290,7 @@ export class ProductionUserControl {
   #adopt(root) {
     this.#root = root;
     this.#status = root.querySelector?.(`#${PRODUCTION_USER_STATUS_ID}`) || null;
+    this.#diagnostic = root.querySelector?.(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`) || null;
     this.#useButton = root.querySelector?.(`#${PRODUCTION_USER_USE_BUTTON_ID}`) || null;
     this.#returnButton = root.querySelector?.(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`) || null;
   }
@@ -248,6 +303,7 @@ export class ProductionUserControl {
     if (!this.#featureFlag?.read().requested) return this.status;
     if (!this.#document?.querySelector) return this.status;
     let host;
+    this.#setStage('POST_RELOAD_HOST_API');
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
     if (!preview || preview.enabled === true) return this.status;
@@ -257,18 +313,24 @@ export class ProductionUserControl {
   async useProduction() {
     if (this.#busy) return this.status;
     this.#busy = true;
-    this.#lastError = null;
+    this.#clearDiagnostic();
+    this.#setStage('HOST_API');
     this.refresh();
     try {
       const host = await this.#hostApiLoader();
+      this.#setStage('PREVIEW_READ_SOURCE');
       const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
+      this.#setStage('PREFLIGHT_CONFIG');
       await this.#entryApi.configureProductionPreflight({
         officialExtensionApi: host.officialExtensionApi,
         previewReadSource,
         featureFlagStorage: this.#featureFlagStorage,
       });
+      this.#setStage('PREFLIGHT');
       const preflight = await this.#entryApi.runProductionPreflight();
+      this.#setStage('MIGRATION_PLAN');
       if (preflight?.onboarding?.migrationPlan?.fatal === true) throw new Error('Production preflight migration plan is fatal');
+      this.#setStage('TAKEOVER');
       const takeover = await this.#entryApi.requestProductionTakeover({ gateFReport: ACCEPTED_GATE_F_REPORT });
       if (takeover?.runtime?.state !== PRODUCTION_RUNTIME_STATE.RELOAD_REQUIRED_FOR_V3) {
         await this.#entryApi.disposeProductionPreflight();
@@ -294,29 +356,38 @@ export class ProductionUserControl {
   async #resumePendingSelection({ host = null } = {}) {
     if (this.#busy) return this.status;
     this.#busy = true;
-    this.#lastError = null;
+    this.#setStage('POST_RELOAD_HOST_API');
     this.refresh();
     try {
       const resolvedHost = host || await this.#hostApiLoader();
+      this.#setStage('POST_RELOAD_PREVIEW_SOURCE');
       const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
       let startupSourceIdentity = null;
       let pinStartupSourceIdentity = true;
       const sourceIdentityResolver = async context => {
         if (pinStartupSourceIdentity && startupSourceIdentity) return startupSourceIdentity;
+        this.#setStage('PREVIEW_DB_READ');
         const preview = await previewReadSource();
-        if (!preview.available || !preview.record) throw new Error('Preview project data is unavailable for Production startup');
+        if (!preview.available || !preview.record) {
+          throw new Error(`Preview project data is unavailable for Production startup (${preview?.reason || 'unknown'})`);
+        }
+        this.#setStage('PREVIEW_SCOPE');
         const resolved = resolveCurrentPreview37SourceIdentity({ context, record: preview.record });
         if (pinStartupSourceIdentity) startupSourceIdentity = resolved;
+        this.#setStage('ACTIVE_STARTUP');
         return resolved;
       };
       const proof = exclusionProof(this.#document, this.#globalObject);
 
+      this.#setStage('POST_RELOAD_PREFLIGHT_CONFIG');
       await this.#entryApi.configureProductionPreflight({
         officialExtensionApi: resolvedHost.officialExtensionApi,
         previewReadSource,
         featureFlagStorage: this.#featureFlagStorage,
       });
+      this.#setStage('POST_RELOAD_SELECTION');
       await this.#entryApi.checkProductionPostReloadSelection({ exclusionProof: proof });
+      this.#setStage('ACTIVE_CONFIG');
       await this.#entryApi.configureProductionActiveStartup({
         officialExtensionApi: resolvedHost.officialExtensionApi,
         previewReadSource,
@@ -326,16 +397,19 @@ export class ProductionUserControl {
         eventSource: resolvedHost.eventSource,
         sillyTavernEventTypes: resolvedHost.sillyTavernEventTypes,
         sourceIdentityResolver,
+        stageObserver: stage => { this.#setStage(`ACTIVE_STARTUP:${stage}`); },
         document: this.#document,
         globalObject: this.#globalObject,
         eventTarget: this.#globalObject,
       });
+      this.#setStage('ACTIVE_STARTUP');
       const started = await this.#entryApi.startProductionActiveRuntime({ exclusionProof: proof, gateFReport: ACCEPTED_GATE_F_REPORT });
       pinStartupSourceIdentity = false;
       startupSourceIdentity = null;
       if (started?.authoringAuthority !== true || started?.launcherMounted !== true || started?.authoringGateState !== 'open') {
         throw new Error('Production startup did not establish accepted authoring authority');
       }
+      this.#clearDiagnostic();
       await this.#entryApi.disposeProductionPreflight();
       this.refresh();
       return this.status;
@@ -352,7 +426,8 @@ export class ProductionUserControl {
   async returnToPreview() {
     if (this.#busy) return this.status;
     this.#busy = true;
-    this.#lastError = null;
+    this.#clearDiagnostic();
+    this.#setStage('RETURN_PREVIEW');
     this.refresh();
     try {
       await this.#entryApi.returnProductionToPreview37();
@@ -366,6 +441,17 @@ export class ProductionUserControl {
     }
   }
 
+  #setStage(stage) {
+    this.#stage = sanitizeDiagnosticStage(stage);
+    return this.#stage;
+  }
+
+  #clearDiagnostic() {
+    this.#lastError = null;
+    this.#stage = 'IDLE';
+    writeDiagnosticSession(this.#globalObject?.sessionStorage, null);
+  }
+
   #deriveUserStatus(entry = this.#entryApi.getProductionEntryStatus()) {
     if (this.#busy) return 'Switching…';
     if (this.#lastError) return genericUnavailableMessage();
@@ -377,6 +463,11 @@ export class ProductionUserControl {
     const entry = this.#entryApi.getProductionEntryStatus();
     const active = entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true;
     if (this.#status) this.#status.textContent = this.#deriveUserStatus(entry);
+    if (this.#diagnostic) {
+      const visible = Boolean(this.#lastError);
+      this.#diagnostic.textContent = visible ? `Diagnostic: ${this.#stage} — ${sanitizeDiagnosticReason(this.#lastError)}` : '';
+      this.#diagnostic.hidden = !visible;
+    }
     if (this.#useButton) {
       this.#useButton.hidden = active;
       this.#useButton.disabled = this.#busy;
@@ -390,6 +481,10 @@ export class ProductionUserControl {
 
   #fail(error) {
     this.#lastError = normalizeError(error);
+    writeDiagnosticSession(this.#globalObject?.sessionStorage, Object.freeze({
+      stage: this.#stage,
+      reason: sanitizeDiagnosticReason(error),
+    }));
     console.error('[TMRW Phone V3] Production activation failed safely:', error);
     this.refresh();
   }
@@ -398,6 +493,7 @@ export class ProductionUserControl {
     try { this.#root?.remove?.(); } catch {}
     this.#root = null;
     this.#status = null;
+    this.#diagnostic = null;
     this.#useButton = null;
     this.#returnButton = null;
     return true;

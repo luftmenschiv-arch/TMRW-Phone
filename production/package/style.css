@@ -44,6 +44,17 @@
   overflow-wrap: anywhere;
 }
 
+#tmrw-v3-production-control [hidden] {
+  display: none !important;
+}
+
+#tmrw-v3-production-control .tmrw-v3-production-control__diagnostic {
+  margin: 0.45rem 0 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+}
+
 #tmrw-v3-production-control .tmrw-v3-production-control__status-wrap {
   display: flex;
   flex-wrap: wrap;
