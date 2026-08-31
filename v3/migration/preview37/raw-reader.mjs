@@ -1,6 +1,7 @@
 import { LEGACY_PREVIEW_STORAGE } from '../../storage/schema.mjs';
 import { PREVIEW37_SOURCE_AUTHORITY } from './constants.mjs';
 import { previewDigest } from './digest.mjs';
+import { normalizePreview37MigrationSource } from './source-normalizer.mjs';
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {
@@ -50,7 +51,7 @@ export class Preview37RawReader {
       return Object.freeze({ available: false, sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, reason: result?.reason || 'preview37-data-unavailable', wrotePreview: false, invokedPreviewCode: false });
     }
     if (!result.record || typeof result.record !== 'object' || Array.isArray(result.record)) throw new TypeError('Preview 37 source root must be an object');
-    const record = structuredClone(result.record); const sourceFingerprint = await previewDigest(record); const sourceVersion = String(result.sourceVersion || record.schemaVersion || 'unknown');
+    const record = normalizePreview37MigrationSource(result.record); const sourceFingerprint = await previewDigest(record); const sourceVersion = String(result.sourceVersion || record.schemaVersion || 'unknown');
     this.#metrics = Object.freeze({ operation: 'preview37-read', sourceReads: 1, sourceWrites: 0, recordsRead: 1 });
     return Object.freeze({ available: true, sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceVersion, sourceFingerprint, sourceLocation: result.sourceLocation || 'injected-read-only', record, wrotePreview: false, invokedPreviewCode: false });
   }
