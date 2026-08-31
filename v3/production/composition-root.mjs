@@ -16,7 +16,7 @@ import { deterministicIdentityId } from '../domain/identity/id.mjs';
 import { createIdentityMapping } from '../domain/identity/identity-mapping.mjs';
 import { V3UnitOfWork } from '../storage/unit-of-work.mjs';
 import { CanonicalEventEngine } from '../domain/events/event-transaction.mjs';
-import { createPhase17EventTypeRegistry } from '../domain/notifications/notification-event-types.mjs';
+import { createPhase23EventTypeRegistry } from '../domain/utilities/phone-world-event-types.mjs';
 import { createClockProjector } from '../domain/time/clock-projector.mjs';
 import { createPendingProjector } from '../domain/time/pending-projector.mjs';
 import { createActivitySessionProjector } from '../domain/time/activity-session-projector.mjs';
@@ -30,6 +30,10 @@ import { createDirectorProjector } from '../director/projector.mjs';
 import { createSocialProjector } from '../domain/social/social-projector.mjs';
 import { createLiveProjector } from '../domain/live/live-projector.mjs';
 import { createNotificationProjector } from '../domain/notifications/notification-projector.mjs';
+import { createPhoneWorldProjector } from '../domain/utilities/phone-world-projector.mjs';
+import { PhoneWorldService } from '../domain/utilities/phone-world-service.mjs';
+import { CalendarAppService } from '../application/calendar-app-service.mjs';
+import { CommerceAppService } from '../application/commerce-app-service.mjs';
 import { KnowledgeService } from '../domain/knowledge/knowledge-service.mjs';
 import { StoryChronologyService } from '../domain/time/chronology-service.mjs';
 import { PhoneStateService } from '../domain/phone/phone-state.mjs';
@@ -95,6 +99,7 @@ function productionProjectors() {
     createSocialProjector(),
     createLiveProjector(),
     createNotificationProjector(),
+    createPhoneWorldProjector(),
   ];
 }
 
@@ -113,11 +118,14 @@ function createRuntimeBindingResolver({ identityResolver, messageIdentityResolve
 }
 
 function createTransitionMigrationCore(database, now) {
-  const eventEngine = new CanonicalEventEngine({ database, eventTypes: createPhase17EventTypeRegistry(), projectors: productionProjectors(), now });
+  const eventEngine = new CanonicalEventEngine({ database, eventTypes: createPhase23EventTypeRegistry(), projectors: productionProjectors(), now });
   const phones = new PhoneStateService({ database, eventEngine });
   const messages = new MessageService({ database, eventEngine });
   const calls = new CallService({ database, eventEngine });
-  return Object.freeze({ eventEngine, phones, messages, calls });
+  const phoneWorld = new PhoneWorldService({ database, eventEngine });
+  const chronology = new StoryChronologyService({ database, eventEngine });
+  const calendar = new CalendarAppService({ database, phoneWorldService: phoneWorld, chronologyService: chronology });
+  return Object.freeze({ eventEngine, phones, messages, calls, phoneWorld, chronology, calendar });
 }
 
 async function addProductionScopeAliases({ transitionDatabase, manifest, plan, sourceIdentity, now }) {
@@ -169,6 +177,18 @@ async function addProductionScopeAliases({ transitionDatabase, manifest, plan, s
   return Object.freeze({ added: true, mappings: Object.freeze(saved.map(row => Object.freeze({ id: row.id, sourceType: row.sourceType, sourceId: row.sourceId, canonicalId: row.canonicalId }))) });
 }
 
+async function catchUpPhase23Projectors({ eventEngine, manifest, plan }) {
+  const seen = new Set(); const scopes = [];
+  for (const scopePlan of plan?.scopePlans || []) {
+    const row = await manifest.getItem(plan.batchId, scopePlan.identitySourceRecordId); const identity = row?.canonical?.identity;
+    if (!identity?.storyId || !identity?.branchId) continue;
+    const key = `${identity.storyId}:${identity.branchId}`; if (seen.has(key)) continue; seen.add(key);
+    const scope = Object.freeze({ storyId: identity.storyId, branchId: identity.branchId }); const metrics = await eventEngine.catchUp(scope);
+    scopes.push(Object.freeze({ scope, metrics }));
+  }
+  return Object.freeze(scopes);
+}
+
 async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migration, now, activation }) {
   if (!migration) return Object.freeze({ attempted: false, committed: false, plan: null, result: null });
   if (!migration.previewQuiesced) throw new Error('Preview must be quiesced before transition migration');
@@ -189,6 +209,8 @@ async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migrati
     phoneStateService: transitionCore.phones,
     messageService: transitionCore.messages,
     callService: transitionCore.calls,
+    phoneWorldService: transitionCore.phoneWorld,
+    calendarService: transitionCore.calendar,
     manifest,
   });
   const plan = migration.plan || await coordinator.dryRun({ userDisplayName: migration.userDisplayName || '{{user}}' });
@@ -199,8 +221,10 @@ async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migrati
   await activation.mark('migration-transition-open');
   try {
     const result = await coordinator.commit(plan, migration.commitOptions || {});
+    const projectorCatchUp = await catchUpPhase23Projectors({ eventEngine: transitionCore.eventEngine, manifest, plan });
+    await activation.mark('phase23-projector-catch-up', { scopes: projectorCatchUp.length });
     const scopeAliases = await addProductionScopeAliases({ transitionDatabase, manifest, plan, sourceIdentity: migration.productionSourceIdentity || null, now });
-    return Object.freeze({ attempted: true, committed: true, plan, result, metrics: coordinator.lastOperationMetrics, scopeAliases });
+    return Object.freeze({ attempted: true, committed: true, plan, result, metrics: coordinator.lastOperationMetrics, projectorCatchUp, scopeAliases });
   } catch (error) {
     gate.close('migration-transition-failed');
     throw error;
@@ -327,7 +351,7 @@ async function buildRuntime(options, entry) {
     const bindingResolver = createRuntimeBindingResolver({ identityResolver, messageIdentityResolver });
     await activation.mark('identity-binding-resolver');
 
-    const eventEngine = new CanonicalEventEngine({ database: normalDatabase, eventTypes: createPhase17EventTypeRegistry(), projectors: productionProjectors(), now });
+    const eventEngine = new CanonicalEventEngine({ database: normalDatabase, eventTypes: createPhase23EventTypeRegistry(), projectors: productionProjectors(), now });
     await activation.mark('canonical-event-engine');
 
     const knowledge = new KnowledgeService({ database: normalDatabase, eventEngine });
@@ -359,6 +383,12 @@ async function buildRuntime(options, entry) {
     await activation.mark('live-service');
     const notifications = new NotificationService({ database: normalDatabase, now });
     await activation.mark('notification-service');
+    const phoneWorld = new PhoneWorldService({ database: normalDatabase, eventEngine });
+    await activation.mark('phone-world-utility-service');
+    const calendar = new CalendarAppService({ database: normalDatabase, phoneWorldService: phoneWorld, chronologyService: chronology });
+    await activation.mark('calendar-app-service');
+    const commerce = new CommerceAppService({ database: normalDatabase, phoneWorldService: phoneWorld });
+    await activation.mark('commerce-app-service');
     const settings = new BetaSettingsService({ database: normalDatabase });
     await activation.mark('beta-settings');
 
@@ -424,7 +454,7 @@ async function buildRuntime(options, entry) {
     activation.addResource('generation-interceptor-owner', () => generationOwner.dispose());
     await activation.mark('generation-interceptor-owner');
 
-    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability });
+    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, phoneWorldService: phoneWorld, calendarService: calendar, commerceService: commerce, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability });
     await activation.mark('phone-shell-view-models');
     const phoneController = new PhoneController({ phoneStateService: phones, playerAccessOverrides: overrides });
     activation.addResource('phone-controller', () => phoneController.disableBeta());
@@ -436,7 +466,7 @@ async function buildRuntime(options, entry) {
     gate.close('s08-awaiting-s09-mount-launcher');
     await activation.mark('s08-ready-without-mount', finalHealth);
 
-    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, viewModels, phoneController });
+    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, viewModels, phoneController });
     const composition = Object.freeze({ normalDatabase, identityKernel, contextAdapter, identityResolver, eventEngine, runtimeIntegration, listenerOwner, generationOwner, heartbeat, authoringGate: gate, runtimeGuard, productionHealth });
 
     const root = Object.freeze({

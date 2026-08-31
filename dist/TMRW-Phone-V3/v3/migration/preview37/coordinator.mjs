@@ -6,10 +6,12 @@ import { createIdentityMigrationItem, canonicalPeopleFromIdentity } from './iden
 import { createThreadMigrationItem } from './thread-translator.mjs';
 import { createMessageMigrationItem } from './message-translator.mjs';
 import { createCallMigrationItem } from './call-translator.mjs';
+import { createPersonalAppMigrationItems } from './personal-app-translator.mjs';
+import { Preview37PersonalAppImporter } from './personal-app-importer.mjs';
 import { Preview37ConflictReporter } from './conflict-report.mjs';
 import { Preview37MigrationManifest } from './manifest.mjs';
 import { Preview37MigrationValidator } from './validator.mjs';
-import { MIGRATION_BATCH_STATUS, MIGRATION_ITEM_STATE, PREVIEW37_SOURCE_AUTHORITY, migrationBatchId } from './constants.mjs';
+import { MIGRATION_BATCH_STATUS, MIGRATION_ITEM_STATE, PREVIEW37_MIGRATION_VERSION, PREVIEW37_SOURCE_AUTHORITY, migrationBatchId } from './constants.mjs';
 import { previewDigest } from './digest.mjs';
 
 const SOURCE_KIND = 'preview37-copy-migration';
@@ -17,6 +19,14 @@ const PRODUCER = 'preview37-migration';
 const userKeys = new Set(['user', '{{user}}', '__user__', 'local-player-v1']);
 const sourceFor = (recordId, fingerprint) => Object.freeze({ authority: PREVIEW37_SOURCE_AUTHORITY, kind: SOURCE_KIND, recordId, version: fingerprint });
 const countStates = items => Object.freeze(items.reduce((counts, item) => ({ ...counts, [item.state]: (counts[item.state] || 0) + 1 }), {}));
+const countClassifications = items => Object.freeze(items.reduce((counts, item) => item.classification ? ({ ...counts, [item.classification]: (counts[item.classification] || 0) + 1 }) : counts, {}));
+const PERSONAL_SOURCE_TYPES = Object.freeze(new Set(['note', 'gallery', 'search-history', 'wallet', 'shop-item', 'shop-order', 'calendar-personal', 'location-personal']));
+const PERSONAL_IMPORT_PRIORITY = Object.freeze({ 'shop-item': 10, note: 20, gallery: 30, 'search-history': 40, wallet: 50, 'calendar-personal': 60, 'location-personal': 70, 'shop-order': 80 });
+function personalImportOrder(a, b) {
+  const priority = (PERSONAL_IMPORT_PRIORITY[a.sourceType] || 999) - (PERSONAL_IMPORT_PRIORITY[b.sourceType] || 999); if (priority) return priority;
+  if (a.sourceType === 'wallet' && b.sourceType === 'wallet' && Number.isSafeInteger(a.data?.legacySequence) && Number.isSafeInteger(b.data?.legacySequence) && a.data.legacySequence !== b.data.legacySequence) return a.data.legacySequence - b.data.legacySequence;
+  return a.sourceRecordId.localeCompare(b.sourceRecordId);
+}
 
 function peopleIndex(people) {
   const map = new Map();
@@ -41,13 +51,13 @@ function mappingsForIdentity(item, identity, people) {
 }
 
 export class Preview37CopyMigrationCoordinator {
-  #database; #reader; #kernel; #phones; #messages; #calls; #manifest; #validator; #conflicts; #unitOfWork;
+  #database; #reader; #kernel; #phones; #messages; #calls; #manifest; #validator; #conflicts; #unitOfWork; #personalImporter;
   #metrics = Object.freeze({ operation: 'none' });
-  constructor({ database, rawReader, identityKernel, phoneStateService, messageService, callService, manifest = null, validator = null }) {
+  constructor({ database, rawReader, identityKernel, phoneStateService, messageService, callService, phoneWorldService = null, calendarService = null, manifest = null, validator = null }) {
     if (!database || !rawReader || !identityKernel || !phoneStateService || !messageService || !callService) throw new TypeError('Preview copy migration requires isolated v3 services and a read-only source reader');
     this.#database = database; this.#reader = rawReader; this.#kernel = identityKernel; this.#phones = phoneStateService; this.#messages = messageService; this.#calls = callService;
     this.#manifest = manifest || new Preview37MigrationManifest({ database }); this.#validator = validator || new Preview37MigrationValidator({ database });
-    this.#conflicts = new Preview37ConflictReporter({ database }); this.#unitOfWork = new V3UnitOfWork(database);
+    this.#conflicts = new Preview37ConflictReporter({ database }); this.#unitOfWork = new V3UnitOfWork(database); this.#personalImporter = new Preview37PersonalAppImporter({ phoneWorldService, calendarService, manifest: this.#manifest });
   }
   get lastOperationMetrics() { return structuredClone(this.#metrics); }
 
@@ -63,14 +73,15 @@ export class Preview37CopyMigrationCoordinator {
         for (const message of thread.messages) items.push(await createMessageMigrationItem({ scope, thread, message, memberIds }));
       }
       for (const call of scope.calls) items.push(await createCallMigrationItem({ scope, call, memberIds }));
+      items.push(...await createPersonalAppMigrationItems({ scope, memberIds }));
       items.unshift(identityItem); scopePlans.push(Object.freeze({ scope, card, identitySourceRecordId: identityItem.sourceRecordId, threadSourceRecordIds: Object.freeze(threadItems.map(row => row.item.sourceRecordId)) }));
     }
     const classified = [];
     for (const item of items) classified.push(await this.#conflicts.classify(item));
-    const planBasis = { sourceFingerprint: snapshot.sourceFingerprint || 'absent', items: classified.map(item => ({ sourceRecordId: item.sourceRecordId, sourceFingerprint: item.sourceFingerprint, sourceType: item.sourceType })) };
+    const planBasis = { sourceFingerprint: snapshot.sourceFingerprint || 'absent', items: classified.map(item => ({ sourceRecordId: item.sourceRecordId, sourceFingerprint: item.sourceFingerprint, sourceType: item.sourceType, state: item.state, reasonCode: item.reasonCode || null, classification: item.classification || null })) };
     const plan = Object.freeze({ batchId, sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceFingerprint: snapshot.sourceFingerprint || 'absent', sourceVersion: snapshot.sourceVersion || 'absent', sourceLocation: snapshot.sourceLocation || 'unavailable',
       planFingerprint: await previewDigest(planBasis), available: inventory.available, fatal: inventory.fatal, issues: inventory.issues, inventory: Object.freeze({ sourceRecordCount: inventory.sourceRecordCount, cards: inventory.cards.length, scopes: inventory.scopes.length, deferredCounts: inventory.deferredCounts }),
-      counts: countStates(classified), items: Object.freeze(classified), scopePlans: Object.freeze(scopePlans), generatedAt: null });
+      counts: countStates(classified), classificationCounts: countClassifications(classified), items: Object.freeze(classified), scopePlans: Object.freeze(scopePlans), generatedAt: null });
     const after = await this.#writeCommits(); if (after !== before) throw new Error('Preview migration dry run performed an unexpected v3 write');
     this.#metrics = Object.freeze({ operation: 'dry-run', previewReads: 1, previewWrites: 0, canonicalWrites: 0, sourceRecords: inventory.sourceRecordCount, itemsPlanned: classified.length, fullCanonicalEventScans: 0, storiesScannedPerItem: 0, branchesScannedPerItem: 0 });
     return plan;
@@ -79,7 +90,7 @@ export class Preview37CopyMigrationCoordinator {
   async commit(plan, { failAfterItems = null, cancelAfterItems = null } = {}) {
     if (plan.fatal) throw new Error('Preview migration plan is fatally invalid');
     const current = await this.#reader.read(); if ((current.sourceFingerprint || 'absent') !== plan.sourceFingerprint) throw new Error('Preview source changed after dry run; create a new migration plan');
-    const existing = await this.#manifest.getBatch(plan.batchId); if (existing?.status === MIGRATION_BATCH_STATUS.COMPLETED) return Object.freeze({ batch: existing, replayed: true, validation: existing.validation });
+    const existing = await this.#manifest.getBatch(plan.batchId); if (existing?.status === MIGRATION_BATCH_STATUS.COMPLETED) { await this.#assertCompletedReplayCompatible(existing, plan); return Object.freeze({ batch: existing, replayed: true, validation: existing.validation }); }
     await this.#manifest.persistPlan(plan); await this.#manifest.start(plan.batchId);
     let processed = 0; let canonicalOperations = 0;
     try {
@@ -100,6 +111,12 @@ export class Preview37CopyMigrationCoordinator {
           await this.#manifest.commitItem(plan.batchId, identityItem.sourceRecordId, { identity, people, identityManifestId: identityItem.data.manifestId, eventIds: phoneEvents.map(result => result.event.id) });
         }
         const committedIdentity = await this.#manifest.getItem(plan.batchId, identityItem.sourceRecordId); const people = committedIdentity.canonical.people; const bySource = peopleIndex(people); const scope = { storyId: identity.storyId, branchId: identity.branchId };
+        const personalItems = plan.items.filter(row => row.sourceScopeKey === scopePlan.scope.sourceScopeKey && PERSONAL_SOURCE_TYPES.has(row.sourceType) && row.state === MIGRATION_ITEM_STATE.READY).slice().sort(personalImportOrder);
+        for (const item of personalItems) {
+          const saved = await this.#manifest.getItem(plan.batchId, item.sourceRecordId); if (saved?.canonical?.record) continue;
+          const imported = await this.#personalImporter.importItem({ plan, item, scope, bySource }); canonicalOperations += imported.canonicalOperations;
+          await this.#checkpointFaults(++processed, failAfterItems, cancelAfterItems);
+        }
         const threadBySource = new Map();
         for (const item of plan.items.filter(row => row.sourceScopeKey === scopePlan.scope.sourceScopeKey && row.sourceType === 'thread')) {
           if (![MIGRATION_ITEM_STATE.READY, MIGRATION_ITEM_STATE.ALREADY_MIGRATED].includes(item.state)) continue; const saved = await this.#manifest.getItem(plan.batchId, item.sourceRecordId);
@@ -149,6 +166,21 @@ export class Preview37CopyMigrationCoordinator {
       const batch = await this.#manifest.activate(plan.batchId, validation); this.#metrics = Object.freeze({ operation: 'commit', sourceRecords: plan.inventory.sourceRecordCount, itemsProcessed: processed, canonicalOperations, fullCanonicalEventScans: 0, storiesScannedPerItem: 0, branchesScannedPerItem: 0, previewWrites: 0 });
       return Object.freeze({ batch, validation, replayed: false });
     } catch (error) { if (error?.code === 'PREVIEW37_CANCELLED') await this.#manifest.markCancelled(plan.batchId); else await this.#manifest.markFailed(plan.batchId, error); throw error; }
+  }
+
+  async #assertCompletedReplayCompatible(existing, plan) {
+    if (existing.migrationVersion !== PREVIEW37_MIGRATION_VERSION || existing.sourceFingerprint !== plan.sourceFingerprint) throw new Error('Completed Preview migration batch identity is incompatible with this plan');
+    const priorRows = await this.#unitOfWork.readonly({ stores: ['previewMigrationItems'], privileged: true }, repositories => repositories.previewMigrationItems.list());
+    const prior = priorRows.filter(row => row.batchId === existing.id); if (prior.length !== plan.items.length) throw new Error('Completed Preview migration plan shape changed; create a new migration version');
+    const byId = new Map(prior.map(row => [row.sourceRecordId, row]));
+    for (const item of plan.items) {
+      const row = byId.get(item.sourceRecordId); if (!row) throw new Error(`Completed Preview migration plan gained an unrecognized source record: ${item.sourceRecordId}`);
+      if (row.sourceFingerprint !== item.sourceFingerprint || row.sourceType !== item.sourceType || row.sourceScopeKey !== item.sourceScopeKey || (row.classification || null) !== (item.classification || null)) throw new Error(`Completed Preview migration classification/source identity changed: ${item.sourceRecordId}`);
+      const priorReason = row.reasonCode || null; const nextReason = item.reasonCode || null;
+      const exact = row.planState === item.state && priorReason === nextReason;
+      const replayTransition = row.planState === MIGRATION_ITEM_STATE.READY && item.state === MIGRATION_ITEM_STATE.ALREADY_MIGRATED && nextReason === 'unchanged-source-already-migrated';
+      if (!exact && !replayTransition) throw new Error(`Completed Preview migration state/reason changed incompatibly: ${item.sourceRecordId}`);
+    }
   }
 
   async #checkpointFaults(processed, failAfter, cancelAfter) {

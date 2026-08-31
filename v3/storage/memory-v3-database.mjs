@@ -396,6 +396,14 @@ export class MemoryV3Database {
         id: 'schema-19', fromVersion: 18, toVersion: 19, name: 'normalize-preview-migration-current-index-key-to-numeric-sentinel', status: 'applied', appliedAt: now,
         databaseName: V3_DATABASE_NAME, schemaId: V3_SCHEMA_ID, legacyDataRead: false, legacyDataWritten: false,
       });
+      if (state.version < 20) upgraded.stores.get('migrations').set('schema-20', {
+        id: 'schema-20', fromVersion: 19, toVersion: 20, name: 'add-scoped-phone-world-utility-projection-stores', status: 'applied', appliedAt: now,
+        databaseName: V3_DATABASE_NAME, schemaId: V3_SCHEMA_ID, legacyDataRead: false, legacyDataWritten: false,
+      });
+      if (state.version < 21) upgraded.stores.get('migrations').set('schema-21', {
+        id: 'schema-21', fromVersion: 20, toVersion: 21, name: 'version-preview-migration-batch-source-fingerprint-index', status: 'applied', appliedAt: now,
+        databaseName: V3_DATABASE_NAME, schemaId: V3_SCHEMA_ID, legacyDataRead: false, legacyDataWritten: false,
+      });
       validateUniqueIndexes(upgraded.stores);
       this.#registry.set(this.#databaseName, upgraded);
       state = upgraded;

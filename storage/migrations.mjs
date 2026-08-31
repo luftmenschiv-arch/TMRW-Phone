@@ -40,6 +40,13 @@ function schedulePreviewMigrationCurrentStorageUpgrade(transaction, oldVersion) 
   };
 }
 
+function schedulePreviewMigrationBatchVersionIndexUpgrade(transaction, oldVersion) {
+  if (oldVersion >= 21) return;
+  const store = transaction.objectStore('previewMigrationBatches');
+  if (store.indexNames.contains('by_source_fingerprint')) store.deleteIndex('by_source_fingerprint');
+  store.createIndex('by_source_fingerprint', ['sourceAuthority', 'migrationVersion', 'sourceFingerprint'], { unique: true });
+}
+
 export function applyIndexedDbUpgrade({ database, transaction, oldVersion, newVersion, now = new Date().toISOString() }) {
   if (newVersion !== V3_SCHEMA_VERSION || oldVersion < 0 || oldVersion >= newVersion) {
     throw new V3SchemaError(`Unsupported v3 schema upgrade ${oldVersion} -> ${newVersion}`);
@@ -48,6 +55,7 @@ export function applyIndexedDbUpgrade({ database, transaction, oldVersion, newVe
     createIndexedDbStore(database, transaction, storeName, definition);
   }
   schedulePreviewMigrationCurrentStorageUpgrade(transaction, oldVersion);
+  schedulePreviewMigrationBatchVersionIndexUpgrade(transaction, oldVersion);
   transaction.objectStore('metadata').put(schemaMetadata(now));
   for (const migration of V3_SCHEMA_MIGRATIONS.filter(row => row.toVersion > oldVersion && row.toVersion <= newVersion)) {
     transaction.objectStore('migrations').put({
@@ -204,6 +212,20 @@ export const V3_SCHEMA_MIGRATIONS = Object.freeze([
     fromVersion: 18,
     toVersion: 19,
     name: 'normalize-preview-migration-current-index-key-to-numeric-sentinel',
+    readsLegacyData: false,
+    writesLegacyData: false,
+  }),
+  Object.freeze({
+    fromVersion: 19,
+    toVersion: 20,
+    name: 'add-scoped-phone-world-utility-projection-stores',
+    readsLegacyData: false,
+    writesLegacyData: false,
+  }),
+  Object.freeze({
+    fromVersion: 20,
+    toVersion: 21,
+    name: 'version-preview-migration-batch-source-fingerprint-index',
     readsLegacyData: false,
     writesLegacyData: false,
   }),

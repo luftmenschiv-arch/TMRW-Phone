@@ -7,6 +7,16 @@ const el = (document, tag, className = '', text = '') => {
 
 const initials = label => String(label || '?').trim().slice(0, 1).toUpperCase() || '?';
 
+const bindOneShot = (button, handler) => {
+  let busy = false;
+  button.addEventListener('click', () => {
+    if (busy || button.disabled) return;
+    busy = true;
+    button.disabled = true;
+    void Promise.resolve().then(handler).catch(() => {});
+  });
+};
+
 const controlButton = (document, className, label, action, enabled = true, ariaLabel = null) => {
   const node = el(document, 'button', className);
   node.type = 'button';
@@ -39,7 +49,7 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
     const close = el(document, 'button', 'tmrw-call-approved-close', '×');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close ended call');
-    close.addEventListener('click', () => onClose?.());
+    bindOneShot(close, () => onClose?.());
     top.append(close);
   }
   root.append(top);
@@ -68,8 +78,16 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
     const send = el(document, 'button', 'tmrw-call-approved-send', 'Send');
     send.type = 'button';
     send.setAttribute('aria-label', 'Send');
-    send.disabled = inspectionOnly;
-    send.addEventListener('click', () => onSend?.(input));
+    const syncSend = () => { send.disabled = inspectionOnly || !String(input.value || '').trim(); };
+    syncSend();
+    input.addEventListener('input', syncSend);
+    let sendBusy = false;
+    send.addEventListener('click', () => {
+      if (sendBusy || inspectionOnly || !String(input.value || '').trim()) return;
+      sendBusy = true;
+      send.disabled = true;
+      void Promise.resolve(onSend?.(input)).catch(() => {});
+    });
     composer.append(input, send);
     root.append(composer);
 
@@ -77,7 +95,7 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
     const speaker = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-control-disabled', 'ลำโพง', 'speaker', false);
     speaker.title = 'Voice controls are unavailable in text-only mode';
     const end = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-end', 'End call', 'end', !inspectionOnly, 'End call call');
-    end.addEventListener('click', () => onAction?.('end'));
+    bindOneShot(end, () => onAction?.('end'));
     const mute = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-control-disabled', 'ปิดไมค์', 'mute', false);
     mute.title = 'Voice controls are unavailable in text-only mode';
     controls.append(speaker, end, mute);
@@ -86,16 +104,16 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
     root.append(el(document, 'p', 'tmrw-call-approved-hint', 'สายเรียกเข้าพร้อมรับเมื่อคุณต้องการ'));
     const actions = el(document, 'div', 'tmrw-call-approved-ring-actions');
     const decline = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-decline', 'Decline', 'decline', island.actions?.find(x => x.id === 'decline')?.enabled, 'Decline call');
-    decline.addEventListener('click', () => onAction?.('decline'));
+    bindOneShot(decline, () => onAction?.('decline'));
     const accept = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-accept', 'Accept', 'accept', island.actions?.find(x => x.id === 'accept')?.enabled, 'Accept call');
-    accept.addEventListener('click', () => onAction?.('accept'));
+    bindOneShot(accept, () => onAction?.('accept'));
     actions.append(decline, accept);
     root.append(actions);
   } else if (island.kind === 'outgoing') {
     root.append(el(document, 'p', 'tmrw-call-approved-hint', 'กำลังรออีกฝ่ายรับสาย...'));
     const actions = el(document, 'div', 'tmrw-call-approved-ring-actions tmrw-call-approved-ring-actions-single');
     const cancel = controlButton(document, 'tmrw-call-approved-control tmrw-call-approved-decline', 'Cancel', 'cancel', island.actions?.find(x => x.id === 'cancel')?.enabled, 'Cancel call');
-    cancel.addEventListener('click', () => onAction?.('cancel'));
+    bindOneShot(cancel, () => onAction?.('cancel'));
     actions.append(cancel);
     root.append(actions);
   } else if (island.kind === 'ended') {
@@ -106,7 +124,7 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
     if (typeof onContinueOnce === 'function') {
       const cont = el(document, 'button', 'tmrw-call-approved-continue', 'Continue story after this call');
       cont.type = 'button';
-      cont.addEventListener('click', () => onContinueOnce());
+      bindOneShot(cont, () => onContinueOnce());
       root.append(cont);
     }
   }

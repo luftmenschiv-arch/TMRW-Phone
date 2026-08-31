@@ -53,7 +53,7 @@ export class Preview37MigrationManifest {
         migrationVersion: PREVIEW37_MIGRATION_VERSION, sourceFingerprint: plan.sourceFingerprint,
         sourceVersion: plan.sourceVersion, sourceLocation: plan.sourceLocation, planFingerprint: plan.planFingerprint,
         status: MIGRATION_BATCH_STATUS.PLANNED, checkpointOrdinal: -1, activationStatus: 'inactive',
-        counts, validation: null, priorActiveBatchId: null, identityManifestIds: [],
+        counts, classificationCounts: clone(plan.classificationCounts || {}), validation: null, priorActiveBatchId: null, identityManifestIds: [],
         createdAt: at, updatedAt: at, phase: 12,
       });
       await repositories.previewMigrationBatches.put(batch);
@@ -63,7 +63,7 @@ export class Preview37MigrationManifest {
           id: migrationItemId(plan.batchId, item.sourceRecordId), entityType: 'preview37-migration-item',
           batchId: plan.batchId, sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceRecordId: item.sourceRecordId,
           sourceScopeKey: item.sourceScopeKey, sourceType: item.sourceType, sourceFingerprint: item.sourceFingerprint,
-          planState: item.state, status: item.state, reasonCode: item.reasonCode, ordinal, current: false,
+          planState: item.state, status: item.state, reasonCode: item.reasonCode, classification: item.classification || null, ordinal, current: false,
           canonical: null, error: null, createdAt: at, updatedAt: at, phase: 12,
         });
         await repositories.previewMigrationItems.put(row);
@@ -73,7 +73,7 @@ export class Preview37MigrationManifest {
             id: `${row.id}:quarantine`, entityType: 'preview37-migration-quarantine', batchId: plan.batchId,
             sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceRecordId: item.sourceRecordId,
             sourceScopeKey: item.sourceScopeKey, sourceType: item.sourceType, sourceFingerprint: item.sourceFingerprint,
-            state: item.state, reasonCode: item.reasonCode || 'unsafe-preview-record', current: true,
+            state: item.state, reasonCode: item.reasonCode || 'unsafe-preview-record', classification: item.classification || null, current: true,
             candidates: [], createdAt: at, updatedAt: at, phase: 12,
           }));
         }

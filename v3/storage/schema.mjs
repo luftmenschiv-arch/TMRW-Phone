@@ -1,6 +1,6 @@
 export const V3_DATABASE_NAME = 'tmrw-phone-v3-beta';
 export const V3_SCHEMA_ID = 'tmrw-phone-v3-schema';
-export const V3_SCHEMA_VERSION = 19;
+export const V3_SCHEMA_VERSION = 21;
 export const V3_BETA_SETTINGS_KEY = 'tmrw-phone-v3-beta-control-v1';
 export const V3_RUNTIME_LEASE_KEY = 'runtime-lease';
 export const V3_SCHEMA_METADATA_KEY = 'schema';
@@ -172,6 +172,17 @@ export const V3_STORE_DEFINITIONS = Object.freeze({
     ...scopeIndexes,
     { name: 'by_scope_player_instance', keyPath: ['storyId', 'branchId', 'playerInstanceId'], unique: true },
   ] },
+  phoneGalleryItems: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneFiles: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneNotes: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneSearchEntries: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneLocations: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneCalendarItems: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneWalletEntries: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneShopItems: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneShopOrders: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneWeatherEntries: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
+  phoneHealthEntries: { keyPath: 'id', indexes: [...scopeIndexes, { name: 'by_scope_device', keyPath: ['storyId', 'branchId', 'deviceId'], unique: false }, { name: 'by_scope_device_reverse', keyPath: ['storyId', 'branchId', 'deviceId', 'reverseSequence'], unique: true }] },
   threads: { keyPath: 'id', indexes: [
     ...scopeIndexes,
     { name: 'by_scope_thread', keyPath: ['storyId', 'branchId', 'threadId'], unique: true },
@@ -312,7 +323,7 @@ export const V3_STORE_DEFINITIONS = Object.freeze({
     { name: 'by_route', keyPath: ['sourceAuthority', 'routeKey'], unique: false },
   ] },
   previewMigrationBatches: { keyPath: 'id', indexes: [
-    { name: 'by_source_fingerprint', keyPath: ['sourceAuthority', 'sourceFingerprint'], unique: true },
+    { name: 'by_source_fingerprint', keyPath: ['sourceAuthority', 'migrationVersion', 'sourceFingerprint'], unique: true },
     { name: 'by_status', keyPath: 'status', unique: false },
   ] },
   previewMigrationItems: { keyPath: 'id', indexes: [
@@ -405,6 +416,17 @@ export const SCOPED_V3_STORES = Object.freeze(new Set([
   'contactLinks',
   'phoneUiPreferences',
   'phoneGuideState',
+  'phoneGalleryItems',
+  'phoneFiles',
+  'phoneNotes',
+  'phoneSearchEntries',
+  'phoneLocations',
+  'phoneCalendarItems',
+  'phoneWalletEntries',
+  'phoneShopItems',
+  'phoneShopOrders',
+  'phoneWeatherEntries',
+  'phoneHealthEntries',
   'threads',
   'threadMembershipSnapshots',
   'threadParticipants',
@@ -456,7 +478,7 @@ export function schemaMetadata(now = new Date().toISOString()) {
     databaseName: V3_DATABASE_NAME,
     createdAt: now,
     updatedAt: now,
-    phase: 19,
+    phase: 23,
     domainBehaviorEnabled: false,
     canonicalEventFoundationEnabled: true,
     storyClockFoundationEnabled: true,
@@ -479,6 +501,7 @@ export function schemaMetadata(now = new Date().toISOString()) {
     autonomousLiveGenerationEnabled: false,
     notificationProjectionFoundationEnabled: true,
     autonomousNotificationGenerationEnabled: false,
+    phoneWorldUtilityProjectionFoundationEnabled: true,
     voiceProfileFoundationEnabled: true,
     voiceAudioArtifactFoundationEnabled: true,
     voiceRuntimeIntegrated: false,

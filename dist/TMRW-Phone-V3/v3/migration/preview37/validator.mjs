@@ -23,6 +23,7 @@ export class Preview37MigrationValidator {
       if (item.sourceType === 'thread' && !item.canonical?.thread) return [`${item.sourceRecordId}:thread-missing`];
       if (item.sourceType === 'message' && !item.canonical?.message) return [`${item.sourceRecordId}:message-missing`];
       if (item.sourceType === 'call' && !item.canonical?.session) return [`${item.sourceRecordId}:call-session-missing`];
+      if (['note', 'gallery', 'search-history', 'wallet', 'shop-item', 'shop-order', 'calendar-personal', 'location-personal'].includes(item.sourceType) && !item.canonical?.record) return [`${item.sourceRecordId}:personal-record-missing`];
       return [];
     });
     const targetCounts = Object.freeze(rows.items.reduce((counts, item) => ({ ...counts, [item.sourceType]: (counts[item.sourceType] || 0) + 1 }), {}));
