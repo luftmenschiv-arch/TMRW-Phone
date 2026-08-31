@@ -1,5 +1,42 @@
 import { requireText } from '../identity/identity-record.mjs';
 
+function inspectRejectedNonJsonValue(value, path) {
+  let tag = '[object Unknown]';
+  let constructorName = 'unknown';
+  let iterable = false;
+  let plain = false;
+  try { tag = Object.prototype.toString.call(value); } catch {}
+  try { constructorName = String(value?.constructor?.name || 'unknown'); } catch {}
+  try { iterable = value != null && typeof value[Symbol.iterator] === 'function'; } catch {}
+  if (value !== null && typeof value === 'object') {
+    try {
+      const prototype = Object.getPrototypeOf(value);
+      plain = prototype === Object.prototype || prototype === null;
+    } catch {}
+  }
+  return Object.freeze({
+    path: String(path),
+    tag,
+    constructor: constructorName,
+    array: Array.isArray(value),
+    typeof: typeof value,
+    iterable,
+    plain,
+  });
+}
+
+function rejectedNonJsonValueError(value, path) {
+  const error = new TypeError(`${path} must be JSON-serializable data`);
+  error.code = 'TMRW_NON_JSON_VALUE';
+  Object.defineProperty(error, 'tmrwNonJsonDiagnostic', {
+    value: inspectRejectedNonJsonValue(value, path),
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return error;
+}
+
 function canonicalize(value, path = 'value') {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
   if (typeof value === 'number') {
@@ -10,7 +47,7 @@ function canonicalize(value, path = 'value') {
   if (typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
     return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalize(value[key], `${path}.${key}`)]));
   }
-  throw new TypeError(`${path} must be JSON-serializable data`);
+  throw rejectedNonJsonValueError(value, path);
 }
 
 export function canonicalJson(value) {

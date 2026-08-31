@@ -58,54 +58,21 @@ function sanitizeLegacyMembershipTypeMetadata(metadata) {
   });
 }
 
-export function inspectLegacyMembershipType(value) {
-  let constructorName = 'unknown';
-  let iterable = false;
-  let plain = false;
-  try { constructorName = String(value?.constructor?.name || 'unknown'); } catch {}
-  try { iterable = value != null && typeof value[Symbol.iterator] === 'function'; } catch {}
-  if (value !== null && typeof value === 'object') {
-    try {
-      const prototype = Object.getPrototypeOf(value);
-      plain = prototype === Object.prototype || prototype === null;
-    } catch {}
-  }
-  return sanitizeLegacyMembershipTypeMetadata({
-    tag: Object.prototype.toString.call(value),
-    constructor: constructorName,
-    array: Array.isArray(value),
-    typeof: typeof value,
-    iterable,
-    plain,
-  });
-}
-
 function formatLegacyMembershipType(metadata) {
   const value = sanitizeLegacyMembershipTypeMetadata(metadata);
   if (!value) return '';
   return `tag=${value.tag} constructor=${value.constructor} array=${value.array} typeof=${value.typeof} iterable=${value.iterable} plain=${value.plain}`;
 }
 
-function previewMembershipFailureLocation(error) {
-  const match = normalizeError(error).match(/\.shared\.conversations\[(\d+)\]\.(participantIds|memberIds)(?:\b|\.|\s)/);
-  if (!match) return null;
-  const conversationIndex = Number(match[1]);
-  if (!Number.isSafeInteger(conversationIndex) || conversationIndex < 0) return null;
-  return Object.freeze({ conversationIndex, field: match[2] });
-}
-
-export function inspectPreview37MembershipFailureType({ context, record, error }) {
-  const location = previewMembershipFailureLocation(error);
-  if (!location || !record || typeof record !== 'object') return null;
-  const source = resolveCurrentPreview37SourceIdentity({ context, record });
-  const branch = record.cards?.[source.characterCardSourceId]?.stories?.[source.storySourceId]?.branches?.[source.routeSourceId];
-  const conversations = branch?.shared?.conversations;
-  if (!Array.isArray(conversations)) return null;
-  const conversation = conversations[location.conversationIndex];
-  if (!conversation || typeof conversation !== 'object') return null;
-  const value = conversation[location.field];
-  if (value === undefined) return null;
-  return inspectLegacyMembershipType(value);
+function legacyMembershipTypeFromRejectedError(error) {
+  if (error?.code !== 'TMRW_NON_JSON_VALUE') return null;
+  const diagnostic = error?.tmrwNonJsonDiagnostic;
+  if (!diagnostic || typeof diagnostic !== 'object') return null;
+  const path = String(diagnostic.path || '');
+  const conversationMembership = /\.shared\.conversations\[\d+\]\.(?:participantIds|memberIds)(?:\b|\.|\[|$)/.test(path);
+  const messageMembership = /\.shared\.conversations\[\d+\]\.messages\[\d+\].*\.metadata\.memberIds(?:\b|\.|\[|$)/.test(path);
+  if (!conversationMembership && !messageMembership) return null;
+  return sanitizeLegacyMembershipTypeMetadata(diagnostic);
 }
 
 function readDiagnosticSession(storage) {
@@ -388,11 +355,10 @@ export class ProductionUserControl {
     this.#setStage('HOST_API');
     this.refresh();
     let host = null;
-    let previewReadSource = null;
     try {
       host = await this.#hostApiLoader();
       this.#setStage('PREVIEW_READ_SOURCE');
-      previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
+      const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
       this.#setStage('PREFLIGHT_CONFIG');
       await this.#entryApi.configureProductionPreflight({
         officialExtensionApi: host.officialExtensionApi,
@@ -411,18 +377,6 @@ export class ProductionUserControl {
       }
       return this.status;
     } catch (error) {
-      if (this.#stage === 'PREFLIGHT' && host?.getContext && previewReadSource) {
-        try {
-          const preview = await previewReadSource();
-          if (preview?.available === true && preview.record) {
-            this.#legacyMembershipType = inspectPreview37MembershipFailureType({
-              context: host.getContext(),
-              record: preview.record,
-              error,
-            });
-          }
-        } catch {}
-      }
       try { await this.#entryApi.disposeProductionPreflight(); } catch {}
       this.#fail(error);
       return this.status;
@@ -570,6 +524,7 @@ export class ProductionUserControl {
 
   #fail(error) {
     this.#lastError = normalizeError(error);
+    this.#legacyMembershipType = legacyMembershipTypeFromRejectedError(error) || this.#legacyMembershipType;
     writeDiagnosticSession(this.#globalObject?.sessionStorage, Object.freeze({
       stage: this.#stage,
       reason: sanitizeDiagnosticReason(error),

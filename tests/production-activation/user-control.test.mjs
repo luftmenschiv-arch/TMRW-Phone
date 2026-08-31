@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 import { MemoryKeyValueStorage, V3BetaFeatureFlag } from '../../beta/feature-flag.mjs';
 import { PRODUCTION_RUNTIME_STATE } from '../../production/runtime-arbiter.mjs';
+import { canonicalJson } from '../../domain/events/idempotency.mjs';
 import {
   PRODUCTION_USER_CONTROL_ID,
   PRODUCTION_USER_DIAGNOSTIC_ID,
@@ -11,8 +12,6 @@ import {
   PRODUCTION_USER_STATUS_ID,
   PRODUCTION_USER_USE_BUTTON_ID,
   createProductionUserControl,
-  inspectLegacyMembershipType,
-  inspectPreview37MembershipFailureType,
   resolveCurrentPreview37SourceIdentity,
 } from '../../production/user-control.mjs';
 
@@ -121,6 +120,8 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
   let previewEnabled = true;
   const configuredActiveOptions = [];
   let identityDuringStart = null;
+  let previewReadCalls = 0;
+  let contextCalls = 0;
   const host = {
     officialExtensionApi: {
       findExtension: () => ({ name: 'third-party/TMRW-Phone-Preview', enabled: previewEnabled }),
@@ -128,7 +129,7 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
       enableExtension: async () => { previewEnabled = true; },
       extensionSettings: { disabledExtensions: [] },
     },
-    getContext: () => context(),
+    getContext: () => { contextCalls += 1; return context(); },
     Generate: async () => {},
     eventSource: { on() {}, removeListener() {} },
     sillyTavernEventTypes: { CHAT_CHANGED: 'chat_changed' },
@@ -195,9 +196,20 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
     document,
     globalObject: { sessionStorage },
     featureFlagStorage: storage,
-    previewReadSourceFactory: () => async () => ({ available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecordFactory() }),
+    previewReadSourceFactory: () => async () => {
+      previewReadCalls += 1;
+      return { available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecordFactory() };
+    },
   });
-  return { control, document, storage, sessionStorage, flag, calls, entryApi, configuredActiveOptions, get identityDuringStart() { return identityDuringStart; }, get active() { return active; }, get previewEnabled() { return previewEnabled; }, set previewEnabled(value) { previewEnabled = value; } };
+  return {
+    control, document, storage, sessionStorage, flag, calls, entryApi, configuredActiveOptions,
+    get identityDuringStart() { return identityDuringStart; },
+    get previewReadCalls() { return previewReadCalls; },
+    get contextCalls() { return contextCalls; },
+    get active() { return active; },
+    get previewEnabled() { return previewEnabled; },
+    set previewEnabled(value) { previewEnabled = value; },
+  };
 }
 
 test('passive control mounts once, exposes explicit activation, and performs no takeover before user action', async () => {
@@ -297,75 +309,45 @@ test('failure diagnostic exposes only stage plus short reason and keeps inactive
   assert.equal(persisted.includes('https://'), false);
 });
 
-test('legacy membership type inspection reports metadata only without iterating or mutating values', () => {
-  const arrayValue = ['private-array-member'];
-  const setValue = new Set(['private-set-member']);
-  const mapValue = new Map([['private-map-member', true]]);
-  const plainValue = { member: 'private-object-member' };
-  const fixtures = [
-    [arrayValue, '[object Array]', 'Array', true, true, false],
-    [setValue, '[object Set]', 'Set', false, true, false],
-    [mapValue, '[object Map]', 'Map', false, true, false],
-    [plainValue, '[object Object]', 'Object', false, false, true],
-  ];
-  for (const [value, tag, constructor, array, iterable, plain] of fixtures) {
-    const lengthBefore = Array.isArray(value) ? value.length : null;
-    const sizeBefore = typeof value?.size === 'number' ? value.size : null;
-    const metadata = inspectLegacyMembershipType(value);
-    assert.deepEqual(Object.keys(metadata).sort(), ['array', 'constructor', 'iterable', 'plain', 'tag', 'typeof']);
-    assert.equal(metadata.tag, tag);
-    assert.equal(metadata.constructor, constructor);
-    assert.equal(metadata.array, array);
-    assert.equal(metadata.iterable, iterable);
-    assert.equal(metadata.plain, plain);
-    assert.equal(JSON.stringify(metadata).includes('private-'), false);
-    if (lengthBefore !== null) assert.equal(value.length, lengthBefore);
-    if (sizeBefore !== null) assert.equal(value.size, sizeBefore);
-  }
-
-  let iteratorCalls = 0;
-  const guardedIterable = {
-    [Symbol.iterator]() {
-      iteratorCalls += 1;
-      throw new Error('type inspection must not iterate');
-    },
-  };
-  const keysBefore = Reflect.ownKeys(guardedIterable);
-  const guardedMetadata = inspectLegacyMembershipType(guardedIterable);
-  assert.equal(guardedMetadata.iterable, true);
-  assert.equal(iteratorCalls, 0);
-  assert.deepEqual(Reflect.ownKeys(guardedIterable), keysBefore);
-});
-
-test('exact PREFLIGHT membership failure exposes type metadata without member contents or Preview mutation', async () => {
-  const legacyMembers = new Set(['private-member-one', 'private-member-two']);
+test('exact PREFLIGHT canonical rejection metadata is consumed directly with no second Preview/context lookup', async () => {
+  const legacyMembers = new Set(['sentinel-member-one', 'sentinel-member-two']);
   const record = previewRecordWithMembership(legacyMembers);
-  const failure = new TypeError('value.cards.character:alice.png.stories.story:chat-a.branches.branch:main.shared.conversations[1].memberIds must be JSON-serializable data');
-  const direct = inspectPreview37MembershipFailureType({ context: context(), record, error: failure });
-  assert.deepEqual(direct, {
-    tag: '[object Set]',
-    constructor: 'Set',
-    array: false,
-    typeof: 'object',
-    iterable: true,
-    plain: false,
+  let failure = null;
+  try { canonicalJson(record); } catch (error) { failure = error; }
+  assert.ok(failure instanceof TypeError);
+  assert.equal(failure.code, 'TMRW_NON_JSON_VALUE');
+  assert.equal(failure.message, 'value.cards.character:alice.png.stories.story:chat-a.branches.branch:main.shared.conversations[1].memberIds must be JSON-serializable data');
+  assert.deepEqual(failure.tmrwNonJsonDiagnostic, {
+    path: 'value.cards.character:alice.png.stories.story:chat-a.branches.branch:main.shared.conversations[1].memberIds',
+    tag: '[object Set]', constructor: 'Set', array: false,
+    typeof: 'object', iterable: true, plain: false,
   });
-  assert.strictEqual(record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared.conversations[1].memberIds, legacyMembers);
-  assert.equal(legacyMembers.size, 2);
 
-  const h = harness({ failPreflightError: failure, previewRecordFactory: () => record });
+  const h = harness({
+    failPreflightError: failure,
+    previewRecordFactory: () => { throw new Error('direct rejection metadata must not trigger a second Preview read'); },
+  });
   h.control.mount();
   await h.control.useProduction();
+
   const diagnostic = h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`);
   assert.equal(h.control.status.diagnosticStage, 'PREFLIGHT');
-  assert.deepEqual(h.control.status.legacyMembershipType, direct);
+  assert.deepEqual(h.control.status.legacyMembershipType, {
+    tag: '[object Set]', constructor: 'Set', array: false,
+    typeof: 'object', iterable: true, plain: false,
+  });
   assert.match(diagnostic.textContent, /Legacy membership type: tag=\[object Set\] constructor=Set array=false typeof=object iterable=true plain=false/);
+  assert.equal(h.previewReadCalls, 0);
+  assert.equal(h.contextCalls, 0);
+  assert.deepEqual(h.calls, ['configure-preflight', 'run-preflight', 'dispose-preflight']);
+
   const persisted = JSON.stringify(h.sessionStorage.snapshot());
   assert.match(persisted, /legacyMembershipType/);
-  assert.equal(persisted.includes('private-member-one'), false);
-  assert.equal(persisted.includes('private-member-two'), false);
-  assert.strictEqual(record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared.conversations[1].memberIds, legacyMembers);
+  assert.equal(persisted.includes('sentinel-member-one'), false);
+  assert.equal(persisted.includes('sentinel-member-two'), false);
+  assert.equal(persisted.includes('tmrwNonJsonDiagnostic'), false);
   assert.equal(legacyMembers.size, 2);
+  assert.strictEqual(record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared.conversations[1].memberIds, legacyMembers);
   assert.equal(h.active, false);
   assert.equal(h.entryApi.getProductionEntryStatus().databaseOpen, false);
   assert.equal(h.entryApi.getProductionEntryStatus().leaseAcquired, false);
