@@ -167,3 +167,33 @@ Dedicated Production Composition qualification: 153/153 PASS.
 Phase 23 final disposition: PASS / CLOSED.
 
 Publication boundary: a coherent fully-qualified Phase23 candidate now exists. Build/verify/passive-import/protected-path/Preview-hygiene/source-generated-package correspondence/publication-hygiene may proceed; do not start Phase24.
+
+### Post-publication real-device activation defect — Thread→Message dependency patch
+
+Status: CORRECTED / QUALIFIED — republish required before Android activation retry.
+
+The previously published Phase23 commit `4f8247a7f2d71a98c9b755cf152f984ede8f0625` remains the historical qualified candidate, but real Android activation exposed one migration-planning defect after publication:
+
+- real-device failure stage: `ACTIVE_STARTUP:MIGRATION-TRANSITION-OPEN`.
+- failure: `Message migration requires its canonical Thread`.
+- root cause: a parent Preview Thread could classify non-migratable while a dependent Message independently remained `READY`.
+- corrected invariant: a Message is migratable only when its required parent Thread is `READY` or `ALREADY_MIGRATED` with one valid current canonical Thread mapping.
+- blocked child classification inherits the parent fail-closed state with an explicit deterministic `parent-thread-*` reason; missing apparent migrated mapping becomes `parent-thread-canonical-mapping-missing`.
+- no empty/replacement/standalone canonical Thread is fabricated; no Message is detached or reassigned.
+- already-migrated valid canonical Thread mappings are reused directly rather than recreated.
+- a FAILED pre-fix batch may reconcile only the exact safe non-committed `READY → parent-thread-blocked` correction; committed rows or unrelated plan changes still fail closed.
+- plan fingerprint includes the resulting dependency state/reason, so the old and corrected plans cannot be silently treated as identical.
+
+Qualification evidence:
+
+- new Thread→Message dependency gate: 12/12 PASS, including AMBIGUOUS / QUARANTINED / UNSUPPORTED / malformed parent cases, multiple children, mixed valid+blocked families, valid ALREADY_MIGRATED parent reuse, missing canonical parent mapping, exact pre-fix failure retry, completed replay determinism, and plan-fingerprint sensitivity.
+- focused existing Preview migration / manifest / idempotency / transition-authoring regression: 23/23 PASS.
+- focused aggregate: 35/35 PASS.
+- directly affected migration/activation regression: 81/81 PASS, including v1→v2 compatibility, completed-plan replay guards, migration fingerprint behavior, transition authoring, ActiveStartup migration transition, user-control fail-safe behavior, and Preview restoration.
+- Preview writes: 0.
+- fabricated canonical Threads for blocked parents: 0.
+- fabricated canonical Messages for blocked children: 0.
+- user data: untouched by patch qualification.
+- Preview37: remains read-only during migration and returnable after failure.
+- Android activation retry: NOT YET; must wait for the separate Voice worker to release Android/Termux runtime and for the corrected package to be republished.
+- Phase24: NOT STARTED.

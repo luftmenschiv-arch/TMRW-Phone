@@ -2,6 +2,7 @@ import { V3UnitOfWork } from '../../storage/unit-of-work.mjs';
 import {
   MIGRATION_BATCH_STATUS,
   MIGRATION_IMPORT_STATUS,
+  MIGRATION_ITEM_STATE,
   PREVIEW37_MAX_QUARANTINE,
   PREVIEW37_MIGRATION_VERSION,
   PREVIEW37_SOURCE_AUTHORITY,
@@ -42,8 +43,10 @@ export class Preview37MigrationManifest {
   async persistPlan(plan) {
     const existing = await this.getBatch(plan.batchId);
     if (existing) {
-      if (existing.planFingerprint !== plan.planFingerprint || existing.sourceFingerprint !== plan.sourceFingerprint) throw new Error('Migration batch identity conflicts with a different plan');
-      return existing;
+      if (existing.sourceFingerprint !== plan.sourceFingerprint) throw new Error('Migration batch identity conflicts with a different source');
+      if (existing.planFingerprint === plan.planFingerprint) return existing;
+      if (existing.status !== MIGRATION_BATCH_STATUS.FAILED) throw new Error('Migration batch identity conflicts with a different plan');
+      return this.#reconcileFailedDependencyPlan(existing, plan);
     }
     const at = this.#now();
     return this.#unitOfWork.readwrite({ stores: STORES, privileged: true }, async repositories => {
@@ -79,6 +82,50 @@ export class Preview37MigrationManifest {
         }
       }
       return batch;
+    });
+  }
+
+  async #reconcileFailedDependencyPlan(existing, plan) {
+    const at = this.#now();
+    return this.#unitOfWork.readwrite({ stores: STORES, privileged: true }, async repositories => {
+      const rows = (await repositories.previewMigrationItems.list()).filter(row => row.batchId === existing.id);
+      if (rows.length !== plan.items.length) throw new Error('Failed Preview migration plan shape changed incompatibly');
+      const byId = new Map(rows.map(row => [row.sourceRecordId, row]));
+      let quarantined = 0;
+      for (const [ordinal, item] of plan.items.entries()) {
+        const row = byId.get(item.sourceRecordId);
+        if (!row) throw new Error(`Failed Preview migration plan gained an unrecognized source record: ${item.sourceRecordId}`);
+        if (row.sourceFingerprint !== item.sourceFingerprint || row.sourceType !== item.sourceType || row.sourceScopeKey !== item.sourceScopeKey || (row.classification || null) !== (item.classification || null)) {
+          throw new Error(`Failed Preview migration source identity changed incompatibly: ${item.sourceRecordId}`);
+        }
+        const samePlan = row.planState === item.state && (row.reasonCode || null) === (item.reasonCode || null);
+        if (row.status === 'committed' || row.status === 'active') {
+          if (!samePlan) throw new Error(`Committed Preview migration item changed plan classification: ${item.sourceRecordId}`);
+          continue;
+        }
+        if (samePlan) continue;
+        const dependencyBlock = row.planState === MIGRATION_ITEM_STATE.READY
+          && ![MIGRATION_ITEM_STATE.READY, MIGRATION_ITEM_STATE.ALREADY_MIGRATED].includes(item.state)
+          && String(item.reasonCode || '').startsWith('parent-thread-')
+          && !row.canonical;
+        if (!dependencyBlock) throw new Error(`Failed Preview migration plan changed outside dependency-safe reconciliation: ${item.sourceRecordId}`);
+        const next = Object.freeze({ ...row, planState: item.state, status: item.state, reasonCode: item.reasonCode, classification: item.classification || null, ordinal, error: null, updatedAt: at });
+        await repositories.previewMigrationItems.put(next);
+        if (quarantined < PREVIEW37_MAX_QUARANTINE) {
+          quarantined += 1;
+          await repositories.previewMigrationQuarantine.put(Object.freeze({
+            id: `${next.id}:quarantine`, entityType: 'preview37-migration-quarantine', batchId: plan.batchId,
+            sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceRecordId: item.sourceRecordId,
+            sourceScopeKey: item.sourceScopeKey, sourceType: item.sourceType, sourceFingerprint: item.sourceFingerprint,
+            state: item.state, reasonCode: item.reasonCode || 'unsafe-preview-record', classification: item.classification || null, current: true,
+            candidates: [], createdAt: row.createdAt || at, updatedAt: at, phase: 12,
+          }));
+        }
+      }
+      const current = await repositories.previewMigrationBatches.get(existing.id);
+      const nextBatch = Object.freeze({ ...current, planFingerprint: plan.planFingerprint, counts: Object.fromEntries(Object.entries(plan.counts)), classificationCounts: clone(plan.classificationCounts || {}), status: MIGRATION_BATCH_STATUS.PLANNED, error: null, updatedAt: at });
+      await repositories.previewMigrationBatches.put(nextBatch);
+      return nextBatch;
     });
   }
 

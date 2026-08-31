@@ -63,14 +63,18 @@ export class Preview37CopyMigrationCoordinator {
 
   async dryRun({ userDisplayName = '{{user}}' } = {}) {
     const before = await this.#writeCommits(); const snapshot = await this.#reader.read(); const inventory = await inventoryPreview37(snapshot);
-    const batchId = migrationBatchId(snapshot.sourceFingerprint || await previewDigest({ available: false })); const items = []; const scopePlans = [];
+    const batchId = migrationBatchId(snapshot.sourceFingerprint || await previewDigest({ available: false })); const items = []; const scopePlans = []; const parentThreadByMessage = new Map();
     if (inventory.available && !inventory.fatal) for (const scope of inventory.scopes) {
       const card = inventory.cards.find(row => row.cardKey === scope.cardKey);
       const identityItem = await createIdentityMigrationItem({ batchId, card, scope, userDisplayName }); const memberIds = new Set(['user', '{{user}}', '__user__', 'local-player-v1', ...card.cast.map(member => member.sourceMemberId)]);
       const threadItems = [];
       for (const thread of scope.threads) {
         const threadItem = await createThreadMigrationItem({ scope, thread, memberIds }); threadItems.push({ thread, item: threadItem }); items.push(threadItem);
-        for (const message of thread.messages) items.push(await createMessageMigrationItem({ scope, thread, message, memberIds }));
+        for (const message of thread.messages) {
+          const messageItem = await createMessageMigrationItem({ scope, thread, message, memberIds });
+          parentThreadByMessage.set(messageItem.sourceRecordId, threadItem.sourceRecordId);
+          items.push(messageItem);
+        }
       }
       for (const call of scope.calls) items.push(await createCallMigrationItem({ scope, call, memberIds }));
       items.push(...await createPersonalAppMigrationItems({ scope, memberIds }));
@@ -78,12 +82,13 @@ export class Preview37CopyMigrationCoordinator {
     }
     const classified = [];
     for (const item of items) classified.push(await this.#conflicts.classify(item));
-    const planBasis = { sourceFingerprint: snapshot.sourceFingerprint || 'absent', items: classified.map(item => ({ sourceRecordId: item.sourceRecordId, sourceFingerprint: item.sourceFingerprint, sourceType: item.sourceType, state: item.state, reasonCode: item.reasonCode || null, classification: item.classification || null })) };
+    const dependencyResolved = await this.#resolveMessageThreadDependencies(classified, parentThreadByMessage);
+    const planBasis = { sourceFingerprint: snapshot.sourceFingerprint || 'absent', items: dependencyResolved.map(item => ({ sourceRecordId: item.sourceRecordId, sourceFingerprint: item.sourceFingerprint, sourceType: item.sourceType, state: item.state, reasonCode: item.reasonCode || null, classification: item.classification || null })) };
     const plan = Object.freeze({ batchId, sourceAuthority: PREVIEW37_SOURCE_AUTHORITY, sourceFingerprint: snapshot.sourceFingerprint || 'absent', sourceVersion: snapshot.sourceVersion || 'absent', sourceLocation: snapshot.sourceLocation || 'unavailable',
       planFingerprint: await previewDigest(planBasis), available: inventory.available, fatal: inventory.fatal, issues: inventory.issues, inventory: Object.freeze({ sourceRecordCount: inventory.sourceRecordCount, cards: inventory.cards.length, scopes: inventory.scopes.length, deferredCounts: inventory.deferredCounts }),
-      counts: countStates(classified), classificationCounts: countClassifications(classified), items: Object.freeze(classified), scopePlans: Object.freeze(scopePlans), generatedAt: null });
+      counts: countStates(dependencyResolved), classificationCounts: countClassifications(dependencyResolved), items: Object.freeze(dependencyResolved), scopePlans: Object.freeze(scopePlans), generatedAt: null });
     const after = await this.#writeCommits(); if (after !== before) throw new Error('Preview migration dry run performed an unexpected v3 write');
-    this.#metrics = Object.freeze({ operation: 'dry-run', previewReads: 1, previewWrites: 0, canonicalWrites: 0, sourceRecords: inventory.sourceRecordCount, itemsPlanned: classified.length, fullCanonicalEventScans: 0, storiesScannedPerItem: 0, branchesScannedPerItem: 0 });
+    this.#metrics = Object.freeze({ operation: 'dry-run', previewReads: 1, previewWrites: 0, canonicalWrites: 0, sourceRecords: inventory.sourceRecordCount, itemsPlanned: dependencyResolved.length, fullCanonicalEventScans: 0, storiesScannedPerItem: 0, branchesScannedPerItem: 0 });
     return plan;
   }
 
@@ -121,6 +126,13 @@ export class Preview37CopyMigrationCoordinator {
         for (const item of plan.items.filter(row => row.sourceScopeKey === scopePlan.scope.sourceScopeKey && row.sourceType === 'thread')) {
           if (![MIGRATION_ITEM_STATE.READY, MIGRATION_ITEM_STATE.ALREADY_MIGRATED].includes(item.state)) continue; const saved = await this.#manifest.getItem(plan.batchId, item.sourceRecordId);
           if (saved?.canonical?.thread) { threadBySource.set(item.data.threadId, saved.canonical); continue; }
+          if (item.state === MIGRATION_ITEM_STATE.ALREADY_MIGRATED) {
+            const canonical = await this.#currentCanonicalThread(item);
+            if (!canonical?.thread) throw new Error('Already migrated Thread requires its canonical mapping');
+            await this.#manifest.commitItem(plan.batchId, item.sourceRecordId, canonical);
+            threadBySource.set(item.data.threadId, canonical);
+            continue;
+          }
           const participants = item.data.participantSourceIds.map(id => bySource.get(id)?.accountId); if (participants.some(id => !id)) throw new Error('Thread identity mapping became incomplete');
           const source = sourceFor(item.sourceRecordId, item.sourceFingerprint); const key = `preview37:${item.sourceRecordId}:thread`; const expected = await deriveCanonicalEventId({ scope, source, producer: PRODUCER, idempotencyKey: key });
           await this.#manifest.recordImport({ batchId: plan.batchId, sourceRecordId: item.sourceRecordId, sourceFingerprint: item.sourceFingerprint, sourceScopeKey: item.sourceScopeKey, operationKey: key, canonicalEventId: expected, canonicalType: 'messaging.thread-created.v1' });
@@ -166,6 +178,40 @@ export class Preview37CopyMigrationCoordinator {
       const batch = await this.#manifest.activate(plan.batchId, validation); this.#metrics = Object.freeze({ operation: 'commit', sourceRecords: plan.inventory.sourceRecordCount, itemsProcessed: processed, canonicalOperations, fullCanonicalEventScans: 0, storiesScannedPerItem: 0, branchesScannedPerItem: 0, previewWrites: 0 });
       return Object.freeze({ batch, validation, replayed: false });
     } catch (error) { if (error?.code === 'PREVIEW37_CANCELLED') await this.#manifest.markCancelled(plan.batchId); else await this.#manifest.markFailed(plan.batchId, error); throw error; }
+  }
+
+  async #currentCanonicalThread(item) {
+    const rows = await this.#unitOfWork.readonly({ stores: ['previewMigrationItems'], privileged: true }, repositories => repositories.previewMigrationItems.listByIndex('by_source_current', [PREVIEW37_SOURCE_AUTHORITY, item.sourceRecordId, true]));
+    const valid = rows.filter(row => row.sourceFingerprint === item.sourceFingerprint && ['committed', 'active'].includes(row.status) && row.canonical?.thread?.threadId);
+    return valid.length === 1 ? valid[0].canonical : null;
+  }
+
+  async #resolveMessageThreadDependencies(items, parentThreadByMessage) {
+    const resolved = [...items];
+    for (let index = 0; index < resolved.length; index += 1) {
+      const item = resolved[index];
+      if (item.sourceType !== 'thread' || item.state !== MIGRATION_ITEM_STATE.ALREADY_MIGRATED) continue;
+      if (await this.#currentCanonicalThread(item)) continue;
+      resolved[index] = Object.freeze({ ...item, state: MIGRATION_ITEM_STATE.CONFLICT, reasonCode: 'canonical-thread-mapping-missing', data: null });
+    }
+    const byId = new Map(resolved.map(item => [item.sourceRecordId, item]));
+    for (let index = 0; index < resolved.length; index += 1) {
+      const item = resolved[index];
+      if (item.sourceType !== 'message' || ![MIGRATION_ITEM_STATE.READY, MIGRATION_ITEM_STATE.ALREADY_MIGRATED].includes(item.state)) continue;
+      const parentId = parentThreadByMessage.get(item.sourceRecordId);
+      const parent = parentId ? byId.get(parentId) : null;
+      if (parent && [MIGRATION_ITEM_STATE.READY, MIGRATION_ITEM_STATE.ALREADY_MIGRATED].includes(parent.state)) continue;
+      const state = parent && [MIGRATION_ITEM_STATE.AMBIGUOUS, MIGRATION_ITEM_STATE.CONFLICT, MIGRATION_ITEM_STATE.UNSUPPORTED, MIGRATION_ITEM_STATE.QUARANTINED].includes(parent.state)
+        ? parent.state
+        : MIGRATION_ITEM_STATE.CONFLICT;
+      const reasonCode = !parent
+        ? 'parent-thread-plan-missing'
+        : parent.reasonCode === 'canonical-thread-mapping-missing'
+          ? 'parent-thread-canonical-mapping-missing'
+          : `parent-thread-${parent.state}:${parent.reasonCode || 'non-migratable'}`;
+      resolved[index] = Object.freeze({ ...item, state, reasonCode, data: null });
+    }
+    return Object.freeze(resolved);
   }
 
   async #assertCompletedReplayCompatible(existing, plan) {

@@ -1,15 +1,16 @@
 {
   "name": "tmrw-phone-v3-beta",
-  "version": "0.0.0-phase23-qualified",
+  "version": "0.0.0-phase23-qualified-patch1",
   "private": true,
   "type": "module",
-  "description": "Private TMRW—Phone v3 synchronization repository qualified through Phase 23. Phase 24 is not started; autonomous Social/Live AI and real Voice runtime remain disabled/unavailable.",
+  "description": "Private TMRW—Phone v3 Phase23 qualified candidate with the post-publication Thread→Message migration dependency patch. Phase 24 is not started; autonomous Social/Live AI and real Voice runtime remain disabled/unavailable.",
   "scripts": {
     "test": "npm run test:p23-e && npm run test:p23-f",
     "test:phase23": "npm run test:p23-e && npm run test:p23-f",
     "test:p23-d": "node --test tests/phase23/p23-d-shell.test.mjs",
     "test:p23-e": "node --test tests/phase23/calendar-ui.test.mjs tests/phase23/commerce-renderers.test.mjs tests/phase23/commerce-ui.test.mjs tests/phase23/communication-controls.test.mjs tests/phase23/gallery-files-ui.test.mjs tests/phase23/maps-ui.test.mjs tests/phase23/navigation-device.test.mjs tests/phase23/notes-search-renderers.test.mjs tests/phase23/notes-search-ui.test.mjs tests/phase23/p23-d-shell.test.mjs tests/phase23/p23-e-cross-app.test.mjs tests/phase23/theme-ui.test.mjs tests/phase23/weather-health-renderers.test.mjs tests/phase23/weather-health-ui.test.mjs tests/phase18-closure/integration-closure.test.mjs tests/phase7/shell.test.mjs",
     "test:p23-f": "node --test tests/production-composition/*.test.mjs",
+    "test:p23-patch": "node --test tests/phase23/message-thread-dependency.test.mjs",
     "build:production-package": "node dev/production-package/build-production-package.mjs",
     "verify:production-package": "node dev/production-package/verify-production-package.mjs"
   }
