@@ -28,6 +28,12 @@
   overflow: auto;
 }
 
+#tmrw-v3-phone-root > .tmrw-v3-shell[data-route="launcher"] {
+  min-height: 0;
+  height: calc(100dvh - var(--tmrw-v3-viewport-gap) - var(--tmrw-v3-viewport-gap));
+  overflow: hidden;
+}
+
 #tmrw-v3-phone-launcher {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));

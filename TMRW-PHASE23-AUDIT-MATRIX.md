@@ -195,5 +195,42 @@ Qualification evidence:
 - fabricated canonical Messages for blocked children: 0.
 - user data: untouched by patch qualification.
 - Preview37: remains read-only during migration and returnable after failure.
-- Android activation retry: NOT YET; must wait for the separate Voice worker to release Android/Termux runtime and for the corrected package to be republished.
+- Android activation retry after this dependency patch: PASS — Product Owner updated to `bfcebe457835c441fe4d407d93c4aa8a86747882` and reached the Production V3 shell on real Android; that successful activation subsequently exposed the separate launcher-presentation defect recorded below.
+- Phase24: NOT STARTED.
+
+### Post-publication real-device Production-shell presentation defect — designed home patch
+
+Status: CORRECTED / QUALIFIED LOCALLY — republish + real-Android visual confirmation required.
+
+After the Thread→Message migration patch was published as `bfcebe457835c441fe4d407d93c4aa8a86747882`, the Product Owner successfully reached the real Android Production V3 shell. Human evidence then exposed a separate presentation defect:
+
+- Production activation itself: PASS.
+- visible launcher: plain two-column pale text-button grid with a generic lower `My Phone / Device status / unread` panel.
+- exact cause: this was the intentional minimal Production launcher implementation, not a fallback, missing CSS, stale Preview renderer, wrong branch, or failed package load. `shell.mjs` rendered app routes directly as text buttons and `styles.css` explicitly styled the visible launcher nav as `repeat(2, minmax(0,1fr))`; the launcher content fell through to a generic three-line panel.
+- accepted Preview37 design reference confirmed the intended product language: phone chrome, compact owner/perspective treatment, icon tiles, coherent spacing/hierarchy and internally scrollable home content. No Preview fake widgets/data were ported.
+
+Narrow presentation correction:
+
+- all existing canonical app route IDs and app renderer/service wiring retained.
+- launcher buttons now use designed app icon tiles, labels, real badges and accessible names; no decorative replacement apps.
+- `TMRW—Phone` brand treatment and compact canonical My Phone / Their Phone perspective card added.
+- My Phone / Their Phones selector retained as the real canonical device switcher and restyled as a segmented mobile control.
+- launcher uses a 4-column mobile icon grid at the 390px target, with `min-width:0`, bounded columns and its own vertical scroll region.
+- generic clipped lower launcher panel removed in favor of a compact status/unread card sourced only from the selected canonical perspective.
+- light-blue / soft-slate / paper theme integration retained.
+- visible launcher app labels use the current English product-language contract consistently; character/persona names remain source data.
+- non-launcher app renderers and backend/canonical behavior were not redesigned.
+
+Qualification evidence:
+
+- focused designed-home + shell/navigation + P23-D/P23-E + Production mount/layout regression: 54/54 PASS.
+- UI-only current-release cross-app regression: 131/131 PASS across Contacts, Messages, Calls, Feed, Insungram, Live, Notifications, Gallery, Search, Maps, Calendar, Notes, Files, Wallet, Shop, Weather, Health, Theme, Guide, Settings and gated Diagnostics.
+- 390×844 deterministic launcher contract: PASS — 374px shell width after root gaps, 346px inner width after mobile padding, four 82px grid columns, 50px icon tiles, no horizontal overflow; vertical app grid scroll is bounded inside an 828px available shell height.
+- My Phone / Their Phones canonical no-write switching: PASS.
+- Back navigation: PASS.
+- privacy/access and stale-perspective cleanup: PASS.
+- duplicate Production root/launcher protection: PASS through retained Production mount-manager regression.
+- Return to Preview37 architecture: unchanged/retained.
+- real Android visual confirmation of corrected launcher: NOT YET — requires corrected package publication/update.
+- user data: untouched.
 - Phase24: NOT STARTED.

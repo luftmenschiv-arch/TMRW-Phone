@@ -11,6 +11,7 @@ import { notificationCenterViewModel } from './notifications.mjs';
 import { renderApprovedCallSurface } from './calls/approved-call-surface.mjs';
 import { renderVoiceSetup } from './voice-setup.mjs';
 import { createAppHeader } from './app-header.mjs';
+import { createHomeAppIcon } from './app-icons.mjs';
 import { renderGallery } from './gallery.mjs';
 import { renderFiles } from './files.mjs';
 import { renderTheme } from './themes.mjs';
@@ -29,7 +30,7 @@ const element = (document, tag, text = '') => { const node = document.createElem
 const APP_TITLES = Object.freeze({ contacts: 'Contacts', messages: 'Messages', calls: 'Calls', feed: 'Feed', insungram: 'Insungram', live: 'Live', notifications: 'Notifications', gallery: 'Gallery', files: 'Files', theme: 'Theme', maps: 'Maps', calendar: 'Calendar', wallet: 'Wallet', shop: 'Shop', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #deviceRegion; #navRegion; #navigation; #content; #perspectiveSummary; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #deviceRegion; #navRegion; #navigation; #content; #perspectiveSummary; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
   constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, selectedDeviceId }) {
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
     this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#selectedDeviceId = selectedDeviceId; this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; void this.renderActive(); } });
@@ -39,7 +40,7 @@ export class TmrwPhoneShell {
   async mount(target) {
     if (this.#root) return this.#root;
     const root = element(this.#document, 'section'); root.className = 'tmrw-v3-shell'; root.setAttribute('aria-label', 'TMRW Phone v3 beta');
-    const header = element(this.#document, 'header'); const title = element(this.#document, 'h1', 'TMRW Phone'); title.className = 'tmrw-v3-title'; const perspectiveSummary = element(this.#document, 'p', 'Viewing phone perspective'); perspectiveSummary.className = 'tmrw-v3-perspective-summary'; perspectiveSummary.setAttribute('aria-live', 'polite'); header.append(title, perspectiveSummary);
+    const header = element(this.#document, 'header'); header.className = 'tmrw-v3-shell-header'; const title = element(this.#document, 'h1', 'TMRW—Phone'); title.className = 'tmrw-v3-title'; const perspectiveSummary = element(this.#document, 'p', 'Viewing phone perspective'); perspectiveSummary.className = 'tmrw-v3-perspective-summary'; perspectiveSummary.setAttribute('aria-live', 'polite'); header.append(title, perspectiveSummary);
     const switcher = element(this.#document, 'nav'); switcher.className = 'tmrw-v3-device-switcher'; switcher.setAttribute('aria-label', 'My Phone and Their Phones');
     const navigation = element(this.#document, 'nav'); navigation.className = 'tmrw-v3-nav'; navigation.setAttribute('aria-label', 'Phone apps');
     const content = element(this.#document, 'main'); content.className = 'tmrw-v3-content'; content.setAttribute('aria-live', 'polite');
@@ -53,6 +54,8 @@ export class TmrwPhoneShell {
     const devices = deviceSwitcherViewModel(roster, this.#selectedDeviceId);
     this.#deviceRegion.patch(devices, { key: row => row.deviceId, create: row => { const button = element(this.#document, 'button', row.label); button.type = 'button'; button.dataset.deviceId = row.deviceId; button.addEventListener('click', () => { void this.selectDevice(row.deviceId); }); return button; }, update: (button, row) => { button.textContent = row.label; button.setAttribute('aria-pressed', String(row.selected)); button.setAttribute('aria-label', row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`); button.title = row.kind === 'my-phone' ? 'Your canonical phone perspective' : `Character phone perspective: ${row.label}`; button.dataset.kind = row.kind; } });
     const selectedPerspective = devices.find(row => row.selected) || devices.find(row => row.kind === 'my-phone');
+    this.#selectedPerspectiveLabel = selectedPerspective?.label || (selectedPerspective?.kind === 'my-phone' ? 'My Phone' : 'Their Phone');
+    if (this.#root) this.#root.dataset.route = this.#router.route;
     if (this.#perspectiveSummary) this.#perspectiveSummary.textContent = selectedPerspective?.kind === 'my-phone' ? 'Viewing: My Phone' : `Viewing: ${selectedPerspective?.label || 'Their Phone'} · Their Phone`;
     const loadingRoutes = ['contacts', 'messages', 'calls', 'notifications', 'gallery', 'files', 'maps', 'calendar', 'wallet', 'shop', 'weather', 'health', 'notes', 'search', 'guide', 'settings', 'diagnostics', 'feed', 'insungram', 'live'];
     if (loadingRoutes.includes(this.#router.route) && this.#content) {
@@ -76,7 +79,31 @@ export class TmrwPhoneShell {
     this.#selectedThreadId = view.activeThreadId || this.#selectedThreadId;
     this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
-    const apps = homeViewModel({ developerMode: view.settings.developerDiagnosticsEnabled, messagingEnabled: view.messagingEnabled, callsEnabled: view.callsEnabled, socialEnabled: view.socialEnabled, liveEnabled: view.liveEnabled, notificationsEnabled: view.notificationsEnabled, phoneWorldEnabled: view.phoneWorldUtilitiesEnabled, calendarEnabled: view.calendarEnabled, commerceEnabled: view.commerceEnabled, badges: view.phoneWorld.badges }); this.#navRegion.patch(apps, { key: app => app.id, create: app => { const button = element(this.#document, 'button', app.label); button.type = 'button'; button.dataset.route = app.id; button.addEventListener('click', () => this.#router.navigate(app.id)); return button; }, update: (button, app) => { button.textContent = app.badge > 0 ? `${app.label} (${app.badge})` : app.label; button.dataset.badge = String(app.badge); button.dataset.disposition = app.disposition; button.disabled = !app.available; button.title = app.reason || ''; if (app.reason) button.setAttribute('aria-description', app.reason); button.setAttribute('aria-current', String(this.#router.route === app.id)); } });
+    const apps = homeViewModel({ developerMode: view.settings.developerDiagnosticsEnabled, messagingEnabled: view.messagingEnabled, callsEnabled: view.callsEnabled, socialEnabled: view.socialEnabled, liveEnabled: view.liveEnabled, notificationsEnabled: view.notificationsEnabled, phoneWorldEnabled: view.phoneWorldUtilitiesEnabled, calendarEnabled: view.calendarEnabled, commerceEnabled: view.commerceEnabled, badges: view.phoneWorld.badges });
+    this.#navRegion.patch(apps, {
+      key: app => app.id,
+      create: app => {
+        const button = element(this.#document, 'button');
+        button.type = 'button';
+        button.className = 'tmrw-v3-home-app';
+        button.dataset.route = app.id;
+        const icon = createHomeAppIcon({ document: this.#document, appId: app.id });
+        const label = element(this.#document, 'span', app.label); label.className = 'tmrw-v3-home-app-label';
+        const badge = element(this.#document, 'span'); badge.className = 'tmrw-v3-home-app-badge'; badge.setAttribute('aria-hidden', 'true');
+        button.append(icon, label, badge);
+        button.addEventListener('click', () => this.#router.navigate(app.id));
+        return button;
+      },
+      update: (button, app) => {
+        const label = button.children?.[1]; const badge = button.children?.[2];
+        if (label) label.textContent = app.label;
+        if (badge) { badge.textContent = app.badge > 0 ? String(app.badge > 99 ? '99+' : app.badge) : ''; badge.hidden = app.badge <= 0; }
+        button.dataset.badge = String(app.badge); button.dataset.disposition = app.disposition; button.disabled = !app.available;
+        button.title = app.reason || app.title || app.label; button.setAttribute('aria-label', app.badge > 0 ? `${app.label}, ${app.badge} unread` : app.label);
+        if (app.reason) button.setAttribute('aria-description', app.reason); else button.attributes?.delete?.('aria-description');
+        button.setAttribute('aria-current', String(this.#router.route === app.id));
+      },
+    });
     if (this.#navigation) this.#navigation.hidden = this.#router.route !== 'launcher';
     await this.#renderContent(view); return view;
   }
@@ -391,7 +418,16 @@ export class TmrwPhoneShell {
         const pre = element(this.#document, 'pre', JSON.stringify(diagnostic, null, 2)); pre.className = 'tmrw-v3-diagnostics-output'; panel.append(pre);
       }
     }
-    else { panel.append(element(this.#document, 'h2', view.opened.perspective.kind === 'my-phone' ? 'My Phone' : 'Their Phone'), element(this.#document, 'p', `Device status: ${view.opened.perspective.lockState}.`), element(this.#document, 'p', `${view.phoneWorld.unreadTotal} unread notifications.`)); }
+    else {
+      panel.className = 'tmrw-v3-panel tmrw-v3-home-overview';
+      const hero = element(this.#document, 'section'); hero.className = 'tmrw-v3-home-hero';
+      const eyebrow = element(this.#document, 'span', view.opened.perspective.kind === 'my-phone' ? 'MY PHONE' : 'THEIR PHONE'); eyebrow.className = 'tmrw-v3-home-eyebrow';
+      const title = element(this.#document, 'h2', this.#selectedPerspectiveLabel); title.className = 'tmrw-v3-home-perspective-title';
+      const meta = element(this.#document, 'div'); meta.className = 'tmrw-v3-home-meta';
+      const lock = element(this.#document, 'span', `Status · ${view.opened.perspective.lockState}`);
+      const unread = element(this.#document, 'span', view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} unread` : 'No unread notifications');
+      meta.append(lock, unread); hero.append(eyebrow, title, meta); panel.append(hero);
+    }
     const tip = blockedAccessTip(view.opened.authorization); if (tip) panel.append(element(this.#document, 'aside', `${tip.title}: ${tip.text}`)); this.#content.replaceChildren(panel); this.#metrics.appRegionUpdates += 1;
   }
   async #sendMessage(view, input) {
