@@ -41,6 +41,73 @@ function sanitizeDiagnosticReason(error) {
   return value.slice(0, 240);
 }
 
+function sanitizeTypeText(value, fallback = '') {
+  const text = String(value ?? fallback).replace(/[^A-Za-z0-9_$[\] .:-]+/g, '').trim();
+  return (text || fallback).slice(0, 80);
+}
+
+function sanitizeLegacyMembershipTypeMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  return Object.freeze({
+    tag: sanitizeTypeText(metadata.tag, '[object Unknown]'),
+    constructor: sanitizeTypeText(metadata.constructor, 'unknown'),
+    array: metadata.array === true,
+    typeof: sanitizeTypeText(metadata.typeof, 'unknown'),
+    iterable: metadata.iterable === true,
+    plain: metadata.plain === true,
+  });
+}
+
+export function inspectLegacyMembershipType(value) {
+  let constructorName = 'unknown';
+  let iterable = false;
+  let plain = false;
+  try { constructorName = String(value?.constructor?.name || 'unknown'); } catch {}
+  try { iterable = value != null && typeof value[Symbol.iterator] === 'function'; } catch {}
+  if (value !== null && typeof value === 'object') {
+    try {
+      const prototype = Object.getPrototypeOf(value);
+      plain = prototype === Object.prototype || prototype === null;
+    } catch {}
+  }
+  return sanitizeLegacyMembershipTypeMetadata({
+    tag: Object.prototype.toString.call(value),
+    constructor: constructorName,
+    array: Array.isArray(value),
+    typeof: typeof value,
+    iterable,
+    plain,
+  });
+}
+
+function formatLegacyMembershipType(metadata) {
+  const value = sanitizeLegacyMembershipTypeMetadata(metadata);
+  if (!value) return '';
+  return `tag=${value.tag} constructor=${value.constructor} array=${value.array} typeof=${value.typeof} iterable=${value.iterable} plain=${value.plain}`;
+}
+
+function previewMembershipFailureLocation(error) {
+  const match = normalizeError(error).match(/\.shared\.conversations\[(\d+)\]\.(participantIds|memberIds)(?:\b|\.|\s)/);
+  if (!match) return null;
+  const conversationIndex = Number(match[1]);
+  if (!Number.isSafeInteger(conversationIndex) || conversationIndex < 0) return null;
+  return Object.freeze({ conversationIndex, field: match[2] });
+}
+
+export function inspectPreview37MembershipFailureType({ context, record, error }) {
+  const location = previewMembershipFailureLocation(error);
+  if (!location || !record || typeof record !== 'object') return null;
+  const source = resolveCurrentPreview37SourceIdentity({ context, record });
+  const branch = record.cards?.[source.characterCardSourceId]?.stories?.[source.storySourceId]?.branches?.[source.routeSourceId];
+  const conversations = branch?.shared?.conversations;
+  if (!Array.isArray(conversations)) return null;
+  const conversation = conversations[location.conversationIndex];
+  if (!conversation || typeof conversation !== 'object') return null;
+  const value = conversation[location.field];
+  if (value === undefined) return null;
+  return inspectLegacyMembershipType(value);
+}
+
 function readDiagnosticSession(storage) {
   try {
     const raw = storage?.getItem?.(DIAGNOSTIC_SESSION_KEY);
@@ -50,6 +117,7 @@ function readDiagnosticSession(storage) {
     return Object.freeze({
       stage: sanitizeDiagnosticStage(parsed.stage),
       reason: sanitizeDiagnosticReason(parsed.reason),
+      legacyMembershipType: sanitizeLegacyMembershipTypeMetadata(parsed.legacyMembershipType),
     });
   } catch {
     return null;
@@ -206,6 +274,7 @@ export class ProductionUserControl {
   #busy = false;
   #lastError = null;
   #stage = 'IDLE';
+  #legacyMembershipType = null;
   #resumePromise = null;
 
   constructor({
@@ -231,6 +300,7 @@ export class ProductionUserControl {
     if (restoredDiagnostic) {
       this.#stage = restoredDiagnostic.stage;
       this.#lastError = restoredDiagnostic.reason;
+      this.#legacyMembershipType = restoredDiagnostic.legacyMembershipType;
     }
   }
 
@@ -242,6 +312,7 @@ export class ProductionUserControl {
       lastError: this.#lastError,
       diagnosticStage: this.#lastError ? this.#stage : null,
       diagnosticReason: this.#lastError ? sanitizeDiagnosticReason(this.#lastError) : null,
+      legacyMembershipType: this.#lastError ? this.#legacyMembershipType : null,
       requested: this.#featureFlag?.read().requested === true,
       productionActive: entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true,
       userStatus: this.#status?.textContent || this.#deriveUserStatus(entry),
@@ -316,10 +387,12 @@ export class ProductionUserControl {
     this.#clearDiagnostic();
     this.#setStage('HOST_API');
     this.refresh();
+    let host = null;
+    let previewReadSource = null;
     try {
-      const host = await this.#hostApiLoader();
+      host = await this.#hostApiLoader();
       this.#setStage('PREVIEW_READ_SOURCE');
-      const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
+      previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
       this.#setStage('PREFLIGHT_CONFIG');
       await this.#entryApi.configureProductionPreflight({
         officialExtensionApi: host.officialExtensionApi,
@@ -338,6 +411,18 @@ export class ProductionUserControl {
       }
       return this.status;
     } catch (error) {
+      if (this.#stage === 'PREFLIGHT' && host?.getContext && previewReadSource) {
+        try {
+          const preview = await previewReadSource();
+          if (preview?.available === true && preview.record) {
+            this.#legacyMembershipType = inspectPreview37MembershipFailureType({
+              context: host.getContext(),
+              record: preview.record,
+              error,
+            });
+          }
+        } catch {}
+      }
       try { await this.#entryApi.disposeProductionPreflight(); } catch {}
       this.#fail(error);
       return this.status;
@@ -449,6 +534,7 @@ export class ProductionUserControl {
   #clearDiagnostic() {
     this.#lastError = null;
     this.#stage = 'IDLE';
+    this.#legacyMembershipType = null;
     writeDiagnosticSession(this.#globalObject?.sessionStorage, null);
   }
 
@@ -465,7 +551,10 @@ export class ProductionUserControl {
     if (this.#status) this.#status.textContent = this.#deriveUserStatus(entry);
     if (this.#diagnostic) {
       const visible = Boolean(this.#lastError);
-      this.#diagnostic.textContent = visible ? `Diagnostic: ${this.#stage} — ${sanitizeDiagnosticReason(this.#lastError)}` : '';
+      const legacyType = formatLegacyMembershipType(this.#legacyMembershipType);
+      this.#diagnostic.textContent = visible
+        ? `Diagnostic: ${this.#stage} — ${sanitizeDiagnosticReason(this.#lastError)}${legacyType ? `\nLegacy membership type: ${legacyType}` : ''}`
+        : '';
       this.#diagnostic.hidden = !visible;
     }
     if (this.#useButton) {
@@ -484,6 +573,7 @@ export class ProductionUserControl {
     writeDiagnosticSession(this.#globalObject?.sessionStorage, Object.freeze({
       stage: this.#stage,
       reason: sanitizeDiagnosticReason(error),
+      legacyMembershipType: this.#legacyMembershipType,
     }));
     console.error('[TMRW Phone V3] Production activation failed safely:', error);
     this.refresh();

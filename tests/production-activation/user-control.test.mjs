@@ -11,6 +11,8 @@ import {
   PRODUCTION_USER_STATUS_ID,
   PRODUCTION_USER_USE_BUTTON_ID,
   createProductionUserControl,
+  inspectLegacyMembershipType,
+  inspectPreview37MembershipFailureType,
   resolveCurrentPreview37SourceIdentity,
 } from '../../production/user-control.mjs';
 
@@ -98,7 +100,18 @@ function context() {
   return { characterId: 0, characters: [{ avatar: 'alice.png', name: 'Alice' }], chatId: 'chat-a', chatMetadata: {}, chat: [], name1: 'Player' };
 }
 
-function harness({ failStart = false, exerciseIdentityPin = false } = {}) {
+function previewRecordWithMembership(value) {
+  const record = previewRecord();
+  record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared = {
+    conversations: [
+      { id: 'first', participantIds: ['user', 'alice'] },
+      { id: 'legacy', memberIds: value },
+    ],
+  };
+  return record;
+}
+
+function harness({ failStart = false, exerciseIdentityPin = false, failPreflightError = null, previewRecordFactory = previewRecord } = {}) {
   const document = new FakeDocument();
   const storage = new MemoryKeyValueStorage();
   const sessionStorage = new MemoryKeyValueStorage();
@@ -134,7 +147,11 @@ function harness({ failStart = false, exerciseIdentityPin = false } = {}) {
       };
     },
     async configureProductionPreflight(options) { calls.push('configure-preflight'); return { options }; },
-    async runProductionPreflight() { calls.push('run-preflight'); return { onboarding: { migrationPlan: { fatal: false } } }; },
+    async runProductionPreflight() {
+      calls.push('run-preflight');
+      if (failPreflightError) throw failPreflightError;
+      return { onboarding: { migrationPlan: { fatal: false } } };
+    },
     async requestProductionTakeover() {
       calls.push('request-takeover');
       flag.requestEnable();
@@ -178,7 +195,7 @@ function harness({ failStart = false, exerciseIdentityPin = false } = {}) {
     document,
     globalObject: { sessionStorage },
     featureFlagStorage: storage,
-    previewReadSourceFactory: () => async () => ({ available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecord() }),
+    previewReadSourceFactory: () => async () => ({ available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecordFactory() }),
   });
   return { control, document, storage, sessionStorage, flag, calls, entryApi, configuredActiveOptions, get identityDuringStart() { return identityDuringStart; }, get active() { return active; }, get previewEnabled() { return previewEnabled; }, set previewEnabled(value) { previewEnabled = value; } };
 }
@@ -278,6 +295,81 @@ test('failure diagnostic exposes only stage plus short reason and keeps inactive
   assert.equal(persisted.includes('C:\\\\'), false);
   assert.equal(persisted.includes('http://'), false);
   assert.equal(persisted.includes('https://'), false);
+});
+
+test('legacy membership type inspection reports metadata only without iterating or mutating values', () => {
+  const arrayValue = ['private-array-member'];
+  const setValue = new Set(['private-set-member']);
+  const mapValue = new Map([['private-map-member', true]]);
+  const plainValue = { member: 'private-object-member' };
+  const fixtures = [
+    [arrayValue, '[object Array]', 'Array', true, true, false],
+    [setValue, '[object Set]', 'Set', false, true, false],
+    [mapValue, '[object Map]', 'Map', false, true, false],
+    [plainValue, '[object Object]', 'Object', false, false, true],
+  ];
+  for (const [value, tag, constructor, array, iterable, plain] of fixtures) {
+    const lengthBefore = Array.isArray(value) ? value.length : null;
+    const sizeBefore = typeof value?.size === 'number' ? value.size : null;
+    const metadata = inspectLegacyMembershipType(value);
+    assert.deepEqual(Object.keys(metadata).sort(), ['array', 'constructor', 'iterable', 'plain', 'tag', 'typeof']);
+    assert.equal(metadata.tag, tag);
+    assert.equal(metadata.constructor, constructor);
+    assert.equal(metadata.array, array);
+    assert.equal(metadata.iterable, iterable);
+    assert.equal(metadata.plain, plain);
+    assert.equal(JSON.stringify(metadata).includes('private-'), false);
+    if (lengthBefore !== null) assert.equal(value.length, lengthBefore);
+    if (sizeBefore !== null) assert.equal(value.size, sizeBefore);
+  }
+
+  let iteratorCalls = 0;
+  const guardedIterable = {
+    [Symbol.iterator]() {
+      iteratorCalls += 1;
+      throw new Error('type inspection must not iterate');
+    },
+  };
+  const keysBefore = Reflect.ownKeys(guardedIterable);
+  const guardedMetadata = inspectLegacyMembershipType(guardedIterable);
+  assert.equal(guardedMetadata.iterable, true);
+  assert.equal(iteratorCalls, 0);
+  assert.deepEqual(Reflect.ownKeys(guardedIterable), keysBefore);
+});
+
+test('exact PREFLIGHT membership failure exposes type metadata without member contents or Preview mutation', async () => {
+  const legacyMembers = new Set(['private-member-one', 'private-member-two']);
+  const record = previewRecordWithMembership(legacyMembers);
+  const failure = new TypeError('value.cards.character:alice.png.stories.story:chat-a.branches.branch:main.shared.conversations[1].memberIds must be JSON-serializable data');
+  const direct = inspectPreview37MembershipFailureType({ context: context(), record, error: failure });
+  assert.deepEqual(direct, {
+    tag: '[object Set]',
+    constructor: 'Set',
+    array: false,
+    typeof: 'object',
+    iterable: true,
+    plain: false,
+  });
+  assert.strictEqual(record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared.conversations[1].memberIds, legacyMembers);
+  assert.equal(legacyMembers.size, 2);
+
+  const h = harness({ failPreflightError: failure, previewRecordFactory: () => record });
+  h.control.mount();
+  await h.control.useProduction();
+  const diagnostic = h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`);
+  assert.equal(h.control.status.diagnosticStage, 'PREFLIGHT');
+  assert.deepEqual(h.control.status.legacyMembershipType, direct);
+  assert.match(diagnostic.textContent, /Legacy membership type: tag=\[object Set\] constructor=Set array=false typeof=object iterable=true plain=false/);
+  const persisted = JSON.stringify(h.sessionStorage.snapshot());
+  assert.match(persisted, /legacyMembershipType/);
+  assert.equal(persisted.includes('private-member-one'), false);
+  assert.equal(persisted.includes('private-member-two'), false);
+  assert.strictEqual(record.cards['character:alice.png'].stories['story:chat-a'].branches['branch:main'].shared.conversations[1].memberIds, legacyMembers);
+  assert.equal(legacyMembers.size, 2);
+  assert.equal(h.active, false);
+  assert.equal(h.entryApi.getProductionEntryStatus().databaseOpen, false);
+  assert.equal(h.entryApi.getProductionEntryStatus().leaseAcquired, false);
+  assert.equal(h.entryApi.getProductionEntryStatus().authoringGateOpen, false);
 });
 
 test('Production settings CSS force-hides only hidden controls inside the Production control', () => {
