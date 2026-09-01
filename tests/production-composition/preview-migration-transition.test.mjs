@@ -6,6 +6,7 @@ import { V3_GENERATION_INTERCEPTOR_KEY, V3_PRODUCTION_RUNTIME_ID } from '../../p
 import { MemoryV3Database } from '../../storage/memory-v3-database.mjs';
 import { V3_RUNTIME_LEASE_KEY } from '../../storage/schema.mjs';
 import { preview37Project } from '../phase12/preview37-fixtures.mjs';
+import { previewDigest } from '../../migration/preview37/digest.mjs';
 
 const PASSIVE_SHIM_MARKER = Symbol.for('tmrw.v3.production.passive-generation-interceptor');
 const EVENT_TYPES = Object.freeze({ CHAT_CHANGED: 'chat-changed', MESSAGE_SENT: 'sent', MESSAGE_RECEIVED: 'received', MESSAGE_SWIPED: 'swiped', MESSAGE_EDITED: 'edited', MESSAGE_DELETED: 'deleted', IMPERSONATE_READY: 'impersonate' });
@@ -31,8 +32,7 @@ class RecordingDatabase {
   }
 }
 
-function optionsFor({ source = preview37Project({ castSize: 2, suffix: 's08-transition', includeGroup: false, includeCall: true }), commitOptions = {}, stageObserver = null } = {}) {
-  const registry = MemoryV3Database.createRegistry();
+function optionsFor({ source = preview37Project({ castSize: 2, suffix: 's08-transition', includeGroup: false, includeCall: true }), commitOptions = {}, stageObserver = null, registry = MemoryV3Database.createRegistry() } = {}) {
   const rawDatabases = [];
   const timers = new Map(); let nextTimer = 1;
   const eventSource = new FakeEventSource();
@@ -60,6 +60,57 @@ async function readStore(registry, storeName) {
   db.close(); return rows;
 }
 
+async function updateCompletedBatchEvidence(registry, batchId, updates) {
+  const db = new MemoryV3Database({ registry }); await db.open();
+  await db.transaction(['previewMigrationBatches'], 'readwrite', async tx => {
+    const store = tx.store('previewMigrationBatches');
+    const batch = await store.get(batchId);
+    assert.ok(batch?.status === 'completed');
+    await store.put({ ...batch, ...updates });
+  });
+  db.close();
+}
+
+async function withExactDuplicatePlanItem(plan) {
+  const duplicate = plan.items.find(item => item.sourceType === 'call') || plan.items[0];
+  assert.ok(duplicate);
+  const items = Object.freeze([...plan.items, duplicate]);
+  const counts = Object.freeze({ ...plan.counts, [duplicate.state]: Number(plan.counts?.[duplicate.state] || 0) + 1 });
+  const classificationCounts = duplicate.classification
+    ? Object.freeze({ ...plan.classificationCounts, [duplicate.classification]: Number(plan.classificationCounts?.[duplicate.classification] || 0) + 1 })
+    : plan.classificationCounts;
+  const planBasis = {
+    sourceFingerprint: plan.sourceFingerprint,
+    items: items.map(item => ({
+      sourceRecordId: item.sourceRecordId,
+      sourceFingerprint: item.sourceFingerprint,
+      sourceType: item.sourceType,
+      state: item.state,
+      reasonCode: item.reasonCode || null,
+      classification: item.classification || null,
+    })),
+  };
+  return Object.freeze({ ...plan, items, counts, classificationCounts, planFingerprint: await previewDigest(planBasis) });
+}
+
+async function withChangedCanonicalPlanFingerprint(plan) {
+  const items = plan.items.map(item => item.sourceType === 'identity-scope'
+    ? Object.freeze({ ...item, sourceFingerprint: `${item.sourceFingerprint}:changed-canonical` })
+    : item);
+  const planBasis = {
+    sourceFingerprint: plan.sourceFingerprint,
+    items: items.map(item => ({
+      sourceRecordId: item.sourceRecordId,
+      sourceFingerprint: item.sourceFingerprint,
+      sourceType: item.sourceType,
+      state: item.state,
+      reasonCode: item.reasonCode || null,
+      classification: item.classification || null,
+    })),
+  };
+  return Object.freeze({ ...plan, items: Object.freeze(items), planFingerprint: await previewDigest(planBasis) });
+}
+
 async function lease(registry) {
   const db = new MemoryV3Database({ registry }); await db.open();
   const row = await db.transaction(['metadata'], 'readonly', tx => tx.store('metadata').get(V3_RUNTIME_LEASE_KEY));
@@ -82,6 +133,58 @@ test('Preview migration commit runs through the bounded transition fence before 
   assert.equal(batches[0].status, 'completed');
   assert.ok((await readStore(h.registry, 'events')).length > 0);
   await root.dispose();
+});
+
+test('completed Patch3-era plan reuses exact canonical migration semantics despite legacy physical manifest-row dedup', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const source = preview37Project({ castSize: 2, suffix: 's08-completed-reuse', includeGroup: false, includeCall: true });
+  const first = optionsFor({ source, registry });
+  const initial = await createTmrwV3ProductionRuntime(first.options);
+  const originalPlan = initial.migration.plan;
+  const completedOriginal = (await readStore(registry, 'previewMigrationBatches')).find(row => row.id === originalPlan.batchId);
+  assert.equal(completedOriginal?.status, 'completed');
+  await initial.dispose();
+
+  const legacyPlan = await withExactDuplicatePlanItem(originalPlan);
+  await updateCompletedBatchEvidence(registry, originalPlan.batchId, {
+    planFingerprint: legacyPlan.planFingerprint,
+    counts: legacyPlan.counts,
+    classificationCounts: legacyPlan.classificationCounts,
+  });
+  const physicalBeforeReplay = (await readStore(registry, 'previewMigrationItems')).filter(row => row.batchId === legacyPlan.batchId).length;
+  assert.ok(physicalBeforeReplay < legacyPlan.items.length);
+  const completedBefore = (await readStore(registry, 'previewMigrationBatches')).find(row => row.id === legacyPlan.batchId);
+
+  const replay = optionsFor({ source, registry });
+  replay.options.migration.plan = legacyPlan;
+  const resumed = await createTmrwV3ProductionRuntime(replay.options);
+  assert.equal(resumed.migration.result.replayed, true);
+  assert.equal(resumed.migration.result.productionExactCompletedPlanReuse, true);
+  const completedAfter = (await readStore(registry, 'previewMigrationBatches')).find(row => row.id === legacyPlan.batchId);
+  assert.equal(completedAfter.planFingerprint, completedBefore.planFingerprint);
+  assert.equal(completedAfter.updatedAt, completedBefore.updatedAt);
+  assert.equal((await readStore(registry, 'previewMigrationItems')).filter(row => row.batchId === legacyPlan.batchId).length, physicalBeforeReplay);
+  await resumed.dispose();
+});
+
+test('genuine canonical completed-plan fingerprint change still fails closed through the strict migration invariant', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const source = preview37Project({ castSize: 2, suffix: 's08-completed-negative', includeGroup: false, includeCall: true });
+  const first = optionsFor({ source, registry });
+  const initial = await createTmrwV3ProductionRuntime(first.options);
+  const originalPlan = initial.migration.plan;
+  const completedBefore = (await readStore(registry, 'previewMigrationBatches')).find(row => row.id === originalPlan.batchId);
+  await initial.dispose();
+
+  const changedPlan = await withChangedCanonicalPlanFingerprint(originalPlan);
+  assert.notEqual(changedPlan.planFingerprint, completedBefore.planFingerprint);
+  const retry = optionsFor({ source, registry });
+  retry.options.migration.plan = changedPlan;
+  await assert.rejects(() => createTmrwV3ProductionRuntime(retry.options), /Completed Preview migration/);
+  const completedAfter = (await readStore(registry, 'previewMigrationBatches')).find(row => row.id === originalPlan.batchId);
+  assert.equal(completedAfter.status, 'completed');
+  assert.equal(completedAfter.planFingerprint, completedBefore.planFingerprint);
+  assert.equal(completedAfter.updatedAt, completedBefore.updatedAt);
 });
 
 test('transition capability never opens normal authoring and cannot leak after migration completion', async () => {

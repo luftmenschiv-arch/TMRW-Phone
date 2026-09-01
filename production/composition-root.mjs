@@ -76,6 +76,7 @@ import { EventScopedAiJobService } from '../application/ai-jobs/event-scoped-ai-
 import { Preview37RawReader } from '../migration/preview37/raw-reader.mjs';
 import { Preview37MigrationManifest } from '../migration/preview37/manifest.mjs';
 import { Preview37CopyMigrationCoordinator } from '../migration/preview37/coordinator.mjs';
+import { PREVIEW37_MIGRATION_VERSION } from '../migration/preview37/constants.mjs';
 
 const ACTIVE_RUNTIMES = new WeakMap();
 
@@ -202,6 +203,31 @@ async function catchUpPhase23Projectors({ eventEngine, manifest, plan }) {
   return Object.freeze(scopes);
 }
 
+function sameFlatCounts(left = {}, right = {}) {
+  const keys = new Set([...Object.keys(left || {}), ...Object.keys(right || {})]);
+  for (const key of keys) if (Number(left?.[key] || 0) !== Number(right?.[key] || 0)) return false;
+  return true;
+}
+
+async function exactCompletedTransitionReplay({ manifest, plan }) {
+  const existing = await manifest.getBatch(plan.batchId);
+  if (!existing || existing.status !== 'completed') return null;
+  const exact = existing.migrationVersion === PREVIEW37_MIGRATION_VERSION
+    && existing.sourceFingerprint === plan.sourceFingerprint
+    && String(existing.sourceVersion) === String(plan.sourceVersion)
+    && existing.sourceLocation === plan.sourceLocation
+    && existing.planFingerprint === plan.planFingerprint
+    && sameFlatCounts(existing.counts, plan.counts)
+    && sameFlatCounts(existing.classificationCounts, plan.classificationCounts);
+  if (!exact) return null;
+  return Object.freeze({
+    batch: existing,
+    replayed: true,
+    validation: existing.validation,
+    productionExactCompletedPlanReuse: true,
+  });
+}
+
 async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migration, now, activation }) {
   if (!migration) return Object.freeze({ attempted: false, committed: false, plan: null, result: null });
   if (!migration.previewQuiesced) throw new Error('Preview must be quiesced before transition migration');
@@ -233,7 +259,8 @@ async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migrati
   if (!entered.opened) throw new Error(`Transition authoring capability unavailable: ${entered.reason}`);
   await activation.mark('migration-transition-open');
   try {
-    const result = await coordinator.commit(plan, migration.commitOptions || {});
+    const result = await exactCompletedTransitionReplay({ manifest, plan })
+      || await coordinator.commit(plan, migration.commitOptions || {});
     const projectorCatchUp = await catchUpPhase23Projectors({ eventEngine: transitionCore.eventEngine, manifest, plan });
     await activation.mark('phase23-projector-catch-up', { scopes: projectorCatchUp.length });
     const scopeAliases = await addProductionScopeAliases({ transitionDatabase, manifest, plan, sourceIdentity: migration.productionSourceIdentity || null, now });
