@@ -252,6 +252,7 @@ export class ProductionMountManager {
     try {
       this.#assertEligible();
       if (!this.#healthy || !this.#host || !this.#shell?.root) return false;
+      this.#shell.open?.();
       this.#host.hidden = false;
       return true;
     } catch (error) {

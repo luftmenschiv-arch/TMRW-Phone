@@ -1,5 +1,6 @@
 import { V3_LAUNCHER_ID } from './constants.mjs';
 import { PRODUCTION_RUNTIME_STATE } from './runtime-arbiter.mjs';
+import { createPreviewIcon } from '../ui/app-icons.mjs';
 
 const LAUNCHER_OWNERS = new WeakMap();
 const ALLOWED_RUNTIME_STATES = new Set([
@@ -43,6 +44,9 @@ export class ProductionLauncherOwner {
   #lastError = null;
   #disposed = false;
   #blocked = false;
+  #drag = null;
+  #suppressClickUntil = 0;
+  #resizeHandler = null;
 
   constructor({ productionRuntime, runtimeArbiter, mountManager, document, hostParent = document?.body, label = 'TMRW Phone' }) {
     if (!productionRuntime || productionRuntime.role !== 'owner' || !productionRuntime.composition) throw new TypeError('ProductionLauncherOwner requires the S08 owner composition root');
@@ -102,14 +106,135 @@ export class ProductionLauncherOwner {
     button.setAttribute?.('id', V3_LAUNCHER_ID);
     if ('id' in button) button.id = V3_LAUNCHER_ID;
     button.type = 'button';
-    button.textContent = this.#label;
-    button.setAttribute?.('aria-label', 'Open TMRW Phone v3');
-    button.addEventListener?.('click', () => { this.open(); });
+    button.tabIndex = -1;
+    button.setAttribute?.('aria-label', 'เปิด TMRW-Phone');
+    button.append(createPreviewIcon({ document: this.#document, name: 'phone', size: 24 }));
+    const sparkle = this.#document.createElement('span');
+    sparkle.className = 'tmrw-phone-launcher-spark';
+    sparkle.append(createPreviewIcon({ document: this.#document, name: 'sparkle', size: 13 }));
+    button.append(sparkle);
+    button.style.right = '14px';
+    button.style.top = '62vh';
+    button.style.bottom = 'auto';
+    button.addEventListener?.('click', event => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      if (Date.now() < this.#suppressClickUntil) return;
+      this.open();
+    });
+    this.#bindPreviewDrag(button);
     this.#hostParent.append(button);
+    this.#applyPreviewDefaultPosition(button);
     this.#button = button;
     LAUNCHER_OWNERS.set(this.#hostParent, this);
     this.#lastError = null;
     return true;
+  }
+
+  #applyPreviewDefaultPosition(button) {
+    const { view } = this.#viewport();
+    const apply = () => {
+      if (this.#button && this.#button !== button) return;
+      const { width, height } = this.#viewport();
+      if (!(width > 0) || !(height > 0)) return;
+      const buttonWidth = Number(button.offsetWidth || 58);
+      const buttonHeight = Number(button.offsetHeight || 58);
+      const x = this.#clamp(width - buttonWidth - 14, 8, width - buttonWidth - 8);
+      const y = this.#clamp(Math.round(height * 0.62), 8, height - buttonHeight - 8);
+      button.style.left = `${x}px`;
+      button.style.top = `${y}px`;
+      button.style.right = 'auto';
+      button.style.bottom = 'auto';
+    };
+    if (typeof view?.requestAnimationFrame === 'function') view.requestAnimationFrame(apply);
+    else setTimeout(apply, 0);
+  }
+
+  #viewport() {
+    const view = this.#document?.defaultView || globalThis.window;
+    return {
+      view,
+      width: Number(view?.innerWidth || this.#document?.documentElement?.clientWidth || 0),
+      height: Number(view?.innerHeight || this.#document?.documentElement?.clientHeight || 0),
+    };
+  }
+
+  #clamp(value, min, max) {
+    return Math.min(Math.max(Number(value) || 0, min), Math.max(min, max));
+  }
+
+  #snapPreviewLauncher(button) {
+    const rect = button?.getBoundingClientRect?.();
+    if (!rect) return;
+    const { width, height } = this.#viewport();
+    if (!(width > 0) || !(height > 0)) return;
+    const buttonWidth = Number(button.offsetWidth || rect.width || 58);
+    const buttonHeight = Number(button.offsetHeight || rect.height || 58);
+    const x = rect.left + buttonWidth / 2 < width / 2 ? 10 : width - buttonWidth - 10;
+    const y = this.#clamp(rect.top, 8, height - buttonHeight - 8);
+    button.style.transition = 'left 180ms ease, top 180ms ease, transform 160ms ease';
+    button.style.left = `${x}px`;
+    button.style.top = `${y}px`;
+    button.style.right = 'auto';
+    button.style.bottom = 'auto';
+    setTimeout(() => { if (this.#button === button) button.style.transition = ''; }, 220);
+  }
+
+  #bindPreviewDrag(button) {
+    button.addEventListener?.('pointerdown', event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      const rect = button.getBoundingClientRect?.() || { left: 0, top: 0 };
+      this.#drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, moved: false };
+      button.blur?.();
+      button.setPointerCapture?.(event.pointerId);
+      button.classList?.add?.('is-dragging');
+      event.preventDefault?.();
+    });
+    button.addEventListener?.('pointermove', event => {
+      if (!this.#drag || this.#drag.pointerId !== event.pointerId) return;
+      const dx = event.clientX - this.#drag.startX;
+      const dy = event.clientY - this.#drag.startY;
+      if (Math.hypot(dx, dy) > 6) this.#drag.moved = true;
+      const { width, height } = this.#viewport();
+      const buttonWidth = Number(button.offsetWidth || 58);
+      const buttonHeight = Number(button.offsetHeight || 58);
+      const rawX = event.clientX - this.#drag.offsetX;
+      const rawY = event.clientY - this.#drag.offsetY;
+      const x = width > 0 ? this.#clamp(rawX, 8, width - buttonWidth - 8) : rawX;
+      const y = height > 0 ? this.#clamp(rawY, 8, height - buttonHeight - 8) : rawY;
+      button.style.left = `${x}px`;
+      button.style.top = `${y}px`;
+      button.style.right = 'auto';
+      button.style.bottom = 'auto';
+      event.preventDefault?.();
+    });
+    button.addEventListener?.('pointerup', event => {
+      if (!this.#drag || this.#drag.pointerId !== event.pointerId) return;
+      const moved = this.#drag.moved;
+      this.#drag = null;
+      button.classList?.remove?.('is-dragging');
+      button.releasePointerCapture?.(event.pointerId);
+      this.#suppressClickUntil = Date.now() + 520;
+      if (moved) this.#snapPreviewLauncher(button);
+      else setTimeout(() => { if (this.#button === button) this.open(); }, 70);
+    });
+    button.addEventListener?.('pointercancel', () => { this.#drag = null; button.classList?.remove?.('is-dragging'); });
+    const { view } = this.#viewport();
+    if (view?.addEventListener) {
+      this.#resizeHandler = () => {
+        const rect = button.getBoundingClientRect?.();
+        if (!rect) return;
+        const { width, height } = this.#viewport();
+        if (!(width > 0) || !(height > 0)) return;
+        const x = this.#clamp(rect.left, 8, width - Number(button.offsetWidth || rect.width || 58) - 8);
+        const y = this.#clamp(rect.top, 8, height - Number(button.offsetHeight || rect.height || 58) - 8);
+        button.style.left = `${x}px`;
+        button.style.top = `${y}px`;
+        button.style.right = 'auto';
+        button.style.bottom = 'auto';
+      };
+      view.addEventListener('resize', this.#resizeHandler);
+    }
   }
 
   open() {
@@ -138,6 +263,10 @@ export class ProductionLauncherOwner {
   }
 
   #removeButton() {
+    const { view } = this.#viewport();
+    if (this.#resizeHandler && view?.removeEventListener) view.removeEventListener('resize', this.#resizeHandler);
+    this.#resizeHandler = null;
+    this.#drag = null;
     try { this.#button?.remove?.(); } finally {
       this.#button = null;
       if (LAUNCHER_OWNERS.get(this.#hostParent) === this) LAUNCHER_OWNERS.delete(this.#hostParent);

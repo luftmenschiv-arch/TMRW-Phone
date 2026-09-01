@@ -1,17 +1,11 @@
 import { PhoneRouter } from './router.mjs';
-import { deviceSwitcherViewModel } from './device-switcher.mjs';
 import { contactsViewModel } from './contacts-minimal.mjs';
-import { homeViewModel } from './home.mjs';
 import { developerDiagnostics } from './dev-diagnostics.mjs';
-import { blockedAccessTip } from './contextual-tips.mjs';
-import { KeyedRegion } from './keyed-renderer.mjs';
 import { feedViewModel } from './feed.mjs';
-import { liveViewModel } from './live.mjs';
 import { notificationCenterViewModel } from './notifications.mjs';
 import { renderApprovedCallSurface } from './calls/approved-call-surface.mjs';
 import { renderVoiceSetup } from './voice-setup.mjs';
-import { createAppHeader } from './app-header.mjs';
-import { createHomeAppIcon, createPreviewIcon } from './app-icons.mjs';
+import { createPreviewIcon } from './app-icons.mjs';
 import { renderGallery } from './gallery.mjs';
 import { renderFiles } from './files.mjs';
 import { renderTheme } from './themes.mjs';
@@ -25,518 +19,259 @@ import { renderNotes } from './notes.mjs';
 import { renderSearch } from './search.mjs';
 import { GUIDE_TOPICS, GUIDE_TOPIC_CONTENT } from './guide.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
+import { createPreviewRootChrome, createPreviewLockScreen, createPreviewHome, createPreviewOwnerSheet, createPreviewStatusBar, createPreviewAvatar, createPreviewCommerceNav, createPreviewLifestyleNav, wrapPreviewApp } from './preview37-surface.mjs';
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
-const APP_TITLES = Object.freeze({ contacts: 'Contacts', messages: 'Messages', calls: 'Phone', feed: 'Feed', insungram: 'Insungram', live: 'Live', notifications: 'Notifications', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
-const APP_VISUAL_KIND = Object.freeze({ feed: 'social', insungram: 'social', live: 'social', wallet: 'commerce', shop: 'commerce', maps: 'lifestyle', calendar: 'lifestyle', weather: 'lifestyle', health: 'lifestyle', notes: 'personal', search: 'personal', calls: 'personal', contacts: 'personal', messages: 'personal', notifications: 'personal', gallery: 'utility', files: 'utility', theme: 'utility', guide: 'utility', settings: 'utility', diagnostics: 'utility' });
-const previewClock = () => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
-const previewDate = () => new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+const APP_TITLES = Object.freeze({ contacts: 'Phone', messages: 'Messages', calls: 'Phone', feed: 'Insungram', insungram: 'Insungram', live: 'Live', notifications: 'กิจกรรม', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
+const appKind = route => ['feed','insungram','live','messages','notifications'].includes(route) ? 'social' : ['wallet','shop'].includes(route) ? 'commerce' : ['maps','calendar','weather','health'].includes(route) ? 'lifestyle' : ['notes','search','calls','contacts'].includes(route) ? 'personal' : 'utility';
+const addIcon = (document, node, name, size) => { node.append(createPreviewIcon({ document, name, size })); return node; };
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #deviceRegion; #navRegion; #navigation; #content; #perspectiveSummary; #onClose; #deviceSheet; #homeDock; #closeButton; #statusTime; #pageDots; #homePage = 0; #homePageCount = 1; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+
   constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, selectedDeviceId, onClose = null }) {
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
-    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#onClose = typeof onClose === 'function' ? onClose : null; this.#selectedDeviceId = selectedDeviceId; this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; if (this.#deviceSheet) this.#deviceSheet.hidden = true; void this.renderActive(); } });
+    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#selectedDeviceId = selectedDeviceId; this.#onClose = typeof onClose === 'function' ? onClose : null;
+    this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#settingsChoice = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; this.#closeSheet(); void this.renderActive(); } });
   }
-  get metrics() { return Object.freeze({ ...this.#metrics, router: this.#router.route }); }
+  get metrics() { return Object.freeze({ ...this.#metrics, router: this.#router.route, presentation: this.#presentationView }); }
   get root() { return this.#root; }
+
   async mount(target) {
     if (this.#root) return this.#root;
-    const root = element(this.#document, 'section'); root.className = 'tmrw-v3-shell'; root.setAttribute('aria-label', 'TMRW Phone');
-    const header = element(this.#document, 'header'); header.className = 'tmrw-v3-shell-header'; const title = element(this.#document, 'h1', 'TMRW—Phone'); title.className = 'tmrw-v3-title'; const perspectiveSummary = element(this.#document, 'p', 'My Phone'); perspectiveSummary.className = 'tmrw-v3-perspective-summary'; perspectiveSummary.setAttribute('aria-live', 'polite'); header.append(title, perspectiveSummary);
-
-    const switcher = element(this.#document, 'nav'); switcher.className = 'tmrw-v3-device-switcher tmrw-v3-preview-sheet-layer'; switcher.setAttribute('aria-label', 'My Phone and Their Phones'); switcher.hidden = true;
-    const sheetBackdrop = element(this.#document, 'button'); sheetBackdrop.type = 'button'; sheetBackdrop.className = 'tmrw-v3-preview-sheet-backdrop'; sheetBackdrop.setAttribute('aria-label', 'Close phone selector'); sheetBackdrop.addEventListener('click', () => { switcher.hidden = true; });
-    const sheet = element(this.#document, 'section'); sheet.className = 'tmrw-v3-preview-sheet';
-    const handle = element(this.#document, 'i'); handle.setAttribute('aria-hidden', 'true');
-    const sheetHeader = element(this.#document, 'header'); const sheetHeading = element(this.#document, 'div'); sheetHeading.append(element(this.#document, 'small', 'TMRW—Phone'), element(this.#document, 'h2', 'เลือกเจ้าของเครื่อง'));
-    const closeSheet = element(this.#document, 'button'); closeSheet.type = 'button'; closeSheet.setAttribute('aria-label', 'Close phone selector'); closeSheet.append(createPreviewIcon({ document: this.#document, name: 'close', size: 20 })); closeSheet.addEventListener('click', () => { switcher.hidden = true; }); sheetHeader.append(sheetHeading, closeSheet);
-    const deviceList = element(this.#document, 'div'); deviceList.className = 'tmrw-v3-device-list'; sheet.append(handle, sheetHeader, deviceList); switcher.append(sheetBackdrop, sheet);
-
-    const navigation = element(this.#document, 'nav'); navigation.className = 'tmrw-v3-nav tmrw-phone-app-pages tmrw-phone-full-home-pages'; navigation.dataset.role = 'home-pages'; navigation.setAttribute('aria-label', 'Phone apps'); navigation.addEventListener('scroll', () => this.#scheduleHomePagerSync());
-    const content = element(this.#document, 'main'); content.className = 'tmrw-v3-content'; content.setAttribute('aria-live', 'polite');
-
-    const status = element(this.#document, 'div'); status.className = 'tmrw-v3-preview-status tmrw-phone-status'; const statusTime = element(this.#document, 'strong', previewClock()); statusTime.className = 'tmrw-v3-live-time';
-    const system = element(this.#document, 'div'); system.setAttribute('aria-hidden', 'true'); const signal = element(this.#document, 'span'); signal.className = 'tmrw-phone-signal'; for (let index = 0; index < 4; index += 1) signal.append(element(this.#document, 'i')); const battery = element(this.#document, 'span'); battery.className = 'tmrw-phone-battery'; battery.textContent = ''; system.append(signal, battery); status.append(statusTime, system);
-
-    const closePhone = element(this.#document, 'button'); closePhone.type = 'button'; closePhone.className = 'tmrw-v3-phone-close tmrw-phone-close-button tmrw-phone-home-lock-button'; closePhone.dataset.action = 'close-phone'; closePhone.setAttribute('aria-label', 'Close TMRW Phone'); closePhone.setAttribute('title', 'Close TMRW Phone'); closePhone.append(createPreviewIcon({ document: this.#document, name: 'lock', size: 18 })); closePhone.addEventListener('click', () => { switcher.hidden = true; if (this.#onClose) this.#onClose(); else root.hidden = true; });
-
-    const dock = element(this.#document, 'nav'); dock.className = 'tmrw-v3-home-dock tmrw-phone-dock'; dock.setAttribute('aria-label', 'Phone shortcuts');
-    const dockAction = (name, label, action) => { const button = element(this.#document, 'button'); button.type = 'button'; button.setAttribute('aria-label', label); button.append(createPreviewIcon({ document: this.#document, name, size: 23 })); button.addEventListener('click', action); dock.append(button); return button; };
-    dockAction('user', 'Choose My Phone or Their Phones', () => { switcher.hidden = false; });
-    dockAction('calls', 'Phone', () => this.#router.navigate('calls'));
-    dockAction('search', 'Search', () => this.#router.navigate('search'));
-    dockAction('settings', 'Settings', () => this.#router.navigate('settings'));
-    const pageDots = element(this.#document, 'nav'); pageDots.className = 'tmrw-v3-home-page-dots tmrw-phone-page-dots'; pageDots.setAttribute('aria-label', 'Home pages');
-    const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-v3-home-indicator tmrw-phone-home-indicator'; indicator.setAttribute('aria-hidden', 'true');
-
-    root.append(header, switcher, navigation, content, status, closePhone, pageDots, dock, indicator); target.append(root); this.#root = root; this.#deviceRegion = new KeyedRegion(deviceList); this.#navRegion = new KeyedRegion(navigation); this.#navigation = navigation; this.#content = content; this.#perspectiveSummary = perspectiveSummary; this.#deviceSheet = switcher; this.#homeDock = dock; this.#closeButton = closePhone; this.#statusTime = statusTime; this.#pageDots = pageDots; this.#metrics.shellMounts += 1;
-    await this.render(); return root;
+    const chrome = createPreviewRootChrome({ document: this.#document, onClose: () => this.close() });
+    target.append(chrome.root); this.#root = chrome.root; this.#screen = chrome.screen; this.#sheetLayer = chrome.sheet; this.#toast = chrome.toast; this.#metrics.shellMounts += 1;
+    await this.render(); return this.#root;
   }
+  open() { if (!this.#root) return false; this.#presentationView = 'lock'; this.#selectedThreadId = null; this.#selectedLiveSessionId = null; this.#closedCallSurfaceId = null; if (this.#router.route !== 'launcher') this.#router.navigate('launcher'); else void this.renderActive(); this.#document.body?.classList?.add?.('tmrw-phone-no-scroll'); return true; }
+  close() { this.#closeSheet(); this.#document.body?.classList?.remove?.('tmrw-phone-no-scroll'); if (this.#onClose) this.#onClose(); else if (this.#root) this.#root.hidden = true; return true; }
+  #lock() { this.#presentationView = 'lock'; this.#selectedThreadId = null; this.#selectedLiveSessionId = null; if (this.#router.route !== 'launcher') this.#router.navigate('launcher'); else void this.renderActive(); }
+  #goHome() { this.#presentationView = 'home'; this.#selectedThreadId = null; this.#selectedLiveSessionId = null; if (this.#router.route !== 'launcher') this.#router.navigate('launcher'); else void this.renderActive(); }
+  #openRoute(route) { this.#presentationView = 'home'; this.#selectedThreadId = null; this.#selectedLiveSessionId = null; this.#router.navigate(route); }
+  #closeSheet() { if (!this.#sheetLayer) return; this.#sheetLayer.className = ''; this.#sheetLayer.replaceChildren?.(); }
+
+  async #showOwnerSheet(devices) {
+    if (!this.#sheetLayer) return;
+    const rows = devices.map(row => Object.freeze({ ...row, selected: row.deviceId === this.#selectedDeviceId }));
+    const sheet = createPreviewOwnerSheet({ document: this.#document, devices: rows, onSelect: deviceId => { this.#closeSheet(); void this.selectDevice(deviceId); }, onClose: () => this.#closeSheet() });
+    this.#sheetLayer.className = 'is-open'; this.#sheetLayer.replaceChildren(sheet.backdrop, sheet.sheet);
+  }
+
   async render() {
-    const roster = await this.#models.deviceRoster(this.#scope); const myPhone = roster.find(row => row.kind === 'my-phone');
+    const root = this.#root; const screen = this.#screen; const route = this.#router.route;
+    if (!root || !screen) return null;
+    const isCurrent = () => this.#root === root && this.#screen === screen && this.#router.route === route;
+    const roster = await this.#models.deviceRoster(this.#scope); if (!isCurrent()) return null; const myPhone = roster.find(row => row.kind === 'my-phone');
     if (!myPhone) throw new Error('Canonical My Phone device is unavailable for the current Story/Branch');
     if (!roster.some(row => row.deviceId === this.#selectedDeviceId)) this.#selectedDeviceId = myPhone.deviceId;
-    const devices = deviceSwitcherViewModel(roster, this.#selectedDeviceId);
-    this.#deviceRegion.patch(devices, { key: row => row.deviceId, create: row => { const button = element(this.#document, 'button', row.label); button.type = 'button'; button.dataset.deviceId = row.deviceId; button.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = true; void this.selectDevice(row.deviceId); }); return button; }, update: (button, row) => { button.textContent = row.label; button.setAttribute('aria-pressed', String(row.selected)); button.setAttribute('aria-label', row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`); button.title = row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`; button.dataset.kind = row.kind; } });
-    const selectedPerspective = devices.find(row => row.selected) || devices.find(row => row.kind === 'my-phone');
-    this.#selectedPerspectiveLabel = selectedPerspective?.label || (selectedPerspective?.kind === 'my-phone' ? 'My Phone' : 'Their Phone');
-    this.#selectedPerspectiveKind = selectedPerspective?.kind || 'my-phone';
-    if (this.#root) this.#root.dataset.route = this.#router.route;
-    if (this.#perspectiveSummary) this.#perspectiveSummary.textContent = this.#selectedPerspectiveLabel;
-    if (this.#statusTime) this.#statusTime.textContent = previewClock();
-    if (this.#homeDock) this.#homeDock.hidden = this.#router.route !== 'launcher';
-    if (this.#closeButton) this.#closeButton.hidden = this.#router.route !== 'launcher';
-    if (this.#router.route !== 'launcher' && this.#deviceSheet) this.#deviceSheet.hidden = true;
-    const loadingRoutes = ['contacts', 'messages', 'calls', 'notifications', 'gallery', 'files', 'maps', 'calendar', 'wallet', 'shop', 'weather', 'health', 'notes', 'search', 'guide', 'settings', 'diagnostics', 'feed', 'insungram', 'live'];
-    if (loadingRoutes.includes(this.#router.route) && this.#content) {
-      if (this.#navigation) this.#navigation.hidden = true;
-      const loading = element(this.#document, 'section'); loading.className = 'tmrw-v3-panel'; loading.dataset.route = this.#router.route;
-      loading.append(createAppHeader({ document: this.#document, title: APP_TITLES[this.#router.route], onBack: () => this.#router.navigate('launcher') }));
-      const status = element(this.#document, 'p', `Loading ${APP_TITLES[this.#router.route]}…`); status.setAttribute('role', 'status'); loading.append(status); this.#content.replaceChildren(loading);
+    const selected = roster.find(row => row.deviceId === this.#selectedDeviceId) || myPhone; this.#selectedPerspectiveLabel = selected.label; this.#selectedPerspectiveKind = selected.kind; root.dataset.route = route; root.dataset.presentation = this.#presentationView;
+
+    if (route === 'launcher') {
+      const overview = await this.#models.previewOverview({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, controller: this.#controller }); if (!isCurrent()) return null;
+      root.dataset.theme = overview.themeId || 'light-blue';
+      const onOwner = () => { void this.#showOwnerSheet(roster); };
+      if (this.#presentationView === 'lock') {
+        screen.replaceChildren(createPreviewLockScreen({ document: this.#document, ownerLabel: selected.label, overview, onOwner, onUnlock: target => { this.#presentationView = 'home'; if (target && target !== 'home') this.#openRoute(target); else void this.renderActive(); }, onTarget: target => { this.#presentationView = 'home'; this.#openRoute(target); }, onClose: () => this.close() }));
+      } else {
+        screen.replaceChildren(createPreviewHome({ document: this.#document, ownerLabel: selected.label, overview, homePage: this.#homePage, onOwner, onApp: nextRoute => this.#openRoute(nextRoute), onPage: (page, pager) => { this.#homePage = Math.max(0, Math.min(1, Number(page) || 0)); const left = this.#homePage * Math.max(1, Number(pager.clientWidth || 0)); if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior: 'smooth' }); else pager.scrollLeft = left; }, onDock: action => { if (action === 'owner') onOwner(); else this.#openRoute(action); }, onLock: () => this.#lock() }));
+      }
+      this.#metrics.appRegionUpdates += 1; return overview;
     }
+
+    screen.replaceChildren(this.#loadingScreen(route));
     let view;
-    try {
-      view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route: this.#router.route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId });
-    } catch (error) {
-      if (this.#router.route === 'launcher' || !this.#content) throw error;
-      const failed = element(this.#document, 'section'); failed.className = 'tmrw-v3-panel'; failed.dataset.route = this.#router.route;
-      failed.append(createAppHeader({ document: this.#document, title: APP_TITLES[this.#router.route], onBack: () => this.#router.navigate('launcher') }));
-      const alert = element(this.#document, 'p', `${APP_TITLES[this.#router.route]} is unavailable: ${error instanceof Error ? error.message : String(error)}`); alert.setAttribute('role', 'alert');
-      const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-app'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); });
-      failed.append(alert, retry); this.#content.replaceChildren(failed); this.#metrics.appRegionUpdates += 1; return null;
-    }
-    if (this.#root) this.#root.dataset.theme = view.settings.themeId || 'light-blue';
-    this.#selectedThreadId = view.activeThreadId || this.#selectedThreadId;
-    this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
+    try { view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId, selectedLiveSessionId: this.#selectedLiveSessionId }); }
+    catch (error) { if (!isCurrent()) return null; screen.replaceChildren(this.#errorScreen(route, error)); this.#metrics.appRegionUpdates += 1; return null; }
+    if (!isCurrent()) return null;
+    root.dataset.theme = view.settings?.themeId || 'light-blue';
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
-    const apps = homeViewModel({ developerMode: view.settings.developerDiagnosticsEnabled, messagingEnabled: view.messagingEnabled, callsEnabled: view.callsEnabled, socialEnabled: view.socialEnabled, liveEnabled: view.liveEnabled, notificationsEnabled: view.notificationsEnabled, phoneWorldEnabled: view.phoneWorldUtilitiesEnabled, calendarEnabled: view.calendarEnabled, commerceEnabled: view.commerceEnabled, badges: view.phoneWorld.badges });
-    const appPages = []; for (let offset = 0; offset < apps.length; offset += 6) appPages.push(Object.freeze({ id: `home-page-${offset / 6}`, index: offset / 6, apps: apps.slice(offset, offset + 6) }));
-    const createAppButton = app => {
-      const button = element(this.#document, 'button'); button.type = 'button'; button.className = 'tmrw-v3-home-app tmrw-phone-app'; button.dataset.route = app.id;
-      const icon = createHomeAppIcon({ document: this.#document, appId: app.id }); icon.className += ' tmrw-phone-app-icon';
-      const label = element(this.#document, 'b', app.label); label.className = 'tmrw-v3-home-app-label';
-      const badge = element(this.#document, 'span'); badge.className = 'tmrw-v3-home-app-badge'; badge.setAttribute('aria-hidden', 'true');
-      if (app.badge > 0) badge.textContent = String(app.badge > 99 ? '99+' : app.badge); else badge.hidden = true;
-      button.append(icon, label, badge); button.dataset.badge = String(app.badge); button.dataset.disposition = app.disposition; button.disabled = !app.available;
-      button.title = app.reason || app.title || app.label; button.setAttribute('aria-label', app.badge > 0 ? `${app.label}, ${app.badge} unread` : app.label);
-      if (app.reason) button.setAttribute('aria-description', app.reason); button.addEventListener('click', () => this.#router.navigate(app.id)); return button;
-    };
-    this.#navRegion.patch(appPages, {
-      key: page => page.id,
-      create: page => { const section = element(this.#document, 'section'); section.className = page.index === 0 ? 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main' : 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--apps'; section.dataset.page = String(page.index); const grid = element(this.#document, 'div'); grid.className = `tmrw-phone-app-grid ${page.index === 0 ? 'tmrw-phone-primary-grid' : 'tmrw-phone-secondary-grid'}`; section.append(grid); return section; },
-      update: (section, page) => {
-        section.className = page.index === 0 ? 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main' : 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--apps'; section.dataset.page = String(page.index);
-        let grid = section.children?.[section.children.length - 1]; if (!grid || !String(grid.className || '').includes('tmrw-phone-app-grid')) { grid = element(this.#document, 'div'); section.append(grid); }
-        grid.className = `tmrw-phone-app-grid ${page.index === 0 ? 'tmrw-phone-primary-grid' : 'tmrw-phone-secondary-grid'}`; grid.replaceChildren(...page.apps.map(createAppButton));
-        if (page.index === 0) {
-          const owner = element(this.#document, 'button'); owner.type = 'button'; owner.className = 'tmrw-v3-owner-pill tmrw-phone-owner-pill'; owner.dataset.action = 'open-phone-selector'; owner.setAttribute('aria-label', `Choose phone. Current: ${this.#selectedPerspectiveLabel}`);
-          const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'small', 'เจ้าของโทรศัพท์'), element(this.#document, 'strong', this.#selectedPerspectiveLabel)); owner.append(createPreviewIcon({ document: this.#document, name: 'user', size: 22 }), copy, createPreviewIcon({ document: this.#document, name: 'chevron', size: 16 })); owner.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = false; });
-          const clock = element(this.#document, 'section'); clock.className = 'tmrw-v3-home-clock tmrw-phone-clock-block'; const time = element(this.#document, 'div', previewClock()); time.className = 'tmrw-v3-home-time tmrw-phone-home-time'; const date = element(this.#document, 'div', previewDate()); date.className = 'tmrw-v3-home-date tmrw-phone-home-date'; const state = view.opened.authorization.granted ? (view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน') : 'โทรศัพท์ถูกล็อก'; clock.append(time, date, element(this.#document, 'p', state));
-          section.replaceChildren(owner, clock, grid);
-        } else section.replaceChildren(grid);
-      },
-    });
-    this.#syncHomePager(appPages.length);
-    if (this.#navigation) this.#navigation.hidden = this.#router.route !== 'launcher';
-    if (this.#pageDots) this.#pageDots.hidden = this.#router.route !== 'launcher';
-    if (this.#content) this.#content.hidden = this.#router.route === 'launcher';
-    await this.#renderContent(view); return view;
+    this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
+    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content); this.#metrics.appRegionUpdates += 1; return view;
   }
-  async selectDevice(deviceId) { if (deviceId === this.#selectedDeviceId) return; this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#selectedDeviceId = deviceId; this.#selectedGalleryRecordId = null; this.#selectedFileRecordId = null; this.#locationDraftLabel = ''; this.#selectedLocationAudienceIds.clear(); this.#calendarFormMode = null; this.#lastCalendarError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#lastCommerceError = null; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastSocialActionError = null; this.#socialBusy = false; this.#pendingRemoval = null; await this.render(); }
+
+  #loadingScreen(route) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-utility-list'; const row = element(this.#document, 'p', `กำลังโหลด ${APP_TITLES[route] || route}…`); row.setAttribute('role','status'); body.append(row); return wrapPreviewApp({ document:this.#document, kind:appKind(route), app:route, title:APP_TITLES[route]||route, body, onBack:()=>this.#goHome() }); }
+  #errorScreen(route, error) { const body=element(this.#document,'section');body.className='tmrw-phone-utility-list';const alert=element(this.#document,'p',`${APP_TITLES[route]||route} ยังไม่พร้อมใช้งาน`);alert.setAttribute('role','alert');const retry=element(this.#document,'button','Retry');retry.type='button';retry.dataset.action='retry-app';retry.addEventListener('click',()=>{retry.disabled=true;void this.renderActive();});body.append(alert,retry);return wrapPreviewApp({document:this.#document,kind:appKind(route),app:route,title:APP_TITLES[route]||route,body,onBack:()=>this.#goHome()}); }
+
+  async selectDevice(deviceId) { if (deviceId === this.#selectedDeviceId) return; this.#controller.close({ scope:this.#scope, deviceId:this.#selectedDeviceId }); this.#selectedDeviceId=deviceId; this.#selectedThreadId=null; this.#selectedGalleryRecordId=null; this.#selectedFileRecordId=null; this.#locationDraftLabel=''; this.#selectedLocationAudienceIds.clear(); this.#calendarFormMode=null; this.#lastCalendarError=null; this.#selectedWalletRecordId=null; this.#selectedShopRecordId=null; this.#checkoutConfirmationRecordId=null; this.#checkoutResult=null; this.#shopStaleRecordId=null; this.#checkoutBusy=false; this.#lastCommerceError=null; this.#selectedNoteRecordId=null; this.#noteFormMode=null; this.#pendingNoteDeleteId=null; this.#searchQuery=''; this.#submittedSearchQuery=''; this.#searchClearBusy=false; this.#lastPersonalError=null; this.#lastSocialActionError=null; this.#socialBusy=false; this.#pendingRemoval=null; await this.render(); }
   async renderActive() { if (this.#root) await this.render(); }
-  #paintHomePageDots() {
-    if (!this.#pageDots) return;
-    for (const dot of this.#pageDots.children || []) {
-      const page = Number(dot.dataset?.homePage || 0);
-      const active = page === this.#homePage;
-      dot.className = active ? 'tmrw-v3-home-page-dot is-active' : 'tmrw-v3-home-page-dot';
-      dot.setAttribute('aria-current', String(active));
+
+  #socialNav(route) {
+    const nav=element(this.#document,'nav');nav.className='tmrw-phone-social-nav'; const tabs=[['feed','home','ฟีด'],['live','live','ไลฟ์'],['messages','send','ข้อความ'],['notifications','heart','กิจกรรม'],['insungram','user','โปรไฟล์']];
+    for(const [target,name,label] of tabs){const button=element(this.#document,'button');button.type='button';button.className=route===target?'is-active':'';button.setAttribute('aria-label',label);addIcon(this.#document,button,name,25);if(target==='messages'){const i=element(this.#document,'i');button.append(i);}button.addEventListener('click',()=>this.#openRoute(target));nav.append(button);} return nav;
+  }
+  #socialShell(route,title,body) { const root=element(this.#document,'div');root.className='tmrw-phone-social-shell';root.append(createPreviewStatusBar({document:this.#document}));const header=element(this.#document,'header');header.className='tmrw-phone-social-header';const back=element(this.#document,'button');back.type='button';addIcon(this.#document,back,'back',23);back.addEventListener('click',()=>this.#goHome());const owner=element(this.#document,'button');owner.type='button';owner.className='tmrw-phone-social-title';owner.append(element(this.#document,'strong',title));if(route==='messages'||route==='insungram')addIcon(this.#document,owner,'chevron',15);owner.addEventListener('click',()=>{void this.#models.deviceRoster(this.#scope).then(devices=>this.#showOwnerSheet(devices));});const more=element(this.#document,'button');more.type='button';more.disabled=true;addIcon(this.#document,more,route==='messages'?'plus':'more',24);header.append(back,owner,more);root.append(header);const main=element(this.#document,'main');main.className='tmrw-phone-social-content';main.append(body);root.append(main,this.#socialNav(route));const indicator=element(this.#document,'div');indicator.className='tmrw-phone-home-indicator';root.append(indicator);return root; }
+
+  #renderFeed(view) {
+    const feed = element(this.#document, 'section'); feed.className = 'tmrw-phone-feed';
+    if (!view.opened.authorization.granted) { feed.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return this.#socialShell('feed', 'Insungram', feed); }
+    if (view.socialError) { const p = element(this.#document, 'p', 'โหลด Feed ไม่สำเร็จ'); p.setAttribute('role', 'alert'); const retry = element(this.#document, 'button', 'Retry'); retry.dataset.action = 'retry-feed'; retry.addEventListener('click', () => void this.renderActive()); feed.append(p, retry); return this.#socialShell('feed', 'Insungram', feed); }
+    const intro = element(this.#document, 'div'); intro.className = 'tmrw-phone-feed-intro'; const introCopy = element(this.#document, 'div'); introCopy.append(element(this.#document, 'small', `FOR ${this.#selectedPerspectiveLabel.toUpperCase()}`), element(this.#document, 'strong', `ฟีดของ ${this.#selectedPerspectiveLabel}`)); const settings = element(this.#document, 'button'); settings.disabled = true; addIcon(this.#document, settings, 'settings', 18); intro.append(introCopy, settings); feed.append(intro);
+    if (this.#social && view.opened.perspective.accountId) { const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-feed-intro tmrw-v3-feed-composer'; const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Post text'); input.placeholder = 'เขียนโพสต์…'; const send = element(this.#document, 'button', 'โพสต์'); send.dataset.action = 'create-feed-post'; send.disabled = true; input.addEventListener('input', () => { send.disabled = this.#socialBusy || !String(input.value || '').trim(); }); send.addEventListener('click', () => { if (this.#socialBusy || !String(input.value || '').trim()) return; this.#socialBusy = true; send.disabled = true; void this.#createPost(view, input).finally(() => { this.#socialBusy = false; }); }); composer.append(input, send); feed.append(composer); }
+    const posts = feedViewModel(view.feed);
+    for (const post of posts) {
+      const authorLabel = view.feedAccountLabels?.[post.authorAccountId] || 'บัญชี'; const article = element(this.#document, 'article'); article.className = 'tmrw-phone-post'; article.dataset.postId = post.postId;
+      const header = element(this.#document, 'header'); header.append(createPreviewAvatar({ document: this.#document, label: authorLabel, size: 'md' })); const meta = element(this.#document, 'div'); meta.append(element(this.#document, 'strong', authorLabel), element(this.#document, 'span', post.audience || '')); header.append(meta); const more = element(this.#document, 'button'); more.disabled = true; addIcon(this.#document, more, 'more', 18); header.append(more); article.append(header, element(this.#document, 'p', post.text));
+      const actions = element(this.#document, 'div'); actions.className = 'tmrw-phone-post-actions'; const heart = element(this.#document, 'button'); heart.disabled = true; addIcon(this.#document, heart, 'heart', 20); heart.append(element(this.#document, 'span', '—')); const comment = element(this.#document, 'button'); comment.disabled = true; addIcon(this.#document, comment, 'comment', 20); comment.append(element(this.#document, 'span', '—')); const send = element(this.#document, 'button'); send.disabled = true; addIcon(this.#document, send, 'send', 20); actions.append(heart, comment, send); article.append(actions); feed.append(article);
     }
+    if (!posts.length) { const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-empty-state'; empty.append(element(this.#document, 'strong', 'ฟีดยังว่างอยู่'), element(this.#document, 'p', 'ยังไม่มีโพสต์ในข้อมูล Production ปัจจุบัน')); feed.append(empty); }
+    const end = element(this.#document, 'div'); end.className = 'tmrw-phone-refeed-zone'; const mark = element(this.#document, 'i'); addIcon(this.#document, mark, 'refresh', 30); end.append(mark, element(this.#document, 'strong', 'รีฟีด — หาโพสต์ใหม่เพิ่ม'), element(this.#document, 'p', 'การสร้างโพสต์อัตโนมัติปิดอยู่')); const disabled = element(this.#document, 'button', 'โหลดโพสต์เพิ่ม'); disabled.disabled = true; end.append(disabled); feed.append(end); return this.#socialShell('feed', 'Insungram', feed);
   }
-  #scrollHomePager(page, { behavior = 'smooth' } = {}) {
-    const next = Math.max(0, Math.min(this.#homePageCount - 1, Number(page) || 0));
-    this.#homePage = next;
-    this.#paintHomePageDots();
-    const pager = this.#navigation;
-    if (!pager) return;
-    const width = Math.max(1, Number(pager.clientWidth || 0));
-    const left = next * width;
-    if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior });
-    else pager.scrollLeft = left;
-  }
-  #scheduleHomePagerSync() {
-    if (!this.#navigation) return;
-    if (this.#homePagerTimer != null) clearTimeout(this.#homePagerTimer);
-    this.#homePagerTimer = setTimeout(() => {
-      this.#homePagerTimer = null;
-      const width = Math.max(1, Number(this.#navigation?.clientWidth || 0));
-      const page = Math.round(Number(this.#navigation?.scrollLeft || 0) / width);
-      this.#homePage = Math.max(0, Math.min(this.#homePageCount - 1, page));
-      this.#paintHomePageDots();
-    }, 70);
-  }
-  #syncHomePager(pageCount) {
-    const count = Math.max(1, Number(pageCount) || 1);
-    this.#homePageCount = count;
-    this.#homePage = Math.max(0, Math.min(count - 1, this.#homePage));
-    if (this.#pageDots) {
-      const dots = [];
-      for (let page = 0; page < count; page += 1) {
-        const dot = element(this.#document, 'button'); dot.type = 'button'; dot.dataset.homePage = String(page); dot.setAttribute('aria-label', `หน้าโฮม ${page + 1}`); dot.addEventListener('click', () => this.#scrollHomePager(page)); dots.push(dot);
-      }
-      this.#pageDots.replaceChildren(...dots); this.#paintHomePageDots();
+
+  #renderMessages(view) {
+    if (!view.opened.authorization.granted) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-messages'; body.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return this.#socialShell('messages', this.#selectedPerspectiveLabel, body); }
+    if (this.#selectedThreadId) return this.#renderThread(view);
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-messages';
+    const search = element(this.#document, 'label'); search.className = 'tmrw-phone-search'; addIcon(this.#document, search, 'search', 19);
+    const input = element(this.#document, 'input'); input.placeholder = 'ค้นหาข้อความ'; input.setAttribute('autocomplete', 'off'); search.append(input); body.append(search);
+    const noteRow = element(this.#document, 'div'); noteRow.className = 'tmrw-phone-note-row';
+    const own = element(this.#document, 'button'); own.type = 'button'; own.disabled = true;
+    const bubble = element(this.#document, 'span', 'โน้ตของคุณ'); bubble.className = 'tmrw-phone-note-bubble';
+    const avatar = element(this.#document, 'span'); avatar.className = 'tmrw-phone-note-avatar'; avatar.append(createPreviewAvatar({ document: this.#document, label: this.#selectedPerspectiveLabel, size: 'lg' }));
+    own.append(bubble, avatar, element(this.#document, 'b', 'โน้ตของคุณ')); noteRow.append(own); body.append(noteRow);
+    const heading = element(this.#document, 'div'); heading.className = 'tmrw-phone-message-section-title'; heading.append(element(this.#document, 'strong', 'ข้อความ'));
+    const requests = element(this.#document, 'button', 'คำขอ'); requests.type = 'button'; requests.disabled = true; requests.setAttribute('aria-label', 'คำขอยังไม่มีข้อมูล'); heading.append(requests); body.append(heading);
+    const list = element(this.#document, 'div'); list.className = 'tmrw-phone-thread-list'; const rows = [];
+    for (const thread of view.threadRows || []) {
+      const row = element(this.#document, 'button'); row.type = 'button'; row.className = 'tmrw-phone-thread'; row.dataset.threadId = thread.threadId;
+      row.append(createPreviewAvatar({ document: this.#document, label: thread.label, size: 'lg' }));
+      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', thread.label));
+      if (thread.secondary) copy.append(element(this.#document, 'em', thread.secondary));
+      copy.append(element(this.#document, 'small', thread.preview)); row.append(copy);
+      row.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); list.append(row); rows.push({ row, thread });
     }
-    this.#scrollHomePager(this.#homePage, { behavior: 'auto' });
+    if (!rows.length) list.append(element(this.#document, 'p', 'ยังไม่มี DM หรือกรุ๊ปแชท'));
+    input.addEventListener('input', () => { const query = String(input.value || '').trim().toLocaleLowerCase(); for (const { row, thread } of rows) row.hidden = Boolean(query) && !`${thread.label} ${thread.secondary || ''} ${thread.preview}`.toLocaleLowerCase().includes(query); });
+    body.append(list); return this.#socialShell('messages', this.#selectedPerspectiveLabel, body);
   }
+  #renderThread(view) {
+    const thread = (view.threadRows || []).find(row => row.threadId === this.#selectedThreadId) || (view.threadRows || [])[0] || null;
+    const title = thread?.label || 'ข้อความ'; const subtitle = thread?.secondary || (thread ? `${thread.participantCount} คน` : (view.messages.length ? `${view.messages.length} ข้อความ` : 'ยังไม่มีข้อความ'));
+    const root = element(this.#document, 'div'); root.className = 'tmrw-phone-thread-screen'; root.append(createPreviewStatusBar({ document: this.#document }));
+    const header = element(this.#document, 'header'); header.className = 'tmrw-phone-chat-header'; const back = element(this.#document, 'button'); addIcon(this.#document, back, 'back', 23); back.addEventListener('click', () => { this.#selectedThreadId = null; void this.renderActive(); });
+    header.append(back, createPreviewAvatar({ document: this.#document, label: title, size: 'sm' })); const info = element(this.#document, 'div'); info.append(element(this.#document, 'strong', title), element(this.#document, 'small', subtitle)); header.append(info);
+    const call = element(this.#document, 'button'); call.disabled = true; addIcon(this.#document, call, 'phone', 21); const more = element(this.#document, 'button'); more.disabled = true; addIcon(this.#document, more, 'more', 21); header.append(call, more); root.append(header);
+    const context = element(this.#document, 'div'); context.className = 'tmrw-phone-chat-context'; const note = element(this.#document, 'div'); note.append(element(this.#document, 'small', 'NOTE'), element(this.#document, 'p', 'ยังไม่มีโน้ตสำหรับแชทนี้')); const music = element(this.#document, 'div'); music.append(element(this.#document, 'small', 'NOW PLAYING'), element(this.#document, 'strong', 'ไม่มีเพลง'), element(this.#document, 'span', '')); context.append(note, music); root.append(context);
+    const contactFor = instanceId => (view.contacts || []).find(contact => contact.targetInstanceId === instanceId) || null;
+    const bubbles = element(this.#document, 'main'); bubbles.className = 'tmrw-phone-bubbles'; const day = element(this.#document, 'div'); day.className = 'tmrw-phone-day-divider'; day.append(element(this.#document, 'span', 'EARLIER · TODAY')); bubbles.append(day);
+    for (const message of view.messages) {
+      const mine = message.senderAccountId === view.opened.perspective.accountId; const contact = mine ? null : contactFor(message.actualAuthorInstanceId); const authorLabel = mine ? this.#selectedPerspectiveLabel : (contact?.savedName || contact?.number || title);
+      const row = element(this.#document, 'div'); row.className = `tmrw-phone-bubble-row ${mine ? 'is-mine' : ''}`; row.dataset.messageId = message.messageId; row.setAttribute('aria-label', authorLabel);
+      if (!mine) row.append(createPreviewAvatar({ document: this.#document, label: authorLabel, size: 'xs' })); const bubble = element(this.#document, 'div'); if (thread?.kind === 'group' && !mine) { const sender = element(this.#document, 'b', authorLabel); sender.className = 'tmrw-phone-bubble-sender'; bubble.append(sender); } bubble.append(element(this.#document, 'p', message.text)); row.append(bubble); bubbles.append(row);
+    }
+    root.append(bubbles);
+    const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-readonly-composer tmrw-v3-message-composer'; const plus = element(this.#document, 'button'); plus.disabled = true; addIcon(this.#document, plus, 'plus', 20); const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Message text'); input.placeholder = 'พิมพ์ข้อความ…'; const send = element(this.#document, 'button'); send.className = 'is-send'; send.disabled = true; addIcon(this.#document, send, 'send', 20); input.addEventListener('input', () => { send.disabled = !String(input.value || '').trim(); }); let busy = false; send.addEventListener('click', () => { if (busy || send.disabled) return; busy = true; send.disabled = true; void this.#sendMessage(view, input).finally(() => { busy = false; }); }); composer.append(plus, input, send); root.append(composer); const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-phone-home-indicator'; root.append(indicator); return root;
+  }
+
+  #renderLive(view) {
+    if (!view.opened.authorization.granted) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-live-list'; body.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return this.#socialShell('live', 'Live', body); }
+    if (view.liveError) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-live-list'; const p = element(this.#document, 'p', 'โหลด Live ไม่สำเร็จ'); p.setAttribute('role', 'alert'); const retry = element(this.#document, 'button', 'ลองอีกครั้ง'); retry.type = 'button'; retry.dataset.action = 'retry-live'; retry.addEventListener('click', () => void this.renderActive()); body.append(p, retry); return this.#socialShell('live', 'Live', body); }
+    if (this.#selectedLiveSessionId && view.selectedLive?.sessionId === this.#selectedLiveSessionId) {
+      const room = view.selectedLive; const hostLabel = view.liveAccountLabels?.[room.hostAccountId] || room.title || 'Live';
+      const root = element(this.#document, 'div'); root.className = 'tmrw-phone-live-viewer'; root.append(createPreviewStatusBar({ document: this.#document }));
+      const header = element(this.#document, 'header'); const back = element(this.#document, 'button'); addIcon(this.#document, back, 'back', 23); back.addEventListener('click', () => { this.#selectedLiveSessionId = null; void this.renderActive(); });
+      header.append(back, createPreviewAvatar({ document: this.#document, label: hostLabel, size: 'sm' })); const info = element(this.#document, 'div'); info.append(element(this.#document, 'strong', hostLabel), element(this.#document, 'small', `${Number(view.liveViewers?.count || 0).toLocaleString()} กำลังรับชม · ${(view.liveMessages?.items || []).length} ข้อความสด`)); header.append(info, element(this.#document, 'i', 'LIVE'));
+      const close = element(this.#document, 'button'); addIcon(this.#document, close, 'close', 22); close.addEventListener('click', () => { this.#selectedLiveSessionId = null; void this.renderActive(); }); header.append(close); root.append(header);
+      const stage = element(this.#document, 'div'); stage.className = 'tmrw-phone-live-stage'; const orb = element(this.#document, 'div'); orb.className = 'tmrw-phone-live-orb'; orb.append(createPreviewAvatar({ document: this.#document, label: hostLabel, size: 'xxl' }), element(this.#document, 'span', room.title), element(this.#document, 'small', room.topic || 'LIVE')); stage.append(orb, element(this.#document, 'p', room.description || 'ยังไม่มีคำอธิบายเพิ่มเติม')); root.append(stage);
+      const chat = element(this.#document, 'div'); chat.className = 'tmrw-phone-live-chat'; for (const message of view.liveMessages?.items || []) { const p = element(this.#document, 'p'); p.dataset.liveMessageId = message.messageId; p.append(element(this.#document, 'strong', `@${view.liveAccountLabels?.[message.authorAccountId] || 'ผู้ชม'}`), this.#document.createTextNode ? this.#document.createTextNode(` ${message.text}`) : element(this.#document, 'span', ` ${message.text}`)); chat.append(p); } if (!(view.liveMessages?.items || []).length) chat.append(element(this.#document, 'p', 'ยังไม่มีข้อความสด')); root.append(chat);
+      const controls = element(this.#document, 'div'); controls.className = 'tmrw-phone-live-controls'; controls.append(element(this.#document, 'span', 'อ่านอย่างเดียว')); const heart = element(this.#document, 'button'); heart.disabled = true; addIcon(this.#document, heart, 'heart', 22); controls.append(heart); root.append(controls); const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-phone-home-indicator'; root.append(indicator); return root;
+    }
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-live-list'; const sessions = view.liveSessions?.items || [];
+    if (!sessions.length) { const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-live-empty'; addIcon(this.#document, empty, 'live', 31); empty.append(element(this.#document, 'strong', 'ตอนนี้ยังไม่มีใครกำลังไลฟ์'), element(this.#document, 'p', 'ยังไม่มี Live session ในข้อมูลปัจจุบัน')); body.append(empty); }
+    else { const hero = element(this.#document, 'div'); hero.className = 'tmrw-phone-live-hero'; hero.append(element(this.#document, 'span', 'LIVE NOW'), element(this.#document, 'h2', 'ชีวิตนอกฉากกำลังเกิดขึ้น'), element(this.#document, 'p', 'ห้องสดจากข้อมูล Production ปัจจุบัน')); body.append(hero); for (const session of sessions) { const card = element(this.#document, 'button'); card.type = 'button'; card.className = 'tmrw-phone-live-card'; card.dataset.liveSessionId = session.sessionId; const hostLabel = view.liveAccountLabels?.[session.hostAccountId] || session.title || 'Live'; const cover = element(this.#document, 'div'); cover.className = 'tmrw-phone-live-cover'; cover.append(createPreviewAvatar({ document: this.#document, label: hostLabel, size: 'xl' }), element(this.#document, 'i', 'LIVE')); const copy = element(this.#document, 'div'); copy.append(element(this.#document, 'small', session.topic || 'LIVE'), element(this.#document, 'strong', session.title), element(this.#document, 'p', `${hostLabel} · ${session.status}`)); card.append(cover, copy, createPreviewIcon({ document: this.#document, name: 'chevron', size: 20 })); card.addEventListener('click', () => { this.#selectedLiveSessionId = session.sessionId; void this.renderActive(); }); body.append(card); } }
+    const end = element(this.#document, 'div'); end.className = 'tmrw-phone-live-refresh'; const mark = element(this.#document, 'i'); addIcon(this.#document, mark, 'refresh', 25); const copy = element(this.#document, 'div'); copy.append(element(this.#document, 'strong', 'อยากดูอะไรสด ๆ เพิ่มไหม'), element(this.#document, 'p', 'การสร้าง Live อัตโนมัติปิดอยู่')); const disabled = element(this.#document, 'button', 'รีไลฟ์'); disabled.disabled = true; end.append(mark, copy, disabled); body.append(end); return this.#socialShell('live', 'Live', body);
+  }
+
+  #renderActivity(view) {
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-explore';
+    const card = (iconName, title, detail) => { const section = element(this.#document, 'div'); section.className = 'tmrw-phone-activity-card'; const header = element(this.#document, 'header'); const mark = element(this.#document, 'span'); addIcon(this.#document, mark, iconName, 21); const copy = element(this.#document, 'div'); copy.append(element(this.#document, 'strong', title), element(this.#document, 'small', detail)); header.append(mark, copy); section.append(header); return section; };
+    const recent = card('heart', 'กิจกรรมล่าสุด', 'การแจ้งเตือนของโทรศัพท์เครื่องนี้'); const items = notificationCenterViewModel({ items: view.phoneWorld.recent });
+    for (const item of items) { const row = element(this.#document, 'button'); row.type = 'button'; row.dataset.notificationId = item.notificationId; row.append(createPreviewAvatar({ document: this.#document, label: item.title, size: 'sm' })); const text = element(this.#document, 'span'); text.append(element(this.#document, 'b', item.title), element(this.#document, 'small', item.preview || '')); row.append(text, element(this.#document, 'i', 'ล่าสุด')); row.addEventListener('click', () => void this.#openNotification(view, item)); recent.append(row); }
+    if (!items.length) { const empty = element(this.#document, 'p', 'ยังไม่มีกิจกรรม'); empty.className = 'tmrw-phone-empty-state'; recent.append(empty); } body.append(recent);
+    const followed = card('userPlus', 'เพิ่งกดติดตาม', 'บัญชีที่เจ้าของเครื่องเพิ่มล่าสุด'); const followedEmpty = element(this.#document, 'p', 'ยังไม่มีข้อมูลบัญชีที่ติดตาม'); followedEmpty.className = 'tmrw-phone-empty-state'; followed.append(followedEmpty); body.append(followed);
+    const trending = card('trend', 'กำลังเป็นที่นิยม', 'หัวข้อจากข้อมูลสังคมของ Branch นี้'); const trendingEmpty = element(this.#document, 'p', 'ยังไม่มีข้อมูลหัวข้อกำลังนิยม'); trendingEmpty.className = 'tmrw-phone-empty-state'; trending.append(trendingEmpty); body.append(trending);
+    return this.#socialShell('notifications', 'กิจกรรม', body);
+  }
+  #renderProfile(view) {
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-profile'; const ownedPosts = feedViewModel(view.feed).filter(post => post.authorAccountId === view.opened.perspective.accountId);
+    const top = element(this.#document, 'div'); top.className = 'tmrw-phone-profile-top'; top.append(createPreviewAvatar({ document: this.#document, label: this.#selectedPerspectiveLabel, size: 'xxl' })); const stats = element(this.#document, 'div'); stats.className = 'tmrw-phone-profile-stats';
+    for (const [value, label] of [[ownedPosts.length, 'โพสต์'], ['—', 'ผู้ติดตาม'], ['—', 'กำลังติดตาม']]) { const span = element(this.#document, 'span'); span.append(element(this.#document, 'b', String(value)), element(this.#document, 'small', label)); stats.append(span); } top.append(stats); body.append(top);
+    const bio = element(this.#document, 'div'); bio.className = 'tmrw-phone-profile-bio'; const profileCopy = view.socialProfile?.captionStyle || (view.socialProfile?.typicalTopics || []).join(' · ') || 'ยังไม่มีข้อมูลโปรไฟล์เพิ่มเติม'; bio.append(element(this.#document, 'strong', this.#selectedPerspectiveLabel), element(this.#document, 'p', profileCopy)); body.append(bio);
+    const buttons = element(this.#document, 'div'); buttons.className = 'tmrw-phone-profile-buttons'; for (const label of ['แก้ไขโปรไฟล์', 'แชร์โปรไฟล์']) { const button = element(this.#document, 'button', label); button.disabled = true; buttons.append(button); } body.append(buttons);
+    const tabs = element(this.#document, 'div'); tabs.className = 'tmrw-phone-profile-tabs'; const postsTab = element(this.#document, 'button', 'โพสต์ข้อความ'); postsTab.className = 'is-active'; const savedTab = element(this.#document, 'button', 'บันทึกไว้'); savedTab.disabled = true; tabs.append(postsTab, savedTab); body.append(tabs);
+    const posts = element(this.#document, 'div'); posts.className = 'tmrw-phone-profile-posts'; for (const post of ownedPosts.slice(0, 12)) { const article = element(this.#document, 'article'); article.dataset.postId = post.postId; article.append(element(this.#document, 'small', view.feedAccountLabels?.[post.authorAccountId] || this.#selectedPerspectiveLabel), element(this.#document, 'p', post.text)); const footer = element(this.#document, 'footer'); footer.append(createPreviewIcon({ document: this.#document, name: 'heart', size: 17 }), element(this.#document, 'span', '—'), createPreviewIcon({ document: this.#document, name: 'comment', size: 17 }), element(this.#document, 'span', '—')); article.append(footer); posts.append(article); } if (!ownedPosts.length) { const empty = element(this.#document, 'p', 'ยังไม่มีโพสต์ของบัญชีนี้'); empty.className = 'tmrw-phone-empty-state'; posts.append(empty); } body.append(posts);
+    return this.#socialShell('insungram', this.#selectedPerspectiveLabel, body);
+  }
+
+  #renderCallsBase(view) { const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const historyTab=element(this.#document,'button','Call History');historyTab.className='is-active';const contactsTab=element(this.#document,'button','Saved Names');contactsTab.addEventListener('click',()=>this.#router.navigate('contacts'));tabs.append(historyTab,contactsTab);body.append(tabs);const filters=element(this.#document,'div');filters.className='tmrw-phone-filter-chips tmrw-phone-soft-chips tmrw-phone-call-filters';for(const label of ['All','Missed','Outgoing','Voice','Video']){const b=element(this.#document,'button',label);b.disabled=true;if(label==='All')b.className='is-active';filters.append(b);}body.append(filters);const groups=element(this.#document,'div');groups.className='tmrw-phone-call-groups';if(!view.callUi.history.length)groups.append(element(this.#document,'p','ยังไม่มี Call History'));for(const call of view.callUi.history){const section=element(this.#document,'section');section.className='tmrw-phone-call-group';section.append(element(this.#document,'h3','Today'));const row=element(this.#document,'button');row.className='tmrw-phone-call-row';row.dataset.callSessionId=call.callSessionId;row.append(createPreviewAvatar({document:this.#document,label:call.displayLabel,size:'sm'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',call.displayLabel),element(this.#document,'small',call.statusLabel));row.append(copy,element(this.#document,'time',call.timeLabel||'ล่าสุด'),createPreviewIcon({document:this.#document,name:'more',size:17}));row.addEventListener('click',()=>{this.#selectedCallSessionId=call.callSessionId;this.#closedCallSurfaceId=null;void this.renderActive();});section.append(row);groups.append(section);}body.append(groups);return wrapPreviewApp({document:this.#document,kind:'personal',app:'calls',title:'Phone',subtitle:'Call History และ Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()}); }
+  #renderContacts(view) { const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const history=element(this.#document,'button','Call History');history.addEventListener('click',()=>this.#router.navigate('calls'));const saved=element(this.#document,'button','Saved Names');saved.className='is-active';tabs.append(history,saved);body.append(tabs);const search=element(this.#document,'label');search.className='tmrw-phone-personal-search tmrw-phone-soft-search';addIcon(this.#document,search,'search',20);const input=element(this.#document,'input');input.placeholder='Search saved names...';input.disabled=true;search.append(input);body.append(search);const list=element(this.#document,'div');list.className='tmrw-phone-saved-list';for(const contact of contactsViewModel(view.contacts)){const row=element(this.#document,'button');row.dataset.contactPointId=contact.id;row.append(createPreviewAvatar({document:this.#document,label:contact.primary,size:'md'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',contact.primary),element(this.#document,'small',contact.secondary));row.append(copy);const icon=element(this.#document,'b');addIcon(this.#document,icon,'phone',18);row.append(icon);list.append(row);}if(!view.contacts.length)list.append(element(this.#document,'p','ยังไม่มี Saved Names'));body.append(list);return wrapPreviewApp({document:this.#document,kind:'personal',app:'contacts',title:'Phone',subtitle:'Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()}); }
+
+  #commerceNav(route) { return createPreviewCommerceNav({ document:this.#document, active:route, onNavigate:target=>{ if(target==='launcher')this.#goHome(); else this.#openRoute(target); } }); }
+  #lifestyleNav(route) { const calendar=route==='calendar'; const tabs=calendar?[['today','วันนี้','calendar'],['calendar','ปฏิทิน','grid'],['tasks','งาน','tasks'],['agenda','กำหนดการ','agenda']]:[['summary','สรุป','health'],['activity','กิจกรรม','runner'],['sleep','การนอน','moon'],['vitals','สัญญาณชีพ','pulse']]; const active=calendar?this.#calendarViewTab:this.#healthViewTab; return createPreviewLifestyleNav({ document:this.#document, app:route, tabs, active, onTab:id=>{ if(calendar)this.#calendarViewTab=id; else this.#healthViewTab=id; void this.renderActive(); } }); }
+  #utilityWrap(route, body, title=APP_TITLES[route]) { const bottom=['wallet','shop'].includes(route)?this.#commerceNav(route):['calendar','health'].includes(route)?this.#lifestyleNav(route):null; const subtitles={notes:'บันทึกทุกไอเดีย สำคัญทุกวัน',search:'สิ่งที่เคยค้น เปิด และกลับไปดู',wallet:'เงินและรายการของเครื่องนี้',shop:'สินค้าและคำสั่งซื้อของเครื่องนี้',gallery:'อัลบั้มและภาพที่บันทึกไว้',files:'ไฟล์และเอกสาร',theme:'ธีมโทรศัพท์',guide:'คู่มือการใช้งาน',settings:'ตั้งค่าโทรศัพท์',diagnostics:'ข้อมูลระบบแบบอ่านอย่างเดียว'}; return wrapPreviewApp({document:this.#document,kind:appKind(route),app:route,title,subtitle:subtitles[route]||'',body,onBack:()=>this.#goHome(),bottom,ownerLabel:this.#selectedPerspectiveLabel}); }
+
   async #renderContent(view) {
-    const route = this.#router.route; const panel = element(this.#document, 'section'); panel.className = 'tmrw-v3-panel'; panel.dataset.route = route;
-    const visualKind = APP_VISUAL_KIND[route] || null;
-    if (visualKind === 'social') panel.className += ' tmrw-v3-preview-app tmrw-v3-preview-social tmrw-phone-social-shell';
-    else if (visualKind === 'commerce') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-commerce tmrw-phone-utility tmrw-phone-commerce tmrw-phone-commerce--${route}`;
-    else if (visualKind === 'lifestyle') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-lifestyle tmrw-phone-utility tmrw-phone-lifestyle tmrw-phone-lifestyle--${route}`;
-    else if (visualKind === 'personal') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-personal tmrw-phone-utility tmrw-phone-personal-shell tmrw-phone-utility--${route}`;
-    else if (visualKind === 'utility') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-utility tmrw-phone-utility tmrw-phone-utility--${route}`;
-    if (route !== 'launcher') panel.append(createAppHeader({ document: this.#document, title: APP_TITLES[route] || route, onBack: () => this.#router.navigate('launcher') }));
-    if (route === 'contacts') {
-      panel.append(element(this.#document, 'h2', 'Contacts'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else {
-        const contacts = contactsViewModel(view.contacts);
-        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-personal-app';
-        const searchShell = element(this.#document, 'div'); searchShell.className = 'tmrw-phone-personal-search tmrw-phone-soft-search'; searchShell.append(createPreviewIcon({ document: this.#document, name: 'search', size: 19 }), element(this.#document, 'span', 'Saved Names')); body.append(searchShell);
-        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-contact-list tmrw-phone-contact-list--complete';
-        contacts.forEach(contact => { const row = element(this.#document, 'article'); row.className = 'tmrw-v3-contact-row'; row.dataset.contactPointId = contact.id; const avatar = element(this.#document, 'span', String(contact.primary || '?').slice(0, 1).toUpperCase()); avatar.className = 'tmrw-v3-contact-avatar'; const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', contact.primary), element(this.#document, 'small', contact.secondary)); row.append(avatar, copy); list.append(row); });
-        if (contacts.length === 0) body.append(element(this.#document, 'p', 'ยังไม่มีรายชื่อที่บันทึกไว้')); else body.append(list); panel.append(body);
-      }
+    const route=this.#router.route;
+    if(route==='feed') return this.#renderFeed(view);
+    if(route==='messages') return this.#renderMessages(view);
+    if(route==='live') return this.#renderLive(view);
+    if(route==='notifications') return this.#renderActivity(view);
+    if(route==='insungram') return this.#renderProfile(view);
+    if(route==='contacts') return this.#renderContacts(view);
+    if(route==='calls') {
+      const island=view.callUi.island;
+      if(island.kind!=='empty'&&island.callSessionId!==this.#closedCallSurfaceId){const call=view.calls.find(row=>row.callSessionId===island.callSessionId);return renderApprovedCallSurface({document:this.#document,island,inspectionOnly:view.callUi.owner.inspectionOnly,onAction:action=>call?this.#transitionCall(view,call,action):null,onSend:input=>call?this.#sendCallText(view,call,input):null,onClose:()=>{this.#closedCallSurfaceId=island.callSessionId;return this.renderActive();},onContinueOnce:island.kind==='ended'&&this.#callStoryIntegration&&this.#storyContinuation?()=>this.#continueAfterEnded(island.callSessionId):null,onNavigate:target=>{if(target==='settings')this.#router.navigate('settings');else if(target==='history'){this.#closedCallSurfaceId=island.callSessionId;void this.renderActive();}}});}
+      const base=this.#renderCallsBase(view);if(view.callUi.dialTargets.length){const dial=element(this.#document,'div');dial.className='tmrw-phone-call-favorites';for(const target of view.callUi.dialTargets){const b=element(this.#document,'button');b.dataset.callTargetAccountId=target.accountId;b.append(createPreviewAvatar({document:this.#document,label:target.label,size:'lg'}),element(this.#document,'strong',target.label),element(this.#document,'small','Call'));b.disabled=!view.callUi.owner.canAct;b.addEventListener('click',()=>{this.#closedCallSurfaceId=null;void this.#startOutgoing(view,target);});dial.prepend?.(b)||dial.append(b);}base.querySelector?.('main')?.append?.(dial);}return base;
     }
-    else if (route === 'messages') {
-      panel.append(element(this.#document, 'h2', 'Messages'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else if (view.threads.length === 0) panel.append(element(this.#document, 'p', 'ยังไม่มีข้อความ'));
-      else {
-        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-messages tmrw-v3-messages-app';
-        const threads = element(this.#document, 'div'); threads.className = 'tmrw-phone-thread-list tmrw-v3-thread-selector';
-        view.threads.forEach((thread, index) => { const button = element(this.#document, 'button'); button.type = 'button'; button.className = 'tmrw-phone-thread'; button.dataset.threadId = thread.threadId; button.setAttribute('aria-current', String(thread.threadId === view.activeThreadId)); const marker = element(this.#document, 'span', thread.kind === 'dm' ? 'DM' : 'GROUP'); marker.className = 'tmrw-v3-thread-avatar'; const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', thread.kind === 'dm' ? `ข้อความส่วนตัว ${index + 1}` : `กลุ่ม ${index + 1}`), element(this.#document, 'small', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation')); button.append(marker, copy); button.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); threads.append(button); }); body.append(threads);
-        const bubbles = element(this.#document, 'div'); bubbles.className = 'tmrw-phone-bubbles';
-        for (const message of view.messages) { const mine = message.senderAccountId === view.opened.perspective.accountId; const row = element(this.#document, 'div'); row.className = `tmrw-phone-bubble-row ${mine ? 'is-mine' : ''}`; row.dataset.messageId = message.messageId; const bubble = element(this.#document, 'div'); const text = element(this.#document, 'p', message.text); bubble.append(text); row.append(bubble); bubbles.append(row); }
-        if (view.messages.length === 0) bubbles.append(element(this.#document, 'p', 'ยังไม่มีข้อความในบทสนทนานี้')); body.append(bubbles);
-        if (this.#lastMessageError) { const error = element(this.#document, 'p', this.#lastMessageError); error.className = 'tmrw-v3-message-error'; error.setAttribute('role', 'alert'); body.append(error); }
-        const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-readonly-composer tmrw-v3-message-composer'; const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Message text'); input.placeholder = 'พิมพ์ข้อความ…'; const send = element(this.#document, 'button'); send.type = 'button'; send.className = 'is-send'; send.setAttribute('aria-label', 'ส่งข้อความ'); send.append(createPreviewIcon({ document: this.#document, name: 'send', size: 20 })); send.disabled = true; const syncSend = () => { send.disabled = !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); let busy = false; send.addEventListener('click', () => { if (busy || !String(input.value || '').trim()) return; busy = true; send.disabled = true; void this.#sendMessage(view, input).finally(() => { busy = false; }); }); composer.append(input, send); body.append(composer); panel.append(body);
-      }
-    }
-    else if (route === 'calls') {
-      panel.append(element(this.#document, 'h2', 'Calls'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else {
-        const callUi = view.callUi;
-        if (this.#lastCallError) { const error = element(this.#document, 'p', this.#lastCallError); error.className = 'tmrw-v3-call-error'; error.setAttribute('role', 'alert'); panel.append(error); }
-        if (callUi.dialTargets.length > 0) {
-          const dial = element(this.#document, 'section'); dial.className = 'tmrw-v3-call-dial'; dial.append(element(this.#document, 'h3', 'New call'));
-          const targets = element(this.#document, 'div'); targets.className = 'tmrw-v3-call-targets';
-          for (const target of callUi.dialTargets) {
-            const button = element(this.#document, 'button', 'Call ' + target.label); button.type = 'button'; button.dataset.callTargetAccountId = target.accountId; button.disabled = !callUi.owner.canAct; button.setAttribute('aria-label', 'Call ' + target.label);
-            let busy = false; button.addEventListener('click', () => { if (busy || !callUi.owner.canAct) return; busy = true; button.disabled = true; this.#closedCallSurfaceId = null; void this.#startOutgoing(view, target).finally(() => { busy = false; }); }); targets.append(button);
-          }
-          dial.append(targets); panel.append(dial);
-        }
-        const historyHeading = element(this.#document, 'h3', 'Call history'); historyHeading.className = 'tmrw-v3-call-history-heading'; panel.append(historyHeading);
-        if (callUi.history.length === 0) panel.append(element(this.#document, 'p', 'No calls yet.'));
-        else {
-          const list = element(this.#document, 'ul'); list.className = 'tmrw-v3-call-history';
-          for (const row of callUi.history) {
-            const item = element(this.#document, 'li'); const prefix = row.direction === 'outgoing' ? '↗ ' : '↙ '; const button = element(this.#document, 'button', prefix + row.displayLabel + ' · ' + row.statusLabel); button.type = 'button'; button.dataset.callSessionId = row.callSessionId; button.setAttribute('aria-current', String(row.callSessionId === callUi.selectedCallSessionId)); button.setAttribute('aria-label', (row.direction === 'outgoing' ? 'Outgoing call to ' : 'Incoming call from ') + row.displayLabel + ', ' + row.statusLabel); button.addEventListener('click', () => { this.#selectedCallSessionId = row.callSessionId; this.#closedCallSurfaceId = null; void this.renderActive(); }); item.append(button); list.append(item);
-          }
-          panel.append(list);
-        }
-        const island = callUi.island;
-        if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
-          const call = view.calls.find(row => row.callSessionId === island.callSessionId);
-          const surface = renderApprovedCallSurface({
-            document: this.#document,
-            island,
-            inspectionOnly: callUi.owner.inspectionOnly,
-            onAction: action => { if (!call) return null; return this.#transitionCall(view, call, action); },
-            onSend: input => { if (!call) return null; return this.#sendCallText(view, call, input); },
-            onClose: () => { this.#closedCallSurfaceId = island.callSessionId; return this.renderActive(); },
-            onContinueOnce: island.kind === 'ended' && this.#callStoryIntegration && this.#storyContinuation ? () => this.#continueAfterEnded(island.callSessionId) : null,
-            onNavigate: target => {
-              if (target === 'settings') this.#router.navigate('settings');
-              else if (target === 'history') { this.#closedCallSurfaceId = island.callSessionId; void this.renderActive(); }
-            },
-          });
-          panel.append(surface);
-        }
-      }
-    }
-    else if (route === 'feed') {
-      panel.append(element(this.#document, 'h2', 'Feed'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else if (view.socialError) {
-        const error = element(this.#document, 'p', `Feed could not be loaded: ${view.socialError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-feed'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
-      } else {
-        if (this.#lastSocialActionError) { const error = element(this.#document, 'p', this.#lastSocialActionError); error.setAttribute('role', 'alert'); panel.append(error); }
-        const feed = element(this.#document, 'section'); feed.className = 'tmrw-phone-feed';
-        const posts = element(this.#document, 'div'); posts.className = 'tmrw-v3-feed-posts';
-        for (const post of feedViewModel(view.feed)) {
-          const item = element(this.#document, 'article'); item.className = 'tmrw-phone-post'; item.dataset.postId = post.postId;
-          const header = element(this.#document, 'header'); header.append(element(this.#document, 'strong', 'Feed'), element(this.#document, 'small', post.audience));
-          item.append(header, element(this.#document, 'p', post.text)); posts.append(item);
-        }
-        if (view.feed.items.length === 0) feed.append(element(this.#document, 'p', 'ยังไม่มีโพสต์')); else feed.append(posts);
-        if (this.#social && view.opened.perspective.accountId) {
-          const composer = element(this.#document, 'div'); composer.className = 'tmrw-v3-feed-composer';
-          const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Post text'); input.placeholder = 'เขียนโพสต์…';
-          const send = element(this.#document, 'button', 'โพสต์'); send.type = 'button'; send.disabled = true; send.dataset.action = 'create-feed-post';
-          const sync = () => { send.disabled = this.#socialBusy || !String(input.value || '').trim(); }; input.addEventListener('input', sync);
-          send.addEventListener('click', () => { if (this.#socialBusy || !String(input.value || '').trim()) return; this.#socialBusy = true; send.disabled = true; void this.#createPost(view, input).finally(() => { this.#socialBusy = false; }); });
-          composer.append(input, send); feed.append(composer);
-        }
-        panel.append(feed);
-      }
-    }
-    else if (route === 'insungram') {
-      panel.append(element(this.#document, 'h2', 'Insungram'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else if (view.socialError) {
-        const error = element(this.#document, 'p', `Insungram could not be loaded: ${view.socialError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-insungram'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
-      } else {
-        const messages = element(this.#document, 'section'); messages.className = 'tmrw-phone-messages';
-        const heading = element(this.#document, 'div'); heading.className = 'tmrw-phone-message-section-title'; heading.append(element(this.#document, 'strong', 'ข้อความ'));
-        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-thread-list';
-        for (const thread of view.insungramThreads) { const item = element(this.#document, 'article'); item.className = 'tmrw-phone-thread tmrw-v3-insungram-thread'; item.dataset.threadId = thread.threadId; item.append(element(this.#document, 'strong', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation')); list.append(item); }
-        messages.append(heading); if (view.insungramThreads.length === 0) messages.append(element(this.#document, 'p', 'ยังไม่มีข้อความ')); else messages.append(list); panel.append(messages);
-      }
-    }
-    else if (route === 'live') {
-      panel.append(element(this.#document, 'h2', 'Live'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else if (view.liveError) {
-        const error = element(this.#document, 'p', `Live could not be loaded: ${view.liveError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-live'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
-      } else {
-        const live = liveViewModel({ session: view.selectedLive, viewers: view.liveViewers, messages: view.liveMessages });
-        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-live-list';
-        if (live.empty) body.append(element(this.#document, 'p', 'ตอนนี้ยังไม่มีไลฟ์'));
-        else {
-          const hero = element(this.#document, 'div'); hero.className = 'tmrw-phone-live-hero'; hero.append(element(this.#document, 'span', 'LIVE'), element(this.#document, 'h2', live.session.title), element(this.#document, 'p', `${live.viewerCount} viewers`)); body.append(hero);
-          const chat = element(this.#document, 'div'); chat.className = 'tmrw-phone-live-chat'; for (const message of live.messages) { const item = element(this.#document, 'p', message.text); item.dataset.liveMessageId = message.messageId; chat.append(item); } if (live.messages.length === 0) body.append(element(this.#document, 'p', 'ยังไม่มีความคิดเห็น')); else body.append(chat);
-        }
-        panel.append(body);
-      }
-    }
-    else if (route === 'notifications') {
-      panel.append(element(this.#document, 'h2', 'Notifications'));
-      const items = notificationCenterViewModel({ items: view.phoneWorld.recent });
-      if (this.#lastNotificationError) { const error = element(this.#document, 'p', this.#lastNotificationError); error.className = 'tmrw-v3-notification-error'; error.setAttribute('role', 'alert'); panel.append(error); }
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
-      else if (items.length === 0) panel.append(element(this.#document, 'p', 'ยังไม่มีการแจ้งเตือน'));
-      else {
-        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-activity-card tmrw-v3-notification-list';
-        for (const notification of items) {
-          const row = element(this.#document, 'article'); row.className = 'tmrw-v3-notification-row'; row.dataset.notificationId = notification.notificationId;
-          const open = element(this.#document, 'button'); open.type = 'button'; open.className = 'tmrw-v3-notification-open'; open.setAttribute('aria-label', `Open ${notification.title}`); const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', `${notification.title}${notification.groupCount > 1 ? ` (${notification.groupCount})` : ''}`)); if (notification.preview) copy.append(element(this.#document, 'small', notification.preview)); open.append(copy); let openBusy = false; open.addEventListener('click', () => { if (openBusy || open.disabled) return; openBusy = true; open.disabled = true; void this.#openNotification(view, notification); });
-          const dismiss = element(this.#document, 'button', '×'); dismiss.type = 'button'; dismiss.className = 'tmrw-v3-notification-dismiss'; dismiss.setAttribute('aria-label', `Dismiss ${notification.title}`); let dismissBusy = false; dismiss.addEventListener('click', () => { if (dismissBusy || dismiss.disabled) return; dismissBusy = true; dismiss.disabled = true; void this.#dismissNotification(view, notification.notificationId); });
-          row.append(open, dismiss); list.append(row);
-        }
-        panel.append(list);
-      }
-    }
-    else if (route === 'gallery') {
-      panel.append(renderGallery({
-        document: this.#document,
-        items: view.galleryItems,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.utilityError || this.#lastUtilityError,
-        selectedRecordId: this.#selectedGalleryRecordId,
-        pendingRemovalRecordId: this.#pendingRemoval?.kind === 'gallery' ? this.#pendingRemoval.recordId : null,
-        onOpen: recordId => { this.#selectedGalleryRecordId = recordId; this.#pendingRemoval = null; void this.renderActive(); },
-        onRequestRemove: recordId => { this.#pendingRemoval = { kind: 'gallery', recordId }; void this.renderActive(); },
-        onCancelRemove: () => { this.#pendingRemoval = null; void this.renderActive(); },
-        onConfirmRemove: item => this.#removeGalleryItem(view, item),
-      }));
-    }
-    else if (route === 'files') {
-      panel.append(renderFiles({
-        document: this.#document,
-        items: view.fileItems,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.utilityError || this.#lastUtilityError,
-        selectedRecordId: this.#selectedFileRecordId,
-        pendingRemovalRecordId: this.#pendingRemoval?.kind === 'file' ? this.#pendingRemoval.recordId : null,
-        onOpen: recordId => { this.#selectedFileRecordId = recordId; this.#pendingRemoval = null; void this.renderActive(); },
-        onRequestRemove: recordId => { this.#pendingRemoval = { kind: 'file', recordId }; void this.renderActive(); },
-        onCancelRemove: () => { this.#pendingRemoval = null; void this.renderActive(); },
-        onConfirmRemove: item => this.#removeFileItem(view, item),
-      }));
-    }
-    else if (route === 'maps') {
-      panel.append(renderMaps({
-        document: this.#document,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.utilityError || this.#lastUtilityError,
-        items: view.locationItems,
-        audiences: view.locationAudienceChoices,
-        selectedAudienceIds: [...this.#selectedLocationAudienceIds],
-        draftLabel: this.#locationDraftLabel,
-        viewerAccountId: view.opened.perspective.accountId,
-        viewerDeviceId: view.opened.perspective.deviceId,
-        onDraft: value => { this.#locationDraftLabel = value; void this.renderActive(); },
-        onToggleAudience: accountId => { if (this.#selectedLocationAudienceIds.has(accountId)) this.#selectedLocationAudienceIds.delete(accountId); else this.#selectedLocationAudienceIds.add(accountId); void this.renderActive(); },
-        onCheckIn: () => this.#createLocation(view, 'check-in'),
-        onShare: () => this.#createLocation(view, 'shared'),
-        onStartLive: () => this.#createLocation(view, 'live'),
-        onEndLive: item => this.#endLiveLocation(view, item),
-      }));
-    }
-    else if (route === 'calendar') {
-      panel.append(renderCalendar({
-        document: this.#document,
-        view: view.calendarView,
-        recipients: view.calendarRecipients,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.calendarError || this.#lastCalendarError,
-        formMode: this.#calendarFormMode,
-        onStartForm: mode => { this.#calendarFormMode = mode; this.#lastCalendarError = null; void this.renderActive(); },
-        onCancelForm: () => { this.#calendarFormMode = null; this.#lastCalendarError = null; void this.renderActive(); },
-        onCreateReminder: input => this.#createCalendarItem(view, 'reminder', input),
-        onCreateInvitation: input => this.#createCalendarItem(view, 'invitation', input),
-        onAccept: item => this.#respondCalendarInvitation(view, item, 'accept'),
-        onDecline: item => this.#respondCalendarInvitation(view, item, 'decline'),
-      }));
-    }
-    else if (route === 'wallet') {
-      panel.append(renderWallet({
-        document: this.#document,
-        view: view.walletView,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.commerceError || this.#lastCommerceError,
-        selectedRecordId: this.#selectedWalletRecordId,
-        onSelect: recordId => { this.#selectedWalletRecordId = recordId; this.#lastCommerceError = null; void this.renderActive(); },
-      }));
-    }
-    else if (route === 'shop') {
-      panel.append(renderShop({
-        document: this.#document,
-        view: view.shopView,
-        walletView: view.walletView,
-        authorizationGranted: view.opened.authorization.granted,
-        error: view.commerceError || this.#lastCommerceError,
-        selectedRecordId: this.#selectedShopRecordId,
-        confirmationRecordId: this.#checkoutConfirmationRecordId,
-        staleRecordId: this.#shopStaleRecordId,
-        checkoutResult: this.#checkoutResult,
-        checkoutBusy: this.#checkoutBusy,
-        onSelect: recordId => { this.#selectedShopRecordId = recordId; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#lastCommerceError = null; void this.renderActive(); },
-        onRequestCheckout: recordId => { this.#checkoutConfirmationRecordId = recordId; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#lastCommerceError = null; void this.renderActive(); },
-        onCancelCheckout: () => { this.#checkoutConfirmationRecordId = null; this.#lastCommerceError = null; void this.renderActive(); },
-        onConfirmCheckout: item => this.#checkoutShopItem(view, item),
-        onRefreshItem: recordId => { this.#selectedShopRecordId = recordId; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#lastCommerceError = null; void this.renderActive(); },
-      }));
-    }
-    else if (route === 'weather') { panel.append(renderWeather({ document: this.#document, items: view.weatherItems, authorizationGranted: view.opened.authorization.granted, error: view.utilityError || this.#lastUtilityError })); }
-    else if (route === 'health') { panel.append(renderHealth({ document: this.#document, items: view.healthItems, authorizationGranted: view.opened.authorization.granted, error: view.utilityError || this.#lastUtilityError })); }
-    else if (route === 'notes') {
-      panel.append(renderNotes({ document: this.#document, items: view.noteItems, authorizationGranted: view.opened.authorization.granted, error: view.utilityError || this.#lastPersonalError, selectedRecordId: this.#selectedNoteRecordId, formMode: this.#noteFormMode, pendingDeleteRecordId: this.#pendingNoteDeleteId, onOpen: recordId => { this.#selectedNoteRecordId = recordId; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#lastPersonalError = null; void this.renderActive(); }, onStartCreate: () => { this.#selectedNoteRecordId = null; this.#noteFormMode = 'new'; this.#pendingNoteDeleteId = null; this.#lastPersonalError = null; void this.renderActive(); }, onStartEdit: () => { if (this.#selectedNoteRecordId) { this.#noteFormMode = 'edit'; this.#pendingNoteDeleteId = null; this.#lastPersonalError = null; void this.renderActive(); } }, onCancelForm: () => { this.#noteFormMode = null; this.#lastPersonalError = null; void this.renderActive(); }, onSave: input => this.#saveNote(view, input), onRequestDelete: recordId => { this.#pendingNoteDeleteId = recordId; this.#noteFormMode = null; void this.renderActive(); }, onCancelDelete: () => { this.#pendingNoteDeleteId = null; void this.renderActive(); }, onConfirmDelete: item => this.#deleteNote(view, item) }));
-    }
-    else if (route === 'search') {
-      panel.append(renderSearch({ document: this.#document, history: view.searchHistory, sources: view.searchSources, authorizationGranted: view.opened.authorization.granted, error: view.utilityError || this.#lastPersonalError, query: this.#searchQuery, submittedQuery: this.#submittedSearchQuery, clearBusy: this.#searchClearBusy, onQuery: value => { this.#searchQuery = value; }, onSubmit: query => this.#submitSearch(view, query), onClearHistory: () => this.#clearSearchHistory(view) }));
-    }
-    else if (route === 'theme') { panel.append(renderTheme({ document: this.#document, selectedTheme: view.settings.themeId, onSelect: themeId => this.#setTheme(themeId) })); }
-    else if (route === 'guide') {
-      panel.append(element(this.#document, 'h2', 'Guide'));
-      const guideError = view.guideError || this.#lastGuideError;
-      if (guideError) {
-        const error = element(this.#document, 'p', `Guide could not be loaded: ${guideError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry Guide'); retry.type = 'button'; retry.dataset.action = 'retry-guide'; retry.addEventListener('click', () => { this.#lastGuideError = null; retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
-      } else if (view.guideState) {
-        const topics = element(this.#document, 'section'); topics.className = 'tmrw-v3-guide-topics'; topics.append(element(this.#document, 'h3', 'Topics'));
-        const topicList = element(this.#document, 'div'); topicList.className = 'tmrw-v3-guide-topic-list';
-        for (const topic of GUIDE_TOPICS) { const button = element(this.#document, 'button', topic); button.type = 'button'; button.dataset.guideTopic = topic; button.setAttribute('aria-current', String(topic === this.#selectedGuideTopic)); button.addEventListener('click', () => { this.#selectedGuideTopic = topic; void this.renderActive(); }); topicList.append(button); }
-        topics.append(topicList); panel.append(topics);
-        const selected = GUIDE_TOPICS.includes(this.#selectedGuideTopic) ? this.#selectedGuideTopic : GUIDE_TOPICS[0];
-        const article = element(this.#document, 'article'); article.className = 'tmrw-v3-guide-topic'; article.append(element(this.#document, 'h3', selected), element(this.#document, 'p', GUIDE_TOPIC_CONTENT[selected])); panel.append(article);
-        const actions = element(this.#document, 'div'); actions.className = 'tmrw-v3-guide-actions';
-        const reset = element(this.#document, 'button', 'Reset tips'); reset.type = 'button'; reset.dataset.action = 'reset-guide-tips'; reset.disabled = this.#guideBusy; reset.addEventListener('click', () => { if (this.#guideBusy) return; reset.disabled = true; void this.#resetGuideTips(); });
-        const replay = element(this.#document, 'button', 'Replay tutorial'); replay.type = 'button'; replay.dataset.action = 'replay-guide-tutorial'; replay.disabled = this.#guideBusy; replay.addEventListener('click', () => { if (this.#guideBusy) return; replay.disabled = true; void this.#replayGuideTutorial(); });
-        actions.append(reset, replay); panel.append(actions);
-      }
-    }
-    else if (route === 'settings') {
-      panel.append(element(this.#document, 'h2', 'Settings'));
-      if (this.#lastSettingsError) { const error = element(this.#document, 'p', `Settings update failed: ${this.#lastSettingsError}`); error.setAttribute('role', 'alert'); panel.append(error); }
-      const experience = element(this.#document, 'section'); experience.className = 'tmrw-v3-settings-group'; experience.append(element(this.#document, 'h3', 'Experience'));
-      const presetControls = element(this.#document, 'div'); presetControls.className = 'tmrw-v3-settings-options';
-      for (const preset of [EXPERIENCE_PRESET.SIMPLE, EXPERIENCE_PRESET.STORY, EXPERIENCE_PRESET.IMMERSIVE]) { const button = element(this.#document, 'button', preset === EXPERIENCE_PRESET.SIMPLE ? 'Simple' : preset === EXPERIENCE_PRESET.STORY ? 'Story' : 'Immersive'); button.type = 'button'; button.dataset.setting = `preset-${preset}`; button.setAttribute('aria-pressed', String(view.settings.preset === preset)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.preset === preset) return; button.disabled = true; void this.#setExperiencePreset(preset); }); presetControls.append(button); }
-      experience.append(presetControls);
-      const discovery = element(this.#document, 'div'); discovery.className = 'tmrw-v3-settings-options'; discovery.append(element(this.#document, 'h4', 'Phone number discovery'));
-      for (const value of [PHONE_NUMBER_DISCOVERY.SMART, PHONE_NUMBER_DISCOVERY.ON, PHONE_NUMBER_DISCOVERY.OFF]) { const button = element(this.#document, 'button', value === PHONE_NUMBER_DISCOVERY.SMART ? 'Smart' : value === PHONE_NUMBER_DISCOVERY.ON ? 'On' : 'Off'); button.type = 'button'; button.dataset.setting = `number-discovery-${value}`; button.setAttribute('aria-pressed', String(view.settings.phoneNumberDiscovery === value)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.phoneNumberDiscovery === value) return; button.disabled = true; void this.#setPhoneNumberDiscovery(value); }); discovery.append(button); }
-      experience.append(discovery); panel.append(experience);
-
-      const diagnostics = element(this.#document, 'section'); diagnostics.className = 'tmrw-v3-settings-group'; diagnostics.append(element(this.#document, 'h3', 'Advanced'));
-      const diagnosticsToggle = element(this.#document, 'button', `Diagnostics: ${view.settings.developerDiagnosticsEnabled ? 'On' : 'Off'}`); diagnosticsToggle.type = 'button'; diagnosticsToggle.dataset.setting = 'developer-diagnostics'; diagnosticsToggle.setAttribute('aria-pressed', String(Boolean(view.settings.developerDiagnosticsEnabled))); diagnosticsToggle.disabled = this.#settingsBusy; diagnosticsToggle.addEventListener('click', () => { if (this.#settingsBusy) return; diagnosticsToggle.disabled = true; void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled); }); diagnostics.append(diagnosticsToggle);
-      if (view.settings.developerDiagnosticsEnabled) { const openDiagnostics = element(this.#document, 'button', 'Open Diagnostics'); openDiagnostics.type = 'button'; openDiagnostics.dataset.action = 'open-diagnostics'; openDiagnostics.addEventListener('click', () => this.#router.navigate('diagnostics')); diagnostics.append(openDiagnostics); }
-      panel.append(diagnostics);
-
-      const calls = element(this.#document, 'section'); calls.className = 'tmrw-v3-settings-calls'; calls.append(element(this.#document, 'h3', 'Calls'));
-      const toggle = element(this.#document, 'button', `Continue story after calls: ${view.settings.continueStoryAfterCalls ? 'On' : 'Off'}`); toggle.type = 'button'; toggle.dataset.setting = 'continue-story-after-calls'; toggle.setAttribute('aria-pressed', String(Boolean(view.settings.continueStoryAfterCalls))); toggle.disabled = this.#settingsBusy; toggle.addEventListener('click', () => { if (this.#settingsBusy) return; toggle.disabled = true; void this.#setContinueStoryAfterCalls(!view.settings.continueStoryAfterCalls); });
-      calls.append(toggle, element(this.#document, 'p', 'Continue the story automatically after a call ends.'));
-      panel.append(calls);
-
-      const voiceRoster = (await this.#models.deviceRoster(this.#scope)).filter(row => row.kind === 'their-phone');
-      if (!voiceRoster.some(row => row.actorId === this.#selectedVoiceActorId)) this.#selectedVoiceActorId = voiceRoster[0]?.actorId || null;
-      const selectedIdentity = voiceRoster.find(row => row.actorId === this.#selectedVoiceActorId) || null;
-      let baseProfile = null; let instanceOverride = null; let resolvedProfile = null;
-      if (selectedIdentity) {
-        baseProfile = await this.#models.voiceProfiles.getActorBase({ actorId: selectedIdentity.actorId });
-        instanceOverride = await this.#models.voiceProfiles.getInstanceOverride({ scope: this.#scope, instanceId: selectedIdentity.instanceId });
-        resolvedProfile = await this.#models.voiceProfiles.resolve({ scope: this.#scope, actorId: selectedIdentity.actorId, instanceId: selectedIdentity.instanceId });
-      }
-      panel.append(renderVoiceSetup({
-        document: this.#document,
-        settings: view.settings,
-        capability: this.#models.voiceCapability,
-        roster: voiceRoster,
-        selectedActorId: this.#selectedVoiceActorId,
-        selectedIdentity,
-        baseProfile,
-        instanceOverride,
-        resolvedProfile,
-        onToggleVoiceCalls: enabled => { void this.#setVoiceCalls(enabled); },
-        onToggleBotVoice: enabled => { void this.#setBotCallsWithVoice(enabled); },
-        onSetDefaultLanguage: language => { void this.#setVoiceLanguagePreference(language); },
-        onSetDefaultDelivery: delivery => { void this.#setVoiceDefaultDelivery(delivery); },
-        onSelectActor: identity => { this.#selectedVoiceActorId = identity.actorId; void this.renderActive(); },
-        onSaveBaseName: profileName => { if (selectedIdentity) void this.#setActorBaseVoice(selectedIdentity, { profileName }); },
-        onSetBaseLanguage: language => { if (selectedIdentity) void this.#setActorBaseVoice(selectedIdentity, { language }); },
-        onToggleBaseLock: lockedByUser => { if (selectedIdentity) void this.#setActorBaseVoice(selectedIdentity, { lockedByUser }); },
-        onToggleOverride: enabled => { if (selectedIdentity) void this.#setInstanceVoiceOverride(selectedIdentity, { enabled }); },
-        onSaveOverrideName: profileName => { if (selectedIdentity) void this.#setInstanceVoiceOverride(selectedIdentity, { profileName }); },
-        onSetOverrideLanguage: language => { if (selectedIdentity) void this.#setInstanceVoiceOverride(selectedIdentity, { language }); },
-      }));
-    }
-    else if (route === 'diagnostics') {
-      panel.append(element(this.#document, 'h2', 'Diagnostics'));
-      if (!view.settings.developerDiagnosticsEnabled) panel.append(element(this.#document, 'p', 'Developer diagnostics are disabled. Enable them through Settings.'));
-      else if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Diagnostics are unavailable for this phone perspective until access is granted.'));
-      else {
-        const diagnostic = developerDiagnostics({ enabled: true, scope: this.#scope, perspective: view.opened.perspective, lifecycle: view.opened.lifecycle, renderMetrics: view.renderMetrics });
-        panel.append(element(this.#document, 'p', 'Read-only bounded runtime diagnostics. No provider credentials or API keys are included.'));
-        const pre = element(this.#document, 'pre', JSON.stringify(diagnostic, null, 2)); pre.className = 'tmrw-v3-diagnostics-output'; panel.append(pre);
-      }
-    }
-    else {
-      panel.className = 'tmrw-v3-panel tmrw-v3-home-overview tmrw-phone-home';
-      const owner = element(this.#document, 'button'); owner.type = 'button'; owner.className = 'tmrw-v3-owner-pill tmrw-phone-owner-pill'; owner.dataset.action = 'open-phone-selector'; owner.setAttribute('aria-label', `Choose phone. Current: ${this.#selectedPerspectiveLabel}`);
-      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'small', 'เจ้าของโทรศัพท์'), element(this.#document, 'strong', this.#selectedPerspectiveLabel)); owner.append(createPreviewIcon({ document: this.#document, name: 'user', size: 22 }), copy, createPreviewIcon({ document: this.#document, name: 'chevron', size: 16 })); owner.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = false; });
-      const clock = element(this.#document, 'section'); clock.className = 'tmrw-v3-home-clock tmrw-phone-clock-block'; const time = element(this.#document, 'div', previewClock()); time.className = 'tmrw-v3-home-time tmrw-phone-home-time'; const date = element(this.#document, 'div', previewDate()); date.className = 'tmrw-v3-home-date tmrw-phone-home-date';
-      const state = view.opened.authorization.granted ? (view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน') : 'โทรศัพท์ถูกล็อก'; clock.append(time, date, element(this.#document, 'p', state));
-      panel.append(owner, clock);
-    }
-    this.#content.replaceChildren(panel); this.#metrics.appRegionUpdates += 1;
+    if(route==='gallery') return this.#utilityWrap(route,renderGallery({document:this.#document,items:view.galleryItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedGalleryRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='gallery'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedGalleryRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'gallery',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeGalleryItem(view,item)}));
+    if(route==='files') return this.#utilityWrap(route,renderFiles({document:this.#document,items:view.fileItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedFileRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='file'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedFileRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'file',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeFileItem(view,item)}));
+    if(route==='maps') return this.#utilityWrap(route,renderMaps({document:this.#document,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,items:view.locationItems,audiences:view.locationAudienceChoices,selectedAudienceIds:[...this.#selectedLocationAudienceIds],draftLabel:this.#locationDraftLabel,viewerAccountId:view.opened.perspective.accountId,viewerDeviceId:view.opened.perspective.deviceId,onDraft:value=>{this.#locationDraftLabel=value;void this.renderActive();},onToggleAudience:accountId=>{if(this.#selectedLocationAudienceIds.has(accountId))this.#selectedLocationAudienceIds.delete(accountId);else this.#selectedLocationAudienceIds.add(accountId);void this.renderActive();},onCheckIn:()=>this.#createLocation(view,'check-in'),onShare:()=>this.#createLocation(view,'shared'),onStartLive:()=>this.#createLocation(view,'live'),onEndLive:item=>this.#endLiveLocation(view,item)}));
+    if(route==='calendar') return this.#utilityWrap(route,renderCalendar({document:this.#document,view:view.calendarView,recipients:view.calendarRecipients,authorizationGranted:view.opened.authorization.granted,error:view.calendarError||this.#lastCalendarError,activeTab:this.#calendarViewTab,formMode:this.#calendarFormMode,onStartForm:mode=>{this.#calendarFormMode=mode;this.#lastCalendarError=null;void this.renderActive();},onCancelForm:()=>{this.#calendarFormMode=null;this.#lastCalendarError=null;void this.renderActive();},onCreateReminder:input=>this.#createCalendarItem(view,'reminder',input),onCreateInvitation:input=>this.#createCalendarItem(view,'invitation',input),onAccept:item=>this.#respondCalendarInvitation(view,item,'accept'),onDecline:item=>this.#respondCalendarInvitation(view,item,'decline')}));
+    if(route==='wallet') return this.#utilityWrap(route,renderWallet({document:this.#document,view:view.walletView,authorizationGranted:view.opened.authorization.granted,error:view.commerceError||this.#lastCommerceError,selectedRecordId:this.#selectedWalletRecordId,onSelect:recordId=>{this.#selectedWalletRecordId=recordId;void this.renderActive();}}));
+    if(route==='shop') return this.#utilityWrap(route,renderShop({document:this.#document,view:view.shopView,walletView:view.walletView,authorizationGranted:view.opened.authorization.granted,error:view.commerceError||this.#lastCommerceError,selectedRecordId:this.#selectedShopRecordId,confirmationRecordId:this.#checkoutConfirmationRecordId,staleRecordId:this.#shopStaleRecordId,checkoutResult:this.#checkoutResult,checkoutBusy:this.#checkoutBusy,onSelect:recordId=>{this.#selectedShopRecordId=recordId;this.#checkoutConfirmationRecordId=null;this.#checkoutResult=null;this.#shopStaleRecordId=null;void this.renderActive();},onRequestCheckout:recordId=>{this.#checkoutConfirmationRecordId=recordId;void this.renderActive();},onCancelCheckout:()=>{this.#checkoutConfirmationRecordId=null;void this.renderActive();},onConfirmCheckout:item=>this.#checkoutShopItem(view,item),onRefreshItem:recordId=>{this.#selectedShopRecordId=recordId;this.#checkoutConfirmationRecordId=null;this.#checkoutResult=null;this.#shopStaleRecordId=null;void this.renderActive();}}));
+    if(route==='weather') return this.#utilityWrap(route,renderWeather({document:this.#document,items:view.weatherItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError}));
+    if(route==='health') return this.#utilityWrap(route,renderHealth({document:this.#document,items:view.healthItems,activeTab:this.#healthViewTab,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError}));
+    if(route==='notes') return this.#utilityWrap(route,renderNotes({document:this.#document,items:view.noteItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastPersonalError,selectedRecordId:this.#selectedNoteRecordId,formMode:this.#noteFormMode,pendingDeleteRecordId:this.#pendingNoteDeleteId,onOpen:recordId=>{this.#selectedNoteRecordId=recordId;this.#noteFormMode=null;this.#pendingNoteDeleteId=null;void this.renderActive();},onStartCreate:()=>{this.#selectedNoteRecordId=null;this.#noteFormMode='new';void this.renderActive();},onStartEdit:()=>{if(this.#selectedNoteRecordId){this.#noteFormMode='edit';void this.renderActive();}},onCancelForm:()=>{this.#noteFormMode=null;void this.renderActive();},onSave:input=>this.#saveNote(view,input),onRequestDelete:recordId=>{this.#pendingNoteDeleteId=recordId;this.#noteFormMode=null;void this.renderActive();},onCancelDelete:()=>{this.#pendingNoteDeleteId=null;void this.renderActive();},onConfirmDelete:item=>this.#deleteNote(view,item)}));
+    if(route==='search') return this.#utilityWrap(route,renderSearch({document:this.#document,history:view.searchHistory,sources:view.searchSources,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastPersonalError,query:this.#searchQuery,submittedQuery:this.#submittedSearchQuery,clearBusy:this.#searchClearBusy,onQuery:value=>{this.#searchQuery=value;},onSubmit:query=>this.#submitSearch(view,query),onClearHistory:()=>this.#clearSearchHistory(view)}));
+    if(route==='theme') return this.#utilityWrap(route,renderTheme({document:this.#document,selectedTheme:view.settings.themeId,onSelect:themeId=>this.#setTheme(themeId)}));
+    if(route==='guide') return this.#renderGuide(view);
+    if(route==='settings') return await this.#renderSettings(view);
+    if(route==='diagnostics') return this.#renderDiagnostics(view);
+    return this.#errorScreen(route,new Error('Unsupported route'));
   }
+
+  #renderGuide(view) {
+    const body=element(this.#document,'div');body.className='tmrw-phone-utility-list';
+    if(view.guideError||this.#lastGuideError){
+      const p=element(this.#document,'p','Guide ยังไม่พร้อมใช้งาน');p.setAttribute('role','alert');
+      const retry=element(this.#document,'button');retry.type='button';retry.dataset.action='retry-guide';const copy=element(this.#document,'span');copy.append(element(this.#document,'strong','ลองอีกครั้ง'),element(this.#document,'small','โหลดคำแนะนำใหม่'));retry.append(copy,createPreviewIcon({document:this.#document,name:'chevron',size:18}));retry.addEventListener('click',()=>{this.#lastGuideError=null;void this.renderActive();});body.append(p,retry);
+    }else if(view.guideState){
+      for(const topic of GUIDE_TOPICS){const b=element(this.#document,'button');b.dataset.guideTopic=topic;const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',topic),element(this.#document,'small',GUIDE_TOPIC_CONTENT[topic]));b.append(copy,createPreviewIcon({document:this.#document,name:'chevron',size:18}));body.append(b);}
+      const reset=element(this.#document,'button');const rcopy=element(this.#document,'span');rcopy.append(element(this.#document,'strong','Reset tips'),element(this.#document,'small','เริ่มคำแนะนำใหม่'));reset.append(rcopy);reset.dataset.action='reset-guide-tips';reset.addEventListener('click',()=>void this.#resetGuideTips());
+      const replay=element(this.#document,'button');const pcopy=element(this.#document,'span');pcopy.append(element(this.#document,'strong','Replay tutorial'),element(this.#document,'small','เปิดคำแนะนำอีกครั้ง'));replay.append(pcopy);replay.dataset.action='replay-guide-tutorial';replay.addEventListener('click',()=>void this.#replayGuideTutorial());body.append(reset,replay);
+    }
+    return this.#utilityWrap('guide',body,'Guide');
+  }
+
+  async #renderSettings(view) {
+    const body=element(this.#document,'div');body.className='tmrw-phone-utility-list tmrw-phone-settings-list';
+    const row=(title,detail,value,action)=>{const b=element(this.#document,'button');const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',title),element(this.#document,'small',detail));b.append(copy);if(value!=null)b.append(element(this.#document,'b',String(value)));else b.append(createPreviewIcon({document:this.#document,name:'chevron',size:18}));if(action&&!this.#settingsBusy)b.addEventListener('click',action);else b.disabled=true;return b;};
+    if(this.#lastSettingsError){const alert=element(this.#document,'p',`บันทึกการตั้งค่าไม่สำเร็จ: ${this.#lastSettingsError}`);alert.setAttribute('role','alert');body.append(alert);}
+    body.append(row('เจ้าของโทรศัพท์',this.#selectedPerspectiveLabel,null,()=>{ void this.#models.deviceRoster(this.#scope).then(devices=>this.#showOwnerSheet(devices)); }));
+    body.append(row('Experience',view.settings.preset||'story',view.settings.preset,()=>{this.#settingsChoice=this.#settingsChoice==='experience'?null:'experience';void this.renderActive();}));
+    if(this.#settingsChoice==='experience'){
+      for(const [preset,label] of [[EXPERIENCE_PRESET.SIMPLE,'Simple'],[EXPERIENCE_PRESET.STORY,'Story'],[EXPERIENCE_PRESET.IMMERSIVE,'Immersive']]){const selected=view.settings.preset===preset;body.append(row(label,selected?'ใช้อยู่':'เลือก Experience preset',selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setExperiencePreset(preset);}));}
+    }
+    body.append(row('Phone number discovery','การค้นพบเบอร์โทร',view.settings.phoneNumberDiscovery,()=>{this.#settingsChoice=this.#settingsChoice==='discovery'?null:'discovery';void this.renderActive();}));
+    if(this.#settingsChoice==='discovery'){
+      for(const [value,label] of [[PHONE_NUMBER_DISCOVERY.SMART,'Smart'],[PHONE_NUMBER_DISCOVERY.ON,'On'],[PHONE_NUMBER_DISCOVERY.OFF,'Off']]){const selected=view.settings.phoneNumberDiscovery===value;body.append(row(label,selected?'ใช้อยู่':'เลือกการค้นพบเบอร์โทร',selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setPhoneNumberDiscovery(value);}));}
+    }
+    body.append(row('Continue story after calls','หลังสายจบ',view.settings.continueStoryAfterCalls?'เปิด':'ปิด',()=>void this.#setContinueStoryAfterCalls(!view.settings.continueStoryAfterCalls)));
+    body.append(row('Diagnostics','Advanced',view.settings.developerDiagnosticsEnabled?'เปิด':'ปิด',()=>void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled)));
+    if(view.settings.developerDiagnosticsEnabled)body.append(row('Open Diagnostics','ข้อมูล runtime แบบอ่านอย่างเดียว',null,()=>this.#router.navigate('diagnostics')));
+    body.append(row('Guide','คำแนะนำการใช้งาน',null,()=>this.#router.navigate('guide')));
+    const voiceRoster=(await this.#models.deviceRoster(this.#scope)).filter(r=>r.kind==='their-phone');if(!voiceRoster.some(r=>r.actorId===this.#selectedVoiceActorId))this.#selectedVoiceActorId=voiceRoster[0]?.actorId||null;const selectedIdentity=voiceRoster.find(r=>r.actorId===this.#selectedVoiceActorId)||null;let baseProfile=null,instanceOverride=null,resolvedProfile=null;if(selectedIdentity){baseProfile=await this.#models.voiceProfiles.getActorBase({actorId:selectedIdentity.actorId});instanceOverride=await this.#models.voiceProfiles.getInstanceOverride({scope:this.#scope,instanceId:selectedIdentity.instanceId});resolvedProfile=await this.#models.voiceProfiles.resolve({scope:this.#scope,actorId:selectedIdentity.actorId,instanceId:selectedIdentity.instanceId});}const voice=renderVoiceSetup({document:this.#document,settings:view.settings,capability:this.#models.voiceCapability,roster:voiceRoster,selectedActorId:this.#selectedVoiceActorId,selectedIdentity,baseProfile,instanceOverride,resolvedProfile,onToggleVoiceCalls:enabled=>void this.#setVoiceCalls(enabled),onToggleBotVoice:enabled=>void this.#setBotCallsWithVoice(enabled),onSetDefaultLanguage:language=>void this.#setVoiceLanguagePreference(language),onSetDefaultDelivery:delivery=>void this.#setVoiceDefaultDelivery(delivery),onSelectActor:identity=>{this.#selectedVoiceActorId=identity.actorId;void this.renderActive();},onSaveBaseName:profileName=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{profileName});},onSetBaseLanguage:language=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{language});},onToggleBaseLock:lockedByUser=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{lockedByUser});},onToggleOverride:enabled=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{enabled});},onSaveOverrideName:profileName=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{profileName});},onSetOverrideLanguage:language=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{language});}});body.append(voice);return this.#utilityWrap('settings',body,'Settings'); }
+  #renderDiagnostics(view) { const body=element(this.#document,'div');body.className='tmrw-phone-utility-list';if(!view.settings.developerDiagnosticsEnabled)body.append(element(this.#document,'p','Diagnostics ปิดอยู่'));else if(!view.opened.authorization.granted)body.append(element(this.#document,'p','โทรศัพท์เครื่องนี้ยังล็อกอยู่'));else{const d=developerDiagnostics({enabled:true,scope:this.#scope,perspective:view.opened.perspective,lifecycle:view.opened.lifecycle,renderMetrics:view.renderMetrics});const pre=element(this.#document,'pre',JSON.stringify(d,null,2));pre.className='tmrw-v3-diagnostics-output';body.append(pre);}return this.#utilityWrap('diagnostics',body,'Diagnostics'); }
+
   async #sendMessage(view, input) {
     const text = String(input.value || '').trim(); if (!text || !this.#messaging || !view.activeThreadId || !view.opened.perspective.accountId) return false;
     const perspective = view.opened.perspective; const actualAuthorActorId = perspective.actualAuthorActorId || perspective.accountOwnerActorId; const actualAuthorInstanceId = perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId;

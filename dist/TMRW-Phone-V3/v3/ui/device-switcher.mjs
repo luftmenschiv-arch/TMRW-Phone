@@ -1,1 +1,0 @@
-export function deviceSwitcherViewModel(roster, selectedDeviceId) { return Object.freeze(roster.map(row => Object.freeze({ deviceId: row.deviceId, label: row.kind === 'my-phone' ? 'My Phone' : `${row.label}'s Phone`, selected: row.deviceId === selectedDeviceId, kind: row.kind, lockState: row.lockState }))); }

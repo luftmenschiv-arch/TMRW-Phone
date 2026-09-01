@@ -13,3 +13,11 @@ Build with `npm run build:production-package`, verify with `npm run verify:produ
 Real-Android activation reached the Production V3 shell successfully. Patch2 corrected the raw grid but failed Product Owner visual acceptance because it remained a Production interpretation rather than the retained Preview37 product UI. Patch3 is the qualified direct-Preview candidate and now requires supported Android update plus Product Owner visual inspection. Activation/return must continue through supported Production controls and Preview37 must remain returnable.
 
 Do not commit local user data, local QA/browser state, model assets, experiments, or secret local files.
+
+## Phase 23 Preview37 Visual Review Candidate
+
+VISUAL REVIEW ONLY
+NOT RELEASE QUALIFIED
+PRODUCT OWNER ACCEPTANCE PENDING
+
+This branch is for Product Owner visual review only. Phase 23 remains in progress and this candidate is not a qualified release.
