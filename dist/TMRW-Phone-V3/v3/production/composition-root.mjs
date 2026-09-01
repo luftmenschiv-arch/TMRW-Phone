@@ -129,19 +129,47 @@ function createTransitionMigrationCore(database, now) {
   return Object.freeze({ eventEngine, phones, messages, calls, phoneWorld, chronology, calendar });
 }
 
+const S13_SCOPE_ALIAS_MANIFEST_SUFFIX = ':s13-sillytavern-scope-alias';
+
+function exactPreviewIdentityItemForSource(plan, { characterCardSourceId, storySourceId, routeSourceId }) {
+  const acceptedStorySourceIds = new Set([storySourceId, `${characterCardSourceId}:${storySourceId}`]);
+  const matches = (plan?.items || []).filter(row => row?.sourceType === 'identity-scope'
+    && ['ready', 'already-migrated'].includes(row?.state)
+    && row?.data?.card?.sourceCardId === characterCardSourceId
+    && acceptedStorySourceIds.has(row?.data?.story?.sourceStoryId)
+    && row?.data?.branch?.sourceRouteId === routeSourceId);
+  if (matches.length !== 1) throw new Error('Production scope aliasing requires one exact committed Preview identity item for the current SillyTavern scope');
+  return matches[0];
+}
+
+function isKnownS13ProductionAlias(row) {
+  return row?.sourceAuthority === 'sillytavern'
+    && Array.isArray(row?.manifestIds)
+    && row.manifestIds.length > 0
+    && row.manifestIds.every(id => String(id).endsWith(S13_SCOPE_ALIAS_MANIFEST_SUFFIX));
+}
+
+function aliasMatchesTarget(row, spec) {
+  return row?.canonicalId === spec.canonicalId
+    && row?.parentCanonicalId === spec.parentCanonicalId
+    && row?.storyId === spec.storyId
+    && row?.branchId === spec.branchId;
+}
+
 async function addProductionScopeAliases({ transitionDatabase, manifest, plan, sourceIdentity, now }) {
   if (!sourceIdentity) return Object.freeze({ added: false, mappings: Object.freeze([]) });
   const characterCardSourceId = String(sourceIdentity.characterCardSourceId || '').trim();
   const storySourceId = String(sourceIdentity.storySourceId || '').trim();
   const routeSourceId = String(sourceIdentity.routeSourceId || '').trim();
   if (!characterCardSourceId || !storySourceId || !routeSourceId) throw new Error('Production scope aliasing requires exact SillyTavern Character Card, Story, and Branch source IDs');
-  const identityItem = plan?.items?.find(row => row?.sourceType === 'identity-scope' && ['ready', 'already-migrated'].includes(row?.state));
-  if (!identityItem) throw new Error('Production scope aliasing requires one committed Preview identity item');
+
+  const identityItem = exactPreviewIdentityItemForSource(plan, { characterCardSourceId, storySourceId, routeSourceId });
   const committed = await manifest.getItem(plan.batchId, identityItem.sourceRecordId);
   const identity = committed?.canonical?.identity;
-  if (!identity?.cardId || !identity?.storyId || !identity?.branchId) throw new Error('Production scope aliasing requires committed canonical identity IDs');
+  if (!identity?.cardId || !identity?.storyId || !identity?.branchId) throw new Error('Production scope aliasing requires committed canonical identity IDs for the exact current scope');
+
   const at = now();
-  const manifestId = `${plan.batchId}:s13-sillytavern-scope-alias`;
+  const manifestId = `${plan.batchId}${S13_SCOPE_ALIAS_MANIFEST_SUFFIX}`;
   const storyAliasSourceId = `card-story:${JSON.stringify([characterCardSourceId, storySourceId])}`;
   const branchAliasSourceId = `card-story-branch:${JSON.stringify([characterCardSourceId, storySourceId, routeSourceId])}`;
   const rows = [
@@ -149,21 +177,58 @@ async function addProductionScopeAliases({ transitionDatabase, manifest, plan, s
     { sourceType: 'story', sourceId: storyAliasSourceId, legacySourceId: storySourceId, canonicalType: 'story', canonicalId: identity.storyId, parentCanonicalId: identity.cardId, storyId: null, branchId: null, scopeParts: [identity.cardId] },
     { sourceType: 'branch', sourceId: branchAliasSourceId, legacySourceId: routeSourceId, canonicalType: 'branch', canonicalId: identity.branchId, parentCanonicalId: identity.storyId, storyId: identity.storyId, branchId: identity.branchId, scopeParts: [identity.storyId, identity.branchId] },
   ];
+
   const unit = new V3UnitOfWork(transitionDatabase);
   const saved = [];
   await unit.readwrite({ stores: ['identityMappings'], privileged: true }, async repositories => {
+    let activeMappings = await repositories.identityMappings.listByIndex('by_mapping_status', 'active');
+    const staleCard = activeMappings.find(row => row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === characterCardSourceId && row.canonicalId !== identity.cardId);
+    if (staleCard) {
+      if (!isKnownS13ProductionAlias(staleCard)) throw new Error(`Production scope alias conflict for character-card:${characterCardSourceId}`);
+      const staleStory = activeMappings.find(row => row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === storySourceId && row.parentCanonicalId === staleCard.canonicalId);
+      if (staleStory && !isKnownS13ProductionAlias(staleStory)) throw new Error(`Production scope alias conflict for story:${storyAliasSourceId}`);
+      const staleBranch = staleStory
+        ? activeMappings.find(row => row.sourceAuthority === 'sillytavern' && row.sourceType === 'branch' && row.sourceId === routeSourceId && row.storyId === staleStory.canonicalId)
+        : null;
+      if (staleBranch && !isKnownS13ProductionAlias(staleBranch)) throw new Error(`Production scope alias conflict for branch:${branchAliasSourceId}`);
+
+      const staleChain = [
+        [staleCard, rows[0]],
+        [staleStory, rows[1]],
+        [staleBranch, rows[2]],
+      ];
+      for (const [legacy, spec] of staleChain) {
+        if (!legacy) continue;
+        const reconciled = createIdentityMapping({
+          id: legacy.id,
+          sourceAuthority: 'sillytavern',
+          sourceType: spec.sourceType,
+          sourceId: legacy.sourceId,
+          canonicalType: spec.canonicalType,
+          canonicalId: spec.canonicalId,
+          parentCanonicalId: spec.parentCanonicalId,
+          storyId: spec.storyId,
+          branchId: spec.branchId,
+          confidence: legacy.confidence || 'stable-source-id',
+          status: 'active',
+          reason: 'reconciled-known-s13-first-item-alias',
+          createdAt: legacy.createdAt,
+          updatedAt: at,
+          manifestId,
+          existingManifestIds: legacy.manifestIds,
+        });
+        await repositories.identityMappings.put(reconciled);
+        saved.push(reconciled);
+      }
+      activeMappings = await repositories.identityMappings.listByIndex('by_mapping_status', 'active');
+    }
+
     for (const spec of rows) {
-      const activeMappings = await repositories.identityMappings.listByIndex('by_mapping_status', 'active');
-      const sourceIds = new Set([spec.sourceId, spec.legacySourceId]);
-      const sameSource = activeMappings.filter(row => row.sourceAuthority === 'sillytavern' && row.sourceType === spec.sourceType && sourceIds.has(row.sourceId));
-      const sameScope = spec.sourceType === 'character-card'
-        ? sameSource
-        : spec.sourceType === 'story'
-          ? sameSource.filter(row => row.parentCanonicalId === spec.parentCanonicalId)
-          : sameSource.filter(row => row.storyId === spec.storyId);
-      const exact = sameScope.find(row => row.canonicalId === spec.canonicalId && row.parentCanonicalId === spec.parentCanonicalId && row.storyId === spec.storyId && row.branchId === spec.branchId);
-      if (sameScope.length && !exact) throw new Error(`Production scope alias conflict for ${spec.sourceType}:${spec.sourceId}`);
+      const exactSource = activeMappings.filter(row => row.sourceAuthority === 'sillytavern' && row.sourceType === spec.sourceType && row.sourceId === spec.sourceId);
+      const exact = exactSource.find(row => aliasMatchesTarget(row, spec));
+      if (exactSource.length && !exact) throw new Error(`Production scope alias conflict for ${spec.sourceType}:${spec.sourceId}`);
       if (exact) { saved.push(exact); continue; }
+
       const id = await deterministicIdentityId('identity-mapping', { sourceAuthority: 'sillytavern', stableSourceId: `${spec.sourceType}:${spec.sourceId}`, scopeParts: spec.scopeParts });
       const existing = await repositories.identityMappings.get(id);
       if (existing && (existing.canonicalId !== spec.canonicalId || existing.sourceId !== spec.sourceId || existing.sourceType !== spec.sourceType || existing.sourceAuthority !== 'sillytavern')) {
@@ -186,9 +251,11 @@ async function addProductionScopeAliases({ transitionDatabase, manifest, plan, s
       });
       await repositories.identityMappings.put(row);
       saved.push(row);
+      activeMappings = [...activeMappings.filter(existingRow => existingRow.id !== row.id), row];
     }
   });
-  return Object.freeze({ added: true, mappings: Object.freeze(saved.map(row => Object.freeze({ id: row.id, sourceType: row.sourceType, sourceId: row.sourceId, canonicalId: row.canonicalId }))) });
+  const unique = [...new Map(saved.map(row => [row.id, row])).values()];
+  return Object.freeze({ added: true, mappings: Object.freeze(unique.map(row => Object.freeze({ id: row.id, sourceType: row.sourceType, sourceId: row.sourceId, canonicalId: row.canonicalId }))) });
 }
 
 async function catchUpPhase23Projectors({ eventEngine, manifest, plan }) {

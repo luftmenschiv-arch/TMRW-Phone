@@ -6,6 +6,8 @@ import { createTmrwV3ProductionRuntime } from '../../production/composition-root
 import { MemoryKeyValueStorage, V3BetaFeatureFlag } from '../../beta/feature-flag.mjs';
 import { MemoryV3Database } from '../../storage/memory-v3-database.mjs';
 import { V3IdentityKernel } from '../../domain/identity/identity-kernel.mjs';
+import { deterministicIdentityId } from '../../domain/identity/id.mjs';
+import { createIdentityMapping } from '../../domain/identity/identity-mapping.mjs';
 import { V3_RUNTIME_LEASE_KEY } from '../../storage/schema.mjs';
 import { V3_ROOT_ID, V3_LAUNCHER_ID } from '../../production/constants.mjs';
 import { setupPhase17 } from '../phase17/notification-fixtures.mjs';
@@ -92,6 +94,86 @@ async function seedProductionScope(registry, suffix, castSize = 2) {
   return identity;
 }
 
+function previewScopeProject({ cardKey, storyKey, branchKey, suffix }) {
+  const base = preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
+  const baseCard = base.cards[`card-${suffix}`];
+  const baseStory = baseCard.stories[`story-${suffix}`];
+  const baseBranch = baseStory.branches[`branch-${suffix}`];
+  return {
+    schemaVersion: base.schemaVersion,
+    cards: {
+      [cardKey]: {
+        ...baseCard,
+        cardKey,
+        cardName: cardKey,
+        stories: {
+          [storyKey]: {
+            ...baseStory,
+            storyId: storyKey,
+            branches: { [branchKey]: { ...baseBranch, branchId: branchKey } },
+          },
+        },
+      },
+    },
+  };
+}
+
+function mergePreviewProjects(...projects) {
+  return { schemaVersion: 2, cards: Object.assign({}, ...projects.map(project => project.cards)) };
+}
+
+async function readStoreRows(registry, storeName) {
+  const db = new MemoryV3Database({ registry });
+  await db.open();
+  const rows = await db.transaction([storeName], 'readonly', tx => tx.store(storeName).getAll());
+  db.close();
+  return rows;
+}
+
+async function seedKnownStaleS13AliasChain(registry, sourceIdentity, suffix = 'stale-s13') {
+  const bootstrap = await setupPhase17({ registry, castSize: 1, manifestId: `s13-stale-bootstrap-${suffix}` });
+  const kernel = new V3IdentityKernel({ database: bootstrap.database, now: () => '2026-08-29T00:00:00.000Z' });
+  const wrong = await kernel.seedIdentityGraph({
+    ...identitySeed({
+      castSize: 1,
+      manifestId: `s13-stale-wrong-${suffix}`,
+      cardSourceId: `wrong-card-${suffix}`,
+      storySourceId: `wrong-card-${suffix}:wrong-story-${suffix}`,
+      routeSourceId: `wrong-branch-${suffix}`,
+    }),
+    sourceAuthority: 'preview37',
+  });
+  const at = '2026-08-29T00:00:00.000Z';
+  const manifestId = `legacy-${suffix}:s13-sillytavern-scope-alias`;
+  const specs = [
+    { sourceType: 'character-card', sourceId: sourceIdentity.characterCardSourceId, canonicalType: 'character-card', canonicalId: wrong.cardId, parentCanonicalId: null, storyId: null, branchId: null, scopeParts: [] },
+    { sourceType: 'story', sourceId: sourceIdentity.storySourceId, canonicalType: 'story', canonicalId: wrong.storyId, parentCanonicalId: wrong.cardId, storyId: null, branchId: null, scopeParts: [wrong.cardId] },
+    { sourceType: 'branch', sourceId: sourceIdentity.routeSourceId, canonicalType: 'branch', canonicalId: wrong.branchId, parentCanonicalId: wrong.storyId, storyId: wrong.storyId, branchId: wrong.branchId, scopeParts: [wrong.storyId, wrong.branchId] },
+  ];
+  await bootstrap.database.transaction(['identityMappings'], 'readwrite', async tx => {
+    const store = tx.store('identityMappings');
+    for (const spec of specs) {
+      const id = await deterministicIdentityId('identity-mapping', { sourceAuthority: 'sillytavern', stableSourceId: `${spec.sourceType}:${spec.sourceId}`, scopeParts: spec.scopeParts });
+      await store.put(createIdentityMapping({
+        id,
+        sourceAuthority: 'sillytavern',
+        sourceType: spec.sourceType,
+        sourceId: spec.sourceId,
+        canonicalType: spec.canonicalType,
+        canonicalId: spec.canonicalId,
+        parentCanonicalId: spec.parentCanonicalId,
+        storyId: spec.storyId,
+        branchId: spec.branchId,
+        createdAt: at,
+        updatedAt: at,
+        manifestId,
+      }));
+    }
+  });
+  bootstrap.database.close();
+  return wrong;
+}
+
 async function storedLease(registry) {
   const db = new MemoryV3Database({ registry });
   await db.open();
@@ -100,8 +182,8 @@ async function storedLease(registry) {
   return row;
 }
 
-async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, appendFailureId = null, previewReadSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
-  const source = preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
+async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
+  const source = previewSource ? structuredClone(previewSource) : preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
   if (preseedProductionScope) await seedProductionScope(registry, suffix, 2);
   const rawDatabases = [];
   const document = new FakeDocument();
@@ -302,12 +384,70 @@ test('S13 first active startup can resolve the migrated production scope from an
   await h.session.returnToPreview37();
 });
 
-test('S13 same SillyTavern Story/Branch source IDs are card-scoped and do not false-conflict across Character Cards', async () => {
+test('S13 multi-card scope aliasing selects the exact current Preview identity instead of the first ready plan item', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const firstScope = previewScopeProject({ cardKey: 'character:first-card.png', storyKey: 'story:first-chat', branchKey: 'branch:main', suffix: 'multi-first' });
+  const currentScope = previewScopeProject({ cardKey: 'character:current-card.png', storyKey: 'story:current-chat', branchKey: 'branch:main', suffix: 'multi-current' });
+  const source = mergePreviewProjects(firstScope, currentScope);
+  const sourceIdentity = Object.freeze({ characterCardSourceId: 'character:current-card.png', storySourceId: 'story:current-chat', routeSourceId: 'branch:main' });
+  const h = await harness({ suffix: 'multi-card-exact', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => sourceIdentity });
+  const started = await h.session.start({ exclusionProof, gateFReport });
+  assert.equal(started.runtimeState, 'V3_AUTHORING');
+
+  const cards = await readStoreRows(registry, 'characterCards');
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const firstCard = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === 'character:first-card.png');
+  const currentCard = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === sourceIdentity.characterCardSourceId);
+  const alias = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === sourceIdentity.characterCardSourceId);
+  assert.ok(firstCard && currentCard && alias);
+  assert.equal(alias.canonicalId, currentCard.id);
+  assert.notEqual(alias.canonicalId, firstCard.id);
+  await h.session.shutdown('multi-card-exact-complete');
+});
+
+test('S13 stale known s13 generic fallback alias chain is reconciled only to the exact current canonical scope', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const sourceIdentity = Object.freeze({ characterCardSourceId: 'character:Character card', storySourceId: 'story:current', routeSourceId: 'branch:main' });
+  const source = previewScopeProject({ cardKey: sourceIdentity.characterCardSourceId, storyKey: sourceIdentity.storySourceId, branchKey: sourceIdentity.routeSourceId, suffix: 'stale-generic' });
+  const wrong = await seedKnownStaleS13AliasChain(registry, sourceIdentity);
+  const h = await harness({ suffix: 'stale-generic', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => sourceIdentity });
+  const started = await h.session.start({ exclusionProof, gateFReport });
+  assert.equal(started.runtimeState, 'V3_AUTHORING');
+
+  const cards = await readStoreRows(registry, 'characterCards');
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const currentCard = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === sourceIdentity.characterCardSourceId);
+  const cardAlias = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === sourceIdentity.characterCardSourceId);
+  const legacyStory = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === sourceIdentity.storySourceId);
+  const legacyBranch = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'branch' && row.sourceId === sourceIdentity.routeSourceId && row.storyId === started.storyId);
+  const scopedStoryId = `card-story:${JSON.stringify([sourceIdentity.characterCardSourceId, sourceIdentity.storySourceId])}`;
+  const scopedBranchId = `card-story-branch:${JSON.stringify([sourceIdentity.characterCardSourceId, sourceIdentity.storySourceId, sourceIdentity.routeSourceId])}`;
+  const scopedStory = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === scopedStoryId);
+  const scopedBranch = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'branch' && row.sourceId === scopedBranchId);
+  assert.ok(currentCard && cardAlias && legacyStory && legacyBranch && scopedStory && scopedBranch);
+  assert.notEqual(cardAlias.canonicalId, wrong.cardId);
+  assert.equal(cardAlias.canonicalId, currentCard.id);
+  assert.equal(legacyStory.canonicalId, started.storyId);
+  assert.equal(legacyBranch.canonicalId, started.branchId);
+  assert.equal(scopedStory.canonicalId, started.storyId);
+  assert.equal(scopedBranch.canonicalId, started.branchId);
+  assert.equal(cardAlias.reason, 'reconciled-known-s13-first-item-alias');
+  assert.equal(legacyStory.reason, 'reconciled-known-s13-first-item-alias');
+  assert.equal(legacyBranch.reason, 'reconciled-known-s13-first-item-alias');
+  assert.ok([cardAlias, legacyStory, legacyBranch].every(row => row.manifestIds.every(id => id.endsWith(':s13-sillytavern-scope-alias'))));
+  await h.session.shutdown('stale-generic-complete');
+});
+
+test('S13 same raw SillyTavern Story/Branch source IDs remain card-scoped and isolated across Character Cards', async () => {
   const registry = MemoryV3Database.createRegistry();
   const sharedStorySourceId = 'story:shared-chat';
   const sharedRouteSourceId = 'branch:main';
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: 'character:card-a.png', storyKey: sharedStorySourceId, branchKey: sharedRouteSourceId, suffix: 'card-scope-a' }),
+    previewScopeProject({ cardKey: 'character:card-b.png', storyKey: sharedStorySourceId, branchKey: sharedRouteSourceId, suffix: 'card-scope-b' }),
+  );
   const first = await harness({
-    suffix: 'card-scope-a', registry, preseedProductionScope: false,
+    suffix: 'card-scope-a', registry, previewSource: source, preseedProductionScope: false,
     sourceIdentityResolver: async () => ({ characterCardSourceId: 'character:card-a.png', storySourceId: sharedStorySourceId, routeSourceId: sharedRouteSourceId }),
   });
   const startedA = await first.session.start({ exclusionProof, gateFReport });
@@ -315,18 +455,25 @@ test('S13 same SillyTavern Story/Branch source IDs are card-scoped and do not fa
   await first.session.shutdown('card-scope-a-complete');
 
   const second = await harness({
-    suffix: 'card-scope-b', registry, preseedProductionScope: false,
+    suffix: 'card-scope-b', registry, previewSource: source, preseedProductionScope: false,
     sourceIdentityResolver: async () => ({ characterCardSourceId: 'character:card-b.png', storySourceId: sharedStorySourceId, routeSourceId: sharedRouteSourceId }),
   });
   const startedB = await second.session.start({ exclusionProof, gateFReport });
   assert.equal(startedB.runtimeState, 'V3_AUTHORING');
   assert.notEqual(startedA.storyId, startedB.storyId);
   assert.notEqual(startedA.branchId, startedB.branchId);
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const scopedStories = mappings.filter(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId.startsWith('card-story:'));
+  assert.ok(scopedStories.some(row => row.sourceId.includes('character:card-a.png') && row.canonicalId === startedA.storyId));
+  assert.ok(scopedStories.some(row => row.sourceId.includes('character:card-b.png') && row.canonicalId === startedB.storyId));
   await second.session.shutdown('card-scope-b-complete');
 });
 
-test('S13 genuine SillyTavern scope alias conflict fails closed without weakening exact identity', async () => {
+test('S13 genuine non-s13 SillyTavern scope alias conflict still fails closed', async () => {
   const h = await harness({ suffix: 'alias-conflict', preseedProductionScope: true });
+  const before = (await readStoreRows(h.registry, 'identityMappings')).filter(row => row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === 'card-alias-conflict');
+  assert.ok(before.length > 0);
+  assert.ok(before.every(row => !(row.manifestIds || []).some(id => String(id).endsWith(':s13-sillytavern-scope-alias'))));
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /Production scope alias conflict/);
   assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h);
