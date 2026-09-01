@@ -340,6 +340,21 @@ async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migrati
   }
 }
 
+async function provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now }) {
+  if (!migrationResult?.committed || !migrationResult?.plan) throw new Error('Production scope alias provisioning requires one committed Preview migration plan');
+  gate.close('production-scope-alias-transition-start');
+  const transition = await gate.enterTransition({ previewQuiesced: true });
+  if (!transition.opened) throw new Error(`Production scope alias transition authority failed to open: ${transition.reason}`);
+  const transitionFence = gate.createFence();
+  const transitionDatabase = new FencedV3Database({ database: rawDatabase, runtimeGuard, authoringFence: transitionFence, capability: AUTHORING_CAPABILITY.TRANSITION });
+  const manifest = new Preview37MigrationManifest({ database: transitionDatabase, now });
+  try {
+    return await addProductionScopeAliases({ transitionDatabase, manifest, plan: migrationResult.plan, sourceIdentity, now });
+  } finally {
+    gate.close('production-scope-alias-transition-complete');
+  }
+}
+
 async function buildRuntime(options, entry) {
   const {
     ownerId,
@@ -591,6 +606,9 @@ async function buildRuntime(options, entry) {
       phoneMountAvailable: false,
       launcherAvailable: false,
       get status() { return Object.freeze({ role: 'owner', gateState: gate.state, ownsLease: runtimeGuard.ownsLease, databaseOpen: rawDatabase.isOpen, heartbeatRunning: heartbeat.status.running, listenerRegistered: listenerOwner.status.registered, interceptorDelegateActive: generationOwner.status.delegateActive, voiceRuntimeAvailable: voiceCapability.runtimeAvailable, phoneMounted: false, launcherMounted: false, disposed: activation.status.disposed, constructionOrder: activation.status.constructionOrder, disposalOrder: activation.status.disposalOrder }); },
+      async provisionProductionScopeAliases(sourceIdentity) {
+        return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
+      },
       async resolveCurrentIdentity() {
         const scope = await contextAdapter.resolveScope();
         const player = await identityResolver.resolvePlayerIdentity({ scope });

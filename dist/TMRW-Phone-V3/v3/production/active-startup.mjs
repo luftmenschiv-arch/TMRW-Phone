@@ -221,8 +221,33 @@ export class ProductionActiveStartupSession {
       sourceIdentityResolver: resolvedSourceIdentity,
       messageIdentityResolver: resolvedMessageIdentity,
       onScopeChange: async () => {
-        if (!this.mountManager) throw new Error('Active production scope transition arrived before mount-manager readiness');
-        await this.mountManager.transitionScope();
+        if (!this.mountManager || !this.runtime) throw new Error('Active production scope transition arrived before mount-manager readiness');
+        const currentContext = getContext();
+        const currentSourceIdentity = await resolvedSourceIdentity(currentContext);
+        await this.runtime.provisionProductionScopeAliases(currentSourceIdentity);
+        const nextIdentity = await this.runtime.resolveCurrentIdentity();
+        await this.mountManager.transitionScope(nextIdentity);
+
+        const leaseValidation = await this.runtime.composition.runtimeGuard.validateLease();
+        if (!leaseValidation?.valid) throw new Error(`Active production scope transition lease validation failed: ${leaseValidation?.reason || 'unproven'}`);
+        const scopeHealth = await this.runtime.composition.productionHealth.readyToOpenAuthoring({
+          ...startupEvidence,
+          schemaReady: true,
+          leaseValid: true,
+          identityResolved: true,
+          compositionServicesReady: true,
+          uniqueListenersReady: this.runtime.composition.listenerOwner.status.registered === true,
+          uniqueGenerationInterceptorReady: this.runtime.composition.generationOwner.status.delegateActive === true,
+          callIntegrationReady: true,
+          shellMountHealthy: this.mountManager.status.healthy === true,
+          heartbeatQualified: this.runtime.composition.heartbeat.status.running === true,
+        });
+        if (!scopeHealth.ready) throw new Error(`Active production scope transition health blocked: ${scopeHealth.blockers.join(', ')}`);
+        const gateResult = await this.runtime.composition.authoringGate.open(scopeHealth.checks);
+        if (!gateResult.opened) throw new Error(`Active production scope transition Authoring Gate failed to reopen: ${gateResult.reason}`);
+
+        this.identity = nextIdentity;
+        this.finalHealth = scopeHealth;
         this.launcherOwner?.reconcile?.();
       },
       migration: Object.freeze({

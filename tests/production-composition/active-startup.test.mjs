@@ -479,33 +479,186 @@ test('S13 genuine non-s13 SillyTavern scope alias conflict still fails closed', 
   await assertRecovered(h);
 });
 
-test('S15 active startup routes CHAT_CHANGED once through mount-manager scope replacement and leaves authoring closed for revalidation', async () => {
-  const suffix = 's15-scope';
-  let currentSource = Object.freeze({ characterCardSourceId: `card-${suffix}`, storySourceId: `story-${suffix}`, routeSourceId: `branch-${suffix}` });
-  const h = await harness({ suffix, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+test('S15 scope transition aliases provision startup fallback to the exact real chat before remount and reopen authoring', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const fallback = Object.freeze({ characterCardSourceId: 'character:Character card', storySourceId: 'story:current', routeSourceId: 'branch:main' });
+  const real = Object.freeze({ characterCardSourceId: 'character:Kaelan Vance Alt.png', storySourceId: 'story:current-chat', routeSourceId: 'branch:current' });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: fallback.characterCardSourceId, storyKey: fallback.storySourceId, branchKey: fallback.routeSourceId, suffix: 'transition-fallback' }),
+    previewScopeProject({ cardKey: real.characterCardSourceId, storyKey: real.storySourceId, branchKey: real.routeSourceId, suffix: 'transition-real' }),
+  );
+  let currentSource = fallback;
+  const h = await harness({ suffix: 'transition-fallback-real', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
   const started = await h.session.start({ exclusionProof, gateFReport });
   assert.equal(started.runtimeState, 'V3_AUTHORING');
-  const oldRoot = nodesById(h.body, V3_ROOT_ID)[0];
   const initialStoryId = h.session.mountManager.status.storyId;
-  const next = await h.session.runtime.composition.identityKernel.seedIdentityGraph({
-    ...identitySeed({ manifestId: 's15-scope-next', cardSourceId: `card-${suffix}-next`, storySourceId: `story-${suffix}-next`, routeSourceId: `branch-${suffix}-next`, castSize: 2 }),
-    sourceAuthority: 'sillytavern',
-  });
-  await h.session.runtime.services.phones.initializeScope({ storyId: next.storyId, branchId: next.branchId });
-  currentSource = Object.freeze({ characterCardSourceId: `card-${suffix}-next`, storySourceId: `story-${suffix}-next`, routeSourceId: `branch-${suffix}-next` });
-  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 's15-next-chat');
-  const nextRoot = nodesById(h.body, V3_ROOT_ID)[0];
-  assert.notEqual(nextRoot, oldRoot);
-  assert.equal(oldRoot.parentNode, null);
+  const oldRoot = nodesById(h.body, V3_ROOT_ID)[0];
+
+  currentSource = real;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'real-chat-loaded');
+
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const scopedStoryId = `card-story:${JSON.stringify([real.characterCardSourceId, real.storySourceId])}`;
+  const scopedBranchId = `card-story-branch:${JSON.stringify([real.characterCardSourceId, real.storySourceId, real.routeSourceId])}`;
+  assert.ok(mappings.some(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === real.characterCardSourceId));
+  assert.ok(mappings.some(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === scopedStoryId));
+  assert.ok(mappings.some(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'branch' && row.sourceId === scopedBranchId));
   assert.notEqual(h.session.mountManager.status.storyId, initialStoryId);
-  const transitionDiagnostics = JSON.stringify({ listener: h.session.runtime.composition.listenerOwner.status, mount: h.session.mountManager.status, currentSource, next });
-  assert.equal(h.session.mountManager.status.storyId, next.storyId, transitionDiagnostics);
-  assert.equal(h.session.mountManager.status.branchId, next.branchId, transitionDiagnostics);
   assert.equal(h.session.mountManager.status.transitionCount, 1);
-  assert.equal(h.session.mountManager.status.requiresAuthoringRevalidation, true);
-  assert.equal(h.session.runtime.status.gateState, 'closed');
-  assert.equal(nodesById(h.body, V3_ROOT_ID).length, 1);
+  assert.equal(h.session.runtime.status.gateState, 'open');
+  assert.equal(h.session.runtime.composition.listenerOwner.status.gateOpen, true);
+  const nextRoot = nodesById(h.body, V3_ROOT_ID)[0];
+  assert.ok(nextRoot && nextRoot !== oldRoot);
+  assert.equal(oldRoot.parentNode, null);
   assert.equal(nodesById(h.body, V3_LAUNCHER_ID).length, 1);
-  assert.equal(h.session.runtime.composition.listenerOwner.status.registered, true);
-  await h.session.returnToPreview37();
+  assert.equal(h.session.launcherOwner.open(), true);
+  assert.equal(nextRoot.hidden, false);
+  await h.session.shutdown('transition-fallback-real-complete');
+});
+
+test('S15 scope transition aliases keep two valid Character Cards isolated without first-plan-item leakage', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const first = Object.freeze({ characterCardSourceId: 'character:first-plan-card.png', storySourceId: 'story:first-plan', routeSourceId: 'branch:main' });
+  const cardA = Object.freeze({ characterCardSourceId: 'character:scope-a.png', storySourceId: 'story:a', routeSourceId: 'branch:main' });
+  const cardB = Object.freeze({ characterCardSourceId: 'character:scope-b.png', storySourceId: 'story:b', routeSourceId: 'branch:main' });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: first.characterCardSourceId, storyKey: first.storySourceId, branchKey: first.routeSourceId, suffix: 'transition-first' }),
+    previewScopeProject({ cardKey: cardA.characterCardSourceId, storyKey: cardA.storySourceId, branchKey: cardA.routeSourceId, suffix: 'transition-a' }),
+    previewScopeProject({ cardKey: cardB.characterCardSourceId, storyKey: cardB.storySourceId, branchKey: cardB.routeSourceId, suffix: 'transition-b' }),
+  );
+  let currentSource = cardA;
+  const h = await harness({ suffix: 'transition-two-cards', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+  await h.session.start({ exclusionProof, gateFReport });
+  const storyA = h.session.mountManager.status.storyId;
+
+  currentSource = cardB;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'card-b');
+  const storyB = h.session.mountManager.status.storyId;
+  assert.notEqual(storyA, storyB);
+  assert.equal(h.session.runtime.status.gateState, 'open');
+
+  const cards = await readStoreRows(registry, 'characterCards');
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const canonicalA = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === cardA.characterCardSourceId);
+  const canonicalB = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === cardB.characterCardSourceId);
+  const firstCard = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === first.characterCardSourceId);
+  const aliasA = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === cardA.characterCardSourceId);
+  const aliasB = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === cardB.characterCardSourceId);
+  assert.ok(canonicalA && canonicalB && firstCard && aliasA && aliasB);
+  assert.equal(aliasA.canonicalId, canonicalA.id);
+  assert.equal(aliasB.canonicalId, canonicalB.id);
+  assert.notEqual(aliasA.canonicalId, firstCard.id);
+  assert.notEqual(aliasB.canonicalId, firstCard.id);
+  await h.session.shutdown('transition-two-cards-complete');
+});
+
+test('S15 repeated CHAT_CHANGED to the same scope is idempotent and does not duplicate aliases', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const start = Object.freeze({ characterCardSourceId: 'character:repeat-start.png', storySourceId: 'story:start', routeSourceId: 'branch:main' });
+  const target = Object.freeze({ characterCardSourceId: 'character:repeat-target.png', storySourceId: 'story:target', routeSourceId: 'branch:main' });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: start.characterCardSourceId, storyKey: start.storySourceId, branchKey: start.routeSourceId, suffix: 'repeat-start' }),
+    previewScopeProject({ cardKey: target.characterCardSourceId, storyKey: target.storySourceId, branchKey: target.routeSourceId, suffix: 'repeat-target' }),
+  );
+  let currentSource = start;
+  const h = await harness({ suffix: 'transition-repeat', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+  await h.session.start({ exclusionProof, gateFReport });
+  currentSource = target;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'target-first');
+  const firstMappings = (await readStoreRows(registry, 'identityMappings')).filter(row => row.sourceAuthority === 'sillytavern');
+  const transitionCount = h.session.mountManager.status.transitionCount;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'target-repeat');
+  const secondMappings = (await readStoreRows(registry, 'identityMappings')).filter(row => row.sourceAuthority === 'sillytavern');
+  assert.equal(secondMappings.length, firstMappings.length);
+  assert.equal(h.session.mountManager.status.transitionCount, transitionCount);
+  assert.equal(h.session.runtime.status.gateState, 'open');
+  assert.equal(h.session.runtime.composition.listenerOwner.status.lastError, null);
+  await h.session.shutdown('transition-repeat-complete');
+});
+
+test('S15 known stale s13 alias encountered during CHAT_CHANGED reconciles only to exact current canonical scope', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const start = Object.freeze({ characterCardSourceId: 'character:stale-start.png', storySourceId: 'story:start', routeSourceId: 'branch:main' });
+  const target = Object.freeze({ characterCardSourceId: 'character:stale-target.png', storySourceId: 'story:target', routeSourceId: 'branch:main' });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: start.characterCardSourceId, storyKey: start.storySourceId, branchKey: start.routeSourceId, suffix: 'stale-transition-start' }),
+    previewScopeProject({ cardKey: target.characterCardSourceId, storyKey: target.storySourceId, branchKey: target.routeSourceId, suffix: 'stale-transition-target' }),
+  );
+  const wrong = await seedKnownStaleS13AliasChain(registry, target, 'transition-stale');
+  let currentSource = start;
+  const h = await harness({ suffix: 'transition-stale', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+  await h.session.start({ exclusionProof, gateFReport });
+  currentSource = target;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'stale-target');
+
+  const cards = await readStoreRows(registry, 'characterCards');
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const canonicalTarget = cards.find(row => row.sourceAuthority === 'preview37' && row.sourceCardId === target.characterCardSourceId);
+  const cardAlias = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === target.characterCardSourceId);
+  const legacyStory = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === target.storySourceId);
+  assert.ok(canonicalTarget && cardAlias && legacyStory);
+  assert.notEqual(cardAlias.canonicalId, wrong.cardId);
+  assert.equal(cardAlias.canonicalId, canonicalTarget.id);
+  assert.equal(cardAlias.reason, 'reconciled-known-s13-first-item-alias');
+  assert.equal(legacyStory.reason, 'reconciled-known-s13-first-item-alias');
+  assert.ok(cardAlias.manifestIds.every(id => id.endsWith(':s13-sillytavern-scope-alias')));
+  assert.equal(h.session.runtime.status.gateState, 'open');
+  await h.session.shutdown('transition-stale-complete');
+});
+
+test('S15 same raw Story and Branch IDs under different Character Cards remain isolated across CHAT_CHANGED', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const sharedStory = 'story:shared-chat';
+  const sharedBranch = 'branch:main';
+  const cardA = Object.freeze({ characterCardSourceId: 'character:shared-a.png', storySourceId: sharedStory, routeSourceId: sharedBranch });
+  const cardB = Object.freeze({ characterCardSourceId: 'character:shared-b.png', storySourceId: sharedStory, routeSourceId: sharedBranch });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: cardA.characterCardSourceId, storyKey: sharedStory, branchKey: sharedBranch, suffix: 'shared-transition-a' }),
+    previewScopeProject({ cardKey: cardB.characterCardSourceId, storyKey: sharedStory, branchKey: sharedBranch, suffix: 'shared-transition-b' }),
+  );
+  let currentSource = cardA;
+  const h = await harness({ suffix: 'transition-shared-raw', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+  await h.session.start({ exclusionProof, gateFReport });
+  const storyA = h.session.mountManager.status.storyId;
+  currentSource = cardB;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'shared-b');
+  const storyB = h.session.mountManager.status.storyId;
+  assert.notEqual(storyA, storyB);
+
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const scopedA = `card-story:${JSON.stringify([cardA.characterCardSourceId, sharedStory])}`;
+  const scopedB = `card-story:${JSON.stringify([cardB.characterCardSourceId, sharedStory])}`;
+  const aliasA = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === scopedA);
+  const aliasB = mappings.find(row => row.status === 'active' && row.sourceAuthority === 'sillytavern' && row.sourceType === 'story' && row.sourceId === scopedB);
+  assert.ok(aliasA && aliasB);
+  assert.notEqual(aliasA.canonicalId, aliasB.canonicalId);
+  assert.equal(h.session.runtime.status.gateState, 'open');
+  await h.session.shutdown('transition-shared-raw-complete');
+});
+
+test('S15 genuine non-s13 alias conflict during CHAT_CHANGED still fails closed without remounting the wrong scope', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const start = Object.freeze({ characterCardSourceId: 'character:conflict-start.png', storySourceId: 'story:start', routeSourceId: 'branch:main' });
+  const targetSuffix = 'transition-conflict-target';
+  const target = Object.freeze({ characterCardSourceId: `card-${targetSuffix}`, storySourceId: `story-${targetSuffix}`, routeSourceId: `branch-${targetSuffix}` });
+  const source = mergePreviewProjects(
+    previewScopeProject({ cardKey: start.characterCardSourceId, storyKey: start.storySourceId, branchKey: start.routeSourceId, suffix: 'conflict-transition-start' }),
+    previewScopeProject({ cardKey: target.characterCardSourceId, storyKey: target.storySourceId, branchKey: target.routeSourceId, suffix: 'conflict-transition-target' }),
+  );
+  await seedProductionScope(registry, targetSuffix, 1);
+  let currentSource = start;
+  const h = await harness({ suffix: 'transition-genuine-conflict', registry, previewSource: source, preseedProductionScope: false, sourceIdentityResolver: async () => currentSource });
+  await h.session.start({ exclusionProof, gateFReport });
+  const initialStoryId = h.session.mountManager.status.storyId;
+  const before = (await readStoreRows(registry, 'identityMappings')).filter(row => row.sourceAuthority === 'sillytavern' && row.sourceType === 'character-card' && row.sourceId === target.characterCardSourceId);
+  assert.ok(before.length > 0);
+  assert.ok(before.every(row => !(row.manifestIds || []).some(id => String(id).endsWith(':s13-sillytavern-scope-alias'))));
+
+  currentSource = target;
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'conflict-target');
+  assert.match(h.session.runtime.composition.listenerOwner.status.lastError || '', /Production scope alias conflict/);
+  assert.equal(h.session.runtime.status.gateState, 'closed');
+  assert.equal(h.session.mountManager.status.storyId, initialStoryId);
+  assert.equal(h.session.mountManager.status.transitionCount, 0);
+  await h.session.shutdown('transition-genuine-conflict-complete');
 });
