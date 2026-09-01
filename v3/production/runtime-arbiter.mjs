@@ -77,9 +77,8 @@ export class ProductionRuntimeArbiter {
   async startSelectedRuntime({ exclusionProof = null } = {}) {
     const requested = this.#featureFlag.read().requested === true;
     if (!requested) {
-      if (this.#extensionControl.isPreview37Disabled()) return this.returnToPreview37();
-      this.#state = PRODUCTION_RUNTIME_STATE.PREVIEW_DEFAULT;
-      this.#lastError = null;
+      this.#state = PRODUCTION_RUNTIME_STATE.V3_BLOCKED_READONLY;
+      this.#lastError = 'TMRW Phone startup intent is not established';
       return Object.freeze({ ...this.inspect(), activationRequired: false });
     }
 
@@ -143,19 +142,6 @@ export class ProductionRuntimeArbiter {
   async failSafe(error) {
     this.#state = PRODUCTION_RUNTIME_STATE.FAILED_SAFE;
     this.#lastError = String(error?.message || error || 'unknown runtime-arbiter failure');
-    this.#featureFlag.requestDisable();
-    try {
-      if (this.#extensionControl.isPreview37Disabled()) {
-        const control = await this.#extensionControl.enablePreview37AndReload();
-        this.#state = control.reloadRequested ? PRODUCTION_RUNTIME_STATE.RELOAD_REQUIRED_FOR_PREVIEW : PRODUCTION_RUNTIME_STATE.PREVIEW_DEFAULT;
-        return Object.freeze({ ...this.inspect(), control, failedSafe: true });
-      }
-      this.#state = PRODUCTION_RUNTIME_STATE.PREVIEW_DEFAULT;
-      return Object.freeze({ ...this.inspect(), failedSafe: true });
-    } catch (restoreError) {
-      this.#state = PRODUCTION_RUNTIME_STATE.FAILED_SAFE;
-      this.#lastError = `${this.#lastError}; Preview restore failed: ${String(restoreError?.message || restoreError)}`;
-      return Object.freeze({ ...this.inspect(), failedSafe: true });
-    }
+    return Object.freeze({ ...this.inspect(), failedSafe: true });
   }
 }

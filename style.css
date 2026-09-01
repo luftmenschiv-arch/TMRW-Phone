@@ -1,6 +1,14 @@
 @import url('./v3/ui/styles.css');
 
-/* Production lifecycle/ownership only. The phone itself is the retained Preview37 root. */
+/* Single user-facing TMRW Phone surface. The retained Preview37 runtime may remain installed only as internal presentation/migration authority. */
+#tmrw-phone-launcher {
+  display: none !important;
+}
+
+body:has(#tmrw-phone-launcher) #tmrw-phone-root {
+  display: none !important;
+}
+
 #tmrw-v3-phone-root,
 #tmrw-v3-phone-launcher {
   box-sizing: border-box;

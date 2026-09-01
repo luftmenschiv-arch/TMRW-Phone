@@ -133,7 +133,7 @@ test('package verifier proves manifest hooks, import closure, passive import, an
   assert.equal(report.passiveImport, true);
   assert.equal(report.protectedPaths, false);
   assert.equal(report.previewFilesCopied, false);
-  assert.equal(report.manifest.displayName, 'TMRW—Phone v3 Beta');
+  assert.equal(report.manifest.displayName, 'TMRW Phone');
   assert.equal(report.manifest.loadingOrder, 60);
   assert.equal(report.manifest.generateInterceptor, V3_GENERATION_INTERCEPTOR_KEY);
   assert.ok(report.files >= 6);

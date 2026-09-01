@@ -52,13 +52,18 @@ export class ProductionSillyTavernContextAdapter {
     const mappings = await this.#unitOfWork.readonly({ stores: ['identityMappings'] }, repositories => repositories.identityMappings.listByIndex('by_mapping_status', 'active'));
 
     const cards = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'character-card' && row.sourceId === candidate.characterCardSourceId);
-    const stories = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'story' && row.sourceId === candidate.storySourceId);
     const card = oneMapping(cards, 'Character Card');
-    const story = oneMapping(stories, 'Story');
-    const branches = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'branch' && row.sourceId === candidate.routeSourceId && row.storyId === story.canonicalId);
-    const branch = oneMapping(branches, 'Branch');
+    const scopedStorySourceId = `card-story:${JSON.stringify([candidate.characterCardSourceId, candidate.storySourceId])}`;
+    const scopedStories = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'story' && row.sourceId === scopedStorySourceId && row.parentCanonicalId === card.canonicalId);
+    const legacyStories = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'story' && row.sourceId === candidate.storySourceId && row.parentCanonicalId === card.canonicalId);
+    const story = oneMapping(scopedStories.length ? scopedStories : legacyStories, 'Story');
+    const scopedBranchSourceId = `card-story-branch:${JSON.stringify([candidate.characterCardSourceId, candidate.storySourceId, candidate.routeSourceId])}`;
+    const scopedBranches = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'branch' && row.sourceId === scopedBranchSourceId && row.storyId === story.canonicalId);
+    const legacyBranches = mappings.filter(row => row.sourceAuthority === candidate.sourceAuthority && row.sourceType === 'branch' && row.sourceId === candidate.routeSourceId && row.storyId === story.canonicalId);
+    const branch = oneMapping(scopedBranches.length ? scopedBranches : legacyBranches, 'Branch');
 
-    const resolved = resolveMappedSillyTavernScope({ candidate, mappings: [card, story, branch] });
+    const resolvedCandidate = Object.freeze({ ...candidate, storySourceId: story.sourceId, routeSourceId: branch.sourceId });
+    const resolved = resolveMappedSillyTavernScope({ candidate: resolvedCandidate, mappings: [card, story, branch] });
     if (resolved.status !== 'resolved') throw new Error(`Production identity unresolved: ${resolved.reason || 'exact Story/Branch mapping failed'}`);
 
     const scope = Object.freeze({ storyId: resolved.storyId, branchId: resolved.branchId });

@@ -1,5 +1,5 @@
 {
-  "display_name": "TMRW—Phone v3 Beta",
+  "display_name": "TMRW Phone",
   "loading_order": 60,
   "requires": [],
   "optional": [],
@@ -16,5 +16,5 @@
     "disable": "onDisable"
   },
   "generate_interceptor": "tmrwV3GenerateInterceptor",
-  "description": "Passive Production Composition package skeleton. S04 does not open v3 storage, acquire a lease, mount Phone UI, switch Preview, or author canonical state."
+  "description": "Single TMRW Phone surface with canonical story-aware runtime systems."
 }

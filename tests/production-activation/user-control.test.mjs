@@ -8,9 +8,8 @@ import { canonicalJson } from '../../domain/events/idempotency.mjs';
 import {
   PRODUCTION_USER_CONTROL_ID,
   PRODUCTION_USER_DIAGNOSTIC_ID,
-  PRODUCTION_USER_RETURN_BUTTON_ID,
+  PRODUCTION_USER_RETRY_BUTTON_ID,
   PRODUCTION_USER_STATUS_ID,
-  PRODUCTION_USER_USE_BUTTON_ID,
   createProductionUserControl,
   resolveCurrentPreview37SourceIdentity,
 } from '../../production/user-control.mjs';
@@ -175,8 +174,6 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
       }
       if (failStart) {
         active = false;
-        previewEnabled = true;
-        flag.requestDisable();
         throw new Error('injected authority failure');
       }
       active = true;
@@ -212,34 +209,38 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
   };
 }
 
-test('passive control mounts once, exposes explicit activation, and performs no takeover before user action', async () => {
+test('single TMRW Phone control mounts once with no Preview/Production mode switch controls', async () => {
   const h = harness();
   assert.equal(h.control.mount(), true);
   assert.equal(h.control.mount(), true);
   assert.equal(h.document.querySelectorAll(`#${PRODUCTION_USER_CONTROL_ID}`).length, 1);
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_STATUS_ID}`).textContent, 'Preview');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_STATUS_ID}`).textContent, 'TMRW Phone');
   assert.equal(h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`).hidden, true);
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, false);
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, true);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, true);
+  assert.equal(h.document.querySelector('#tmrw-v3-production-use'), null);
+  assert.equal(h.document.querySelector('#tmrw-v3-production-return'), null);
   assert.deepEqual(h.calls, []);
   assert.equal(h.entryApi.getProductionEntryStatus().databaseOpen, false);
   assert.equal(h.entryApi.getProductionEntryStatus().leaseAcquired, false);
   assert.equal(h.entryApi.getProductionEntryStatus().authoringGateOpen, false);
   assert.equal(h.document.querySelector('#tmrw-v3-phone-launcher'), null);
+  const source = readFileSync(new URL('../../production/user-control.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /Use TMRW Phone V3|Return to Preview 37|Preview is still safe/);
 });
 
-test('explicit activation reaches only the accepted preflight/takeover reload boundary', async () => {
+test('extension hook automatically starts the single TMRW Phone and reaches only the accepted takeover reload boundary', async () => {
   const h = harness();
   h.control.mount();
-  await h.control.useProduction();
+  await h.control.handleExtensionHook();
   assert.deepEqual(h.calls, ['configure-preflight', 'run-preflight', 'request-takeover']);
   assert.equal(h.flag.read().requested, true);
   assert.equal(h.previewEnabled, false);
   assert.equal(h.active, false);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, true);
   assert.equal(h.document.querySelector('#tmrw-v3-phone-launcher'), null);
 });
 
-test('post-reload explicit intent reuses selection/startup contracts exactly once and does not pass image-provider credentials', async () => {
+test('post-reload TMRW Phone intent reuses selection/startup contracts exactly once with no alternate-mode control', async () => {
   const h = harness();
   h.flag.requestEnable();
   h.previewEnabled = false;
@@ -249,9 +250,10 @@ test('post-reload explicit intent reuses selection/startup contracts exactly onc
   assert.equal(h.calls.filter(value => value === 'configure-active').length, 1);
   assert.equal(h.calls.filter(value => value === 'start-active').length, 1);
   assert.equal(h.active, true);
-  assert.equal(h.control.status.userStatus, 'TMRW Phone V3');
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, true);
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, false);
+  assert.equal(h.control.status.userStatus, 'TMRW Phone');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, true);
+  assert.equal(h.document.querySelector('#tmrw-v3-production-use'), null);
+  assert.equal(h.document.querySelector('#tmrw-v3-production-return'), null);
   assert.equal(h.configuredActiveOptions.length, 1);
   assert.equal(Object.hasOwn(h.configuredActiveOptions[0], 'imageProviderConfig'), false);
   assert.equal(Object.keys(h.configuredActiveOptions[0]).some(key => /api.?key|pixabay|provider.?config/i.test(key)), false);
@@ -275,32 +277,33 @@ test('post-reload startup pins the first exact source identity only until startu
   await assert.rejects(() => resolver({ ...context(), chatId: 'drifted-after-startup' }), /exact migration scope/);
 });
 
-test('authority failure stays closed, never fakes a launcher, and leaves Preview restored', async () => {
+test('authority failure stays closed, preserves TMRW Phone retry intent, and never falls back to Preview', async () => {
   const h = harness({ failStart: true });
   h.flag.requestEnable();
   h.previewEnabled = false;
   h.control.mount();
   await h.control.handleExtensionHook();
   assert.equal(h.active, false);
-  assert.equal(h.previewEnabled, true);
-  assert.equal(h.flag.read().requested, false);
+  assert.equal(h.previewEnabled, false);
+  assert.equal(h.flag.read().requested, true);
   assert.equal(h.document.querySelector('#tmrw-v3-phone-launcher'), null);
-  assert.match(h.control.status.userStatus, /^Unavailable/);
+  assert.equal(h.control.status.userStatus, 'TMRW Phone unavailable');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, false);
 });
 
-test('failure diagnostic exposes only stage plus short reason and keeps inactive Return hidden', async () => {
+test('startup failure keeps technical detail internal while normal-user UX stays concise and retry-only', async () => {
   const h = harness({ failStart: true });
   h.flag.requestEnable();
   h.previewEnabled = false;
   h.control.mount();
   await h.control.handleExtensionHook();
   const diagnostic = h.document.querySelector(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`);
-  assert.equal(diagnostic.hidden, false);
-  assert.match(diagnostic.textContent, /^Diagnostic: ACTIVE_STARTUP/);
-  assert.match(diagnostic.textContent, /injected authority failure/);
+  assert.equal(diagnostic.hidden, true);
+  assert.equal(diagnostic.textContent, '');
   assert.equal(h.control.status.diagnosticStage, 'ACTIVE_STARTUP');
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_USE_BUTTON_ID}`).hidden, false);
-  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`).hidden, true);
+  assert.match(h.control.status.diagnosticReason, /injected authority failure/);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, false);
+  assert.equal(h.document.querySelector('#tmrw-v3-production-return'), null);
   const persisted = JSON.stringify(h.sessionStorage.snapshot());
   assert.match(persisted, /ACTIVE_STARTUP/);
   assert.equal(persisted.includes('stack'), false);
@@ -336,7 +339,9 @@ test('exact PREFLIGHT canonical rejection metadata is consumed directly with no 
     tag: '[object Set]', constructor: 'Set', array: false,
     typeof: 'object', iterable: true, plain: false,
   });
-  assert.match(diagnostic.textContent, /Legacy membership type: tag=\[object Set\] constructor=Set array=false typeof=object iterable=true plain=false/);
+  assert.equal(diagnostic.hidden, true);
+  assert.equal(diagnostic.textContent, '');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, false);
   assert.equal(h.previewReadCalls, 0);
   assert.equal(h.contextCalls, 0);
   assert.deepEqual(h.calls, ['configure-preflight', 'run-preflight', 'dispose-preflight']);
@@ -354,13 +359,14 @@ test('exact PREFLIGHT canonical rejection metadata is consumed directly with no 
   assert.equal(h.entryApi.getProductionEntryStatus().authoringGateOpen, false);
 });
 
-test('Production settings CSS force-hides only hidden controls inside the Production control', () => {
+test('single-surface CSS hides the obsolete Preview launcher/runtime presentation while retaining Retry control hiding', () => {
   const css = readFileSync(new URL('../../production/package/style.css', import.meta.url), 'utf8');
   assert.equal(css.includes('#tmrw-v3-production-control [hidden]'), true);
-  assert.equal(css.includes('display: none !important;'), true);
+  assert.match(css, /#tmrw-phone-launcher\s*\{\s*display: none !important;/);
+  assert.match(css, /body:has\(#tmrw-phone-launcher\) #tmrw-phone-root/);
 });
 
-test('Return to Preview uses the formal Production return API', async () => {
+test('internal rollback API remains available for development evidence without a normal-user control', async () => {
   const h = harness();
   h.flag.requestEnable();
   h.previewEnabled = false;

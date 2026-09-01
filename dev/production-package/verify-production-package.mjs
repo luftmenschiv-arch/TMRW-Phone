@@ -63,7 +63,7 @@ export async function verifyProductionPackage() {
   if (!stat?.isDirectory()) throw new Error(`Production package output is missing: ${distRoot}`);
 
   const manifest = JSON.parse(await fs.readFile(path.join(distRoot, 'manifest.json'), 'utf8'));
-  if (manifest.display_name !== 'TMRW—Phone v3 Beta') throw new Error('Production package display_name mismatch');
+  if (manifest.display_name !== 'TMRW Phone') throw new Error('Production package display_name mismatch');
   if (manifest.loading_order !== 60) throw new Error('Production package candidate loading_order mismatch');
   if (manifest.js !== 'index.js' || manifest.css !== 'style.css') throw new Error('Production package entry paths mismatch');
   if (manifest.auto_update !== false) throw new Error('Production package auto_update must remain false');

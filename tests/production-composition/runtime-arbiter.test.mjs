@@ -159,7 +159,16 @@ test('complete post-reload exclusion can reach only V3_STARTING handoff, never a
   assert.notEqual(result.state, PRODUCTION_RUNTIME_STATE.V3_AUTHORING);
 });
 
-test('cancelling after Preview disable restores Preview using official enable API and clears request intent', async () => {
+test('missing startup intent never auto-enables Preview as an alternate runtime', async () => {
+  const { arbiter, flag, api } = createArbiter({ controlOptions: { enabled: false } });
+  assert.equal(flag.read().requested, false);
+  const result = await arbiter.startSelectedRuntime({ exclusionProof: { launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true } });
+  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.V3_BLOCKED_READONLY);
+  assert.equal(result.activationRequired, false);
+  assert.equal(api.calls.some(call => call[0] === 'enable'), false);
+});
+
+test('internal rollback after Preview disable still uses the official enable API and clears request intent', async () => {
   const { arbiter, flag, api } = createArbiter();
   await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
   const result = await arbiter.returnToPreview37();
@@ -169,30 +178,32 @@ test('cancelling after Preview disable restores Preview using official enable AP
   assert.equal(result.authoringAuthority, false);
 });
 
-test('disable failure before persistence fails safe to Preview default with request cleared', async () => {
-  const { arbiter, flag } = createArbiter({ controlOptions: { failDisable: 'before' } });
-  const result = await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
-  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.PREVIEW_DEFAULT);
-  assert.equal(result.failedSafe, true);
-  assert.equal(flag.read().requested, false);
-  assert.equal(result.preview.enabled, true);
-});
-
-test('disable failure after persisted disable restores Preview before leaving fail-safe path', async () => {
-  const { arbiter, flag, api } = createArbiter({ controlOptions: { failDisable: 'after' } });
-  const result = await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
-  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.RELOAD_REQUIRED_FOR_PREVIEW);
-  assert.equal(flag.read().requested, false);
-  assert.equal(api.calls.some(call => call[0] === 'enable'), true);
-  assert.equal(result.authoringAuthority, false);
-});
-
-test('Preview restore failure remains FAILED_SAFE with v3 request cleared and no authoring authority', async () => {
-  const { arbiter, flag } = createArbiter({ controlOptions: { failDisable: 'after', failEnable: true } });
+test('disable failure before persistence stays FAILED_SAFE with TMRW Phone retry intent preserved', async () => {
+  const { arbiter, flag, api } = createArbiter({ controlOptions: { failDisable: 'before' } });
   const result = await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
   assert.equal(result.state, PRODUCTION_RUNTIME_STATE.FAILED_SAFE);
-  assert.equal(flag.read().requested, false);
+  assert.equal(result.failedSafe, true);
+  assert.equal(flag.read().requested, true);
+  assert.equal(result.preview.enabled, true);
+  assert.equal(api.calls.some(call => call[0] === 'enable'), false);
+});
+
+test('disable failure after persisted disable never auto-restores Preview and preserves retry intent', async () => {
+  const { arbiter, flag, api } = createArbiter({ controlOptions: { failDisable: 'after' } });
+  const result = await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
+  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.FAILED_SAFE);
+  assert.equal(flag.read().requested, true);
+  assert.equal(api.calls.some(call => call[0] === 'enable'), false);
   assert.equal(result.authoringAuthority, false);
+});
+
+test('startup fail-safe does not call the Preview enable path even when that path would fail', async () => {
+  const { arbiter, flag, api } = createArbiter({ controlOptions: { failDisable: 'after', failEnable: true } });
+  const result = await arbiter.requestV3({ confirmed: true, onboarding: validOnboarding() });
+  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.FAILED_SAFE);
+  assert.equal(flag.read().requested, true);
+  assert.equal(result.authoringAuthority, false);
+  assert.equal(api.calls.some(call => call[0] === 'enable'), false);
 });
 
 test('return-to-Preview quiesces v3 before official Preview enable', async () => {

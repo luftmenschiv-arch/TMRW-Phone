@@ -100,9 +100,8 @@ async function storedLease(registry) {
   return row;
 }
 
-async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, appendFailureId = null, previewReadSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true } = {}) {
+async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, appendFailureId = null, previewReadSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
   const source = preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
-  const registry = MemoryV3Database.createRegistry();
   if (preseedProductionScope) await seedProductionScope(registry, suffix, 2);
   const rawDatabases = [];
   const document = new FakeDocument();
@@ -152,7 +151,7 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
 const exclusionProof = Object.freeze({ launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true });
 const gateFReport = Object.freeze({ status: 'pass' });
 
-async function assertRecovered(h, { expectRuntime = false, restoreFailed = false } = {}) {
+async function assertRecovered(h, { expectRuntime = false } = {}) {
   const status = h.session.status;
   assert.equal(status.authoringAuthority, false);
   assert.notEqual(status.authoringGateState, 'open');
@@ -166,14 +165,9 @@ async function assertRecovered(h, { expectRuntime = false, restoreFailed = false
     assert.equal(h.session.runtime.composition.generationOwner.status.delegateActive, false);
   }
   assert.equal(await storedLease(h.registry), undefined);
-  assert.equal(new V3BetaFeatureFlag({ storage: h.featureFlagStorage }).read().requested, false);
-  if (restoreFailed) {
-    assert.equal(h.session.arbiter.inspect().state, 'FAILED_SAFE');
-    assert.equal(h.api.previewEnabled, false);
-  } else {
-    assert.ok(['RELOAD_REQUIRED_FOR_PREVIEW', 'PREVIEW_DEFAULT'].includes(h.session.arbiter.inspect().state));
-    assert.equal(h.api.previewEnabled, true);
-  }
+  assert.equal(new V3BetaFeatureFlag({ storage: h.featureFlagStorage }).read().requested, true);
+  assert.equal(h.session.arbiter.inspect().state, 'FAILED_SAFE');
+  assert.equal(h.api.previewEnabled, false);
   const beforeWrites = h.rawDatabases.at(-1)?.diagnostics?.writeCommits ?? null;
   await h.session.shutdown('repeat-cleanup-1');
   await h.session.shutdown('repeat-cleanup-2');
@@ -184,7 +178,7 @@ async function assertRecovered(h, { expectRuntime = false, restoreFailed = false
 test('S13 incomplete post-reload exclusion proof enters common official Preview recovery and never creates authority', async () => {
   const h = await harness({ suffix: 'exclusion' });
   await assert.rejects(() => h.session.start({ exclusionProof: { launcherAbsent: false, rootAbsent: true, runtimeGlobalAbsent: true }, gateFReport }), /incomplete Preview exclusion/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   assert.equal(h.rawDatabases.length, 0);
   await assertRecovered(h);
 });
@@ -193,14 +187,14 @@ test('S13 migration-plan recomputation failure is caught before runtime creation
   const h = await harness({ suffix: 'plan', previewReadSource: async () => { throw new Error('injected migration-plan failure'); } });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /migration-plan failure/);
   assert.equal(h.rawDatabases.length, 0);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h);
 });
 
 test('S13 migration-transition failure reverse-unwinds DB/heartbeat/lease before official Preview recovery', async () => {
   const h = await harness({ suffix: 'transition', stageObserver: stage => { if (stage === 'migration-transition-open') throw new Error('injected migration transition failure'); } });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /migration transition failure/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   assert.equal(h.timers.timers.size, 0);
   await assertRecovered(h);
 });
@@ -208,28 +202,28 @@ test('S13 migration-transition failure reverse-unwinds DB/heartbeat/lease before
 test('S13 exact identity failure disposes the constructed runtime and performs no canonical rollback writes', async () => {
   const h = await harness({ suffix: 'identity', sourceIdentityResolver: async () => ({ characterCardSourceId: '', storySourceId: '', routeSourceId: '' }) });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /scope aliasing requires exact SillyTavern/i);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h, { expectRuntime: true });
 });
 
 test('S13 composition construction failure reverse-unwinds partial listeners/heartbeat/lease and restores Preview', async () => {
   const h = await harness({ suffix: 'composition', preseedProductionScope: false, stageObserver: stage => { if (stage === 'contacts-service') throw new Error('injected composition construction failure'); } });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /composition construction failure/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h);
 });
 
 test('S13 mount failure leaves no root/launcher/delegate and restores Preview through official control', async () => {
   const h = await harness({ suffix: 'mount', preseedProductionScope: false, appendFailureId: V3_ROOT_ID });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /append failure:tmrw-v3-phone-root/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h, { expectRuntime: true });
 });
 
 test('S13 launcher failure removes the already-mounted shell/root and restores Preview through common rollback', async () => {
   const h = await harness({ suffix: 'launcher', preseedProductionScope: false, appendFailureId: V3_LAUNCHER_ID });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /append failure:tmrw-v3-phone-launcher/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h, { expectRuntime: true });
 });
 
@@ -246,7 +240,7 @@ test('S13 final lease validation failure closes and disposes the mounted runtime
     },
   });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /final lease validation failed: injected-final-lease/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h, { expectRuntime: true });
 });
 
@@ -261,15 +255,15 @@ test('S13 final Production Health failure closes mounted runtime and cannot tran
     },
   });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /final health blocked: injected-final-health/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h, { expectRuntime: true });
 });
 
-test('S13 Preview restoration failure remains FAILED_SAFE with v3 non-authoring and cleanup idempotent', async () => {
-  const h = await harness({ suffix: 'restore-fail', restoreFails: true });
+test('S13 startup exclusion failure remains FAILED_SAFE without attempting Preview restoration', async () => {
+  const h = await harness({ suffix: 'no-preview-fallback', restoreFails: true });
   await assert.rejects(() => h.session.start({ exclusionProof: { launcherAbsent: false, rootAbsent: true, runtimeGlobalAbsent: true }, gateFReport }), /incomplete Preview exclusion/);
-  assert.equal(h.api.enableCalls, 1);
-  await assertRecovered(h, { restoreFailed: true });
+  assert.equal(h.api.enableCalls, 0);
+  await assertRecovered(h);
 });
 
 test('S13 isolated happy path reaches one V3_AUTHORING graph/root/launcher with Voice unavailable and restores Preview cleanly', async () => {
@@ -308,10 +302,33 @@ test('S13 first active startup can resolve the migrated production scope from an
   await h.session.returnToPreview37();
 });
 
+test('S13 same SillyTavern Story/Branch source IDs are card-scoped and do not false-conflict across Character Cards', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const sharedStorySourceId = 'story:shared-chat';
+  const sharedRouteSourceId = 'branch:main';
+  const first = await harness({
+    suffix: 'card-scope-a', registry, preseedProductionScope: false,
+    sourceIdentityResolver: async () => ({ characterCardSourceId: 'character:card-a.png', storySourceId: sharedStorySourceId, routeSourceId: sharedRouteSourceId }),
+  });
+  const startedA = await first.session.start({ exclusionProof, gateFReport });
+  assert.equal(startedA.runtimeState, 'V3_AUTHORING');
+  await first.session.shutdown('card-scope-a-complete');
+
+  const second = await harness({
+    suffix: 'card-scope-b', registry, preseedProductionScope: false,
+    sourceIdentityResolver: async () => ({ characterCardSourceId: 'character:card-b.png', storySourceId: sharedStorySourceId, routeSourceId: sharedRouteSourceId }),
+  });
+  const startedB = await second.session.start({ exclusionProof, gateFReport });
+  assert.equal(startedB.runtimeState, 'V3_AUTHORING');
+  assert.notEqual(startedA.storyId, startedB.storyId);
+  assert.notEqual(startedA.branchId, startedB.branchId);
+  await second.session.shutdown('card-scope-b-complete');
+});
+
 test('S13 genuine SillyTavern scope alias conflict fails closed without weakening exact identity', async () => {
   const h = await harness({ suffix: 'alias-conflict', preseedProductionScope: true });
   await assert.rejects(() => h.session.start({ exclusionProof, gateFReport }), /Production scope alias conflict/);
-  assert.equal(h.api.enableCalls, 1);
+  assert.equal(h.api.enableCalls, 0);
   await assertRecovered(h);
 });
 

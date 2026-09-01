@@ -141,15 +141,28 @@ async function addProductionScopeAliases({ transitionDatabase, manifest, plan, s
   if (!identity?.cardId || !identity?.storyId || !identity?.branchId) throw new Error('Production scope aliasing requires committed canonical identity IDs');
   const at = now();
   const manifestId = `${plan.batchId}:s13-sillytavern-scope-alias`;
+  const storyAliasSourceId = `card-story:${JSON.stringify([characterCardSourceId, storySourceId])}`;
+  const branchAliasSourceId = `card-story-branch:${JSON.stringify([characterCardSourceId, storySourceId, routeSourceId])}`;
   const rows = [
-    { sourceType: 'character-card', sourceId: characterCardSourceId, canonicalType: 'character-card', canonicalId: identity.cardId, parentCanonicalId: null, storyId: null, branchId: null, scopeParts: [] },
-    { sourceType: 'story', sourceId: storySourceId, canonicalType: 'story', canonicalId: identity.storyId, parentCanonicalId: identity.cardId, storyId: null, branchId: null, scopeParts: [] },
-    { sourceType: 'branch', sourceId: routeSourceId, canonicalType: 'branch', canonicalId: identity.branchId, parentCanonicalId: identity.storyId, storyId: identity.storyId, branchId: identity.branchId, scopeParts: [identity.storyId, identity.branchId] },
+    { sourceType: 'character-card', sourceId: characterCardSourceId, legacySourceId: characterCardSourceId, canonicalType: 'character-card', canonicalId: identity.cardId, parentCanonicalId: null, storyId: null, branchId: null, scopeParts: [] },
+    { sourceType: 'story', sourceId: storyAliasSourceId, legacySourceId: storySourceId, canonicalType: 'story', canonicalId: identity.storyId, parentCanonicalId: identity.cardId, storyId: null, branchId: null, scopeParts: [identity.cardId] },
+    { sourceType: 'branch', sourceId: branchAliasSourceId, legacySourceId: routeSourceId, canonicalType: 'branch', canonicalId: identity.branchId, parentCanonicalId: identity.storyId, storyId: identity.storyId, branchId: identity.branchId, scopeParts: [identity.storyId, identity.branchId] },
   ];
   const unit = new V3UnitOfWork(transitionDatabase);
   const saved = [];
   await unit.readwrite({ stores: ['identityMappings'], privileged: true }, async repositories => {
     for (const spec of rows) {
+      const activeMappings = await repositories.identityMappings.listByIndex('by_mapping_status', 'active');
+      const sourceIds = new Set([spec.sourceId, spec.legacySourceId]);
+      const sameSource = activeMappings.filter(row => row.sourceAuthority === 'sillytavern' && row.sourceType === spec.sourceType && sourceIds.has(row.sourceId));
+      const sameScope = spec.sourceType === 'character-card'
+        ? sameSource
+        : spec.sourceType === 'story'
+          ? sameSource.filter(row => row.parentCanonicalId === spec.parentCanonicalId)
+          : sameSource.filter(row => row.storyId === spec.storyId);
+      const exact = sameScope.find(row => row.canonicalId === spec.canonicalId && row.parentCanonicalId === spec.parentCanonicalId && row.storyId === spec.storyId && row.branchId === spec.branchId);
+      if (sameScope.length && !exact) throw new Error(`Production scope alias conflict for ${spec.sourceType}:${spec.sourceId}`);
+      if (exact) { saved.push(exact); continue; }
       const id = await deterministicIdentityId('identity-mapping', { sourceAuthority: 'sillytavern', stableSourceId: `${spec.sourceType}:${spec.sourceId}`, scopeParts: spec.scopeParts });
       const existing = await repositories.identityMappings.get(id);
       if (existing && (existing.canonicalId !== spec.canonicalId || existing.sourceId !== spec.sourceId || existing.sourceType !== spec.sourceType || existing.sourceAuthority !== 'sillytavern')) {

@@ -3,8 +3,7 @@ import { PRODUCTION_RUNTIME_STATE } from './runtime-arbiter.mjs';
 
 export const PRODUCTION_USER_CONTROL_ID = 'tmrw-v3-production-control';
 export const PRODUCTION_USER_STATUS_ID = 'tmrw-v3-production-status';
-export const PRODUCTION_USER_USE_BUTTON_ID = 'tmrw-v3-production-use';
-export const PRODUCTION_USER_RETURN_BUTTON_ID = 'tmrw-v3-production-return';
+export const PRODUCTION_USER_RETRY_BUTTON_ID = 'tmrw-v3-production-retry';
 export const PRODUCTION_USER_DIAGNOSTIC_ID = 'tmrw-v3-production-diagnostic';
 
 const DIAGNOSTIC_SESSION_KEY = 'tmrw-v3-production-last-diagnostic-v1';
@@ -16,7 +15,7 @@ const PREVIEW_DATABASE_KEY = 'main';
 const ACCEPTED_GATE_F_REPORT = Object.freeze({ status: 'pass', source: 'phase21-accepted-gate-f' });
 
 function genericUnavailableMessage() {
-  return 'Unavailable — Preview is still safe.';
+  return 'TMRW Phone unavailable';
 }
 
 function normalizeError(error) {
@@ -236,8 +235,7 @@ export class ProductionUserControl {
   #root = null;
   #status = null;
   #diagnostic = null;
-  #useButton = null;
-  #returnButton = null;
+  #retryButton = null;
   #busy = false;
   #lastError = null;
   #stage = 'IDLE';
@@ -299,28 +297,25 @@ export class ProductionUserControl {
     if (!host?.append) return false;
 
     const root = createElement(document, 'div', { id: PRODUCTION_USER_CONTROL_ID, className: 'extension_container tmrw-v3-production-control' });
-    const title = createElement(document, 'h4', { text: 'TMRW Phone V3' });
+    const title = createElement(document, 'h4', { text: 'TMRW Phone' });
     const statusWrap = createElement(document, 'div', { className: 'tmrw-v3-production-control__status-wrap' });
     const statusLabel = createElement(document, 'span', { className: 'tmrw-v3-production-control__label', text: 'Status:' });
     const status = createElement(document, 'span', { id: PRODUCTION_USER_STATUS_ID, className: 'tmrw-v3-production-control__status' });
     const diagnostic = createElement(document, 'p', { id: PRODUCTION_USER_DIAGNOSTIC_ID, className: 'tmrw-v3-production-control__diagnostic' });
     diagnostic.hidden = true;
     const actions = createElement(document, 'div', { className: 'tmrw-v3-production-control__actions' });
-    const useButton = createElement(document, 'button', { id: PRODUCTION_USER_USE_BUTTON_ID, className: 'menu_button', text: 'Use TMRW Phone V3' });
-    const returnButton = createElement(document, 'button', { id: PRODUCTION_USER_RETURN_BUTTON_ID, className: 'menu_button', text: 'Return to Preview 37' });
-    useButton.type = 'button';
-    returnButton.type = 'button';
-    useButton.addEventListener('click', () => { void this.useProduction(); });
-    returnButton.addEventListener('click', () => { void this.returnToPreview(); });
+    const retryButton = createElement(document, 'button', { id: PRODUCTION_USER_RETRY_BUTTON_ID, className: 'menu_button', text: 'Retry' });
+    retryButton.type = 'button';
+    retryButton.hidden = true;
+    retryButton.addEventListener('click', () => { void this.retryStartup(); });
     statusWrap.append(statusLabel, status);
-    actions.append(useButton, returnButton);
+    actions.append(retryButton);
     root.append(title, statusWrap, diagnostic, actions);
     host.append(root);
     this.#root = root;
     this.#status = status;
     this.#diagnostic = diagnostic;
-    this.#useButton = useButton;
-    this.#returnButton = returnButton;
+    this.#retryButton = retryButton;
     this.refresh();
     return true;
   }
@@ -329,8 +324,7 @@ export class ProductionUserControl {
     this.#root = root;
     this.#status = root.querySelector?.(`#${PRODUCTION_USER_STATUS_ID}`) || null;
     this.#diagnostic = root.querySelector?.(`#${PRODUCTION_USER_DIAGNOSTIC_ID}`) || null;
-    this.#useButton = root.querySelector?.(`#${PRODUCTION_USER_USE_BUTTON_ID}`) || null;
-    this.#returnButton = root.querySelector?.(`#${PRODUCTION_USER_RETURN_BUTTON_ID}`) || null;
+    this.#retryButton = root.querySelector?.(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`) || null;
   }
 
   async handleExtensionHook() {
@@ -338,25 +332,25 @@ export class ProductionUserControl {
     this.refresh();
     const entry = this.#entryApi.getProductionEntryStatus();
     if (entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true) return this.status;
-    if (!this.#featureFlag?.read().requested) return this.status;
-    if (!this.#document?.querySelector) return this.status;
+    if (this.#busy || !this.#document?.querySelector) return this.status;
     let host;
-    this.#setStage('POST_RELOAD_HOST_API');
+    this.#setStage('HOST_API');
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
-    if (!preview || preview.enabled === true) return this.status;
-    return this.resumePendingSelection({ host });
+    if (preview?.enabled === true) return this.useProduction({ host });
+    if (this.#featureFlag?.read().requested === true) return this.resumePendingSelection({ host });
+    this.#fail(new Error('TMRW Phone startup prerequisites are unavailable'));
+    return this.status;
   }
 
-  async useProduction() {
+  async useProduction({ host = null } = {}) {
     if (this.#busy) return this.status;
     this.#busy = true;
     this.#clearDiagnostic();
     this.#setStage('HOST_API');
     this.refresh();
-    let host = null;
     try {
-      host = await this.#hostApiLoader();
+      host = host || await this.#hostApiLoader();
       this.#setStage('PREVIEW_READ_SOURCE');
       const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
       this.#setStage('PREFLIGHT_CONFIG');
@@ -384,6 +378,18 @@ export class ProductionUserControl {
       this.#busy = false;
       this.refresh();
     }
+  }
+
+  async retryStartup() {
+    if (this.#busy) return this.status;
+    let host;
+    this.#setStage('HOST_API');
+    try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
+    const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
+    if (preview?.enabled === true) return this.useProduction({ host });
+    if (this.#featureFlag?.read().requested === true) return this.resumePendingSelection({ host });
+    this.#fail(new Error('TMRW Phone startup prerequisites are unavailable'));
+    return this.status;
   }
 
   async resumePendingSelection({ host = null } = {}) {
@@ -493,31 +499,22 @@ export class ProductionUserControl {
   }
 
   #deriveUserStatus(entry = this.#entryApi.getProductionEntryStatus()) {
-    if (this.#busy) return 'Switching…';
+    if (this.#busy) return 'Starting TMRW Phone…';
     if (this.#lastError) return genericUnavailableMessage();
-    if (entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true) return 'TMRW Phone V3';
-    return 'Preview';
+    if (entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true) return 'TMRW Phone';
+    return 'TMRW Phone';
   }
 
   refresh() {
     const entry = this.#entryApi.getProductionEntryStatus();
-    const active = entry.authoringGateOpen === true && entry.leaseAcquired === true && entry.launcherMounted === true;
     if (this.#status) this.#status.textContent = this.#deriveUserStatus(entry);
     if (this.#diagnostic) {
-      const visible = Boolean(this.#lastError);
-      const legacyType = formatLegacyMembershipType(this.#legacyMembershipType);
-      this.#diagnostic.textContent = visible
-        ? `Diagnostic: ${this.#stage} — ${sanitizeDiagnosticReason(this.#lastError)}${legacyType ? `\nLegacy membership type: ${legacyType}` : ''}`
-        : '';
-      this.#diagnostic.hidden = !visible;
+      this.#diagnostic.textContent = '';
+      this.#diagnostic.hidden = true;
     }
-    if (this.#useButton) {
-      this.#useButton.hidden = active;
-      this.#useButton.disabled = this.#busy;
-    }
-    if (this.#returnButton) {
-      this.#returnButton.hidden = !active;
-      this.#returnButton.disabled = this.#busy;
+    if (this.#retryButton) {
+      this.#retryButton.hidden = !this.#lastError;
+      this.#retryButton.disabled = this.#busy;
     }
     return this.status;
   }
@@ -530,7 +527,7 @@ export class ProductionUserControl {
       reason: sanitizeDiagnosticReason(error),
       legacyMembershipType: this.#legacyMembershipType,
     }));
-    console.error('[TMRW Phone V3] Production activation failed safely:', error);
+    console.error('[TMRW Phone] startup failed safely:', error);
     this.refresh();
   }
 
@@ -539,8 +536,7 @@ export class ProductionUserControl {
     this.#root = null;
     this.#status = null;
     this.#diagnostic = null;
-    this.#useButton = null;
-    this.#returnButton = null;
+    this.#retryButton = null;
     return true;
   }
 }
