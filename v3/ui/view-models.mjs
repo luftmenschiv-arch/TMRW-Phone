@@ -91,7 +91,7 @@ export class PhoneShellViewModels {
     }
     let galleryItems = Object.freeze([]); let fileItems = Object.freeze([]); let utilityError = null;
     if (['gallery', 'files'].includes(route) && opened.authorization.granted) {
-      if (!this.#phoneWorldUtilities) utilityError = 'Phone-world utility service is unavailable.';
+      if (!this.#phoneWorldUtilities) utilityError = 'แอปนี้ยังไม่พร้อมใช้งาน';
       else {
         try {
           if (route === 'gallery') galleryItems = await this.#phoneWorldUtilities.listGallery({ scope, deviceId: opened.perspective.deviceId, limit: 100 });

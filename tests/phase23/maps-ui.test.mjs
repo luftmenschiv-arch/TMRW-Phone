@@ -20,8 +20,8 @@ async function typeLocation(s, value) { const input = find(s.root, node => node.
 test('C2-3 Maps is truthful/empty without data, Check In is owner-private, and no fake GPS controls exist', async () => {
   const c = await setupPhoneWorldFoundation({ castSize: 2, manifestId: 'c2-3-checkin' }); await addContact(c, c.alice, '5552001', 'Alice');
   const s = shell(c); await s.mount(c.target); let panel = await openMaps(s);
-  assert.match(find(panel, node => String(node.textContent).includes('does not claim device GPS'))?.textContent || '', /does not claim device GPS/);
-  assert.ok(find(panel, node => node.textContent === 'No phone-world location records are visible to this account.'));
+  assert.equal(find(panel, node => /GPS/i.test(String(node.textContent || ''))), null);
+  assert.ok(find(panel, node => node.textContent === 'ยังไม่มีตำแหน่งที่แชร์ไว้'));
   assert.deepEqual(findAll(panel, node => Boolean(node.dataset?.locationAction)).map(node => node.dataset.locationAction).sort(), ['check-in', 'live', 'share']);
   await typeLocation(s, 'Library'); find(s.root, node => node.dataset?.locationAction === 'check-in').click();
   await waitFor(async () => (await c.phoneWorld.listVisibleLocations({ scope: c.scope, viewerAccountId: c.user.accountId })).some(row => row.label === 'Library'));
@@ -36,7 +36,7 @@ test('C2-3 Maps Share Location uses identified Contact audience only and incomin
   assert.equal((await c.phoneWorld.listVisibleLocations({ scope: c.scope, viewerAccountId: c.bob.accountId })).some(row => row.label === 'Cafe'), false);
 
   await c.phoneWorld.setLocation({ scope: c.scope, ...ownedInput(c.alice), recordId: 'alice-share-user', mode: 'shared', label: 'Alice meeting point', audienceAccountIds: [c.user.accountId], source: utilitySource('alice-share-user'), idempotencyKey: 'alice-share-user' });
-  await s.renderActive(); const incoming = find(s.root, node => node.dataset?.locationRecordId === 'alice-share-user'); assert.ok(incoming); assert.match(find(incoming, node => String(node.textContent).includes('Shared with this phone'))?.textContent || '', /Shared with this phone/);
+  await s.renderActive(); const incoming = find(s.root, node => node.dataset?.locationRecordId === 'alice-share-user'); assert.ok(incoming); assert.equal(find(incoming, node => node.tagName === 'strong')?.textContent, 'Alice meeting point'); assert.equal(find(incoming, node => node.tagName === 'small')?.textContent, 'shared · active');
 });
 
 test('C2-3 Live Location records explicit 30-minute expiry metadata and owning phone alone can end it one-shot', async () => {
@@ -51,7 +51,7 @@ test('C2-3 Live Location records explicit 30-minute expiry metadata and owning p
 
 test('C2-3 Maps rejects foreign viewers, hides unauthorized Their Phone state, and clears draft/audience on device switch', async () => {
   const c = await setupPhoneWorldFoundation({ castSize: 2, manifestId: 'c2-3-privacy' }); await addContact(c, c.alice, '5552005', 'Alice'); const s = shell(c); await s.mount(c.target); await openMaps(s); await typeLocation(s, 'Draft location'); find(s.root, node => node.dataset?.locationAudience === c.alice.accountId).click();
-  await s.selectDevice(c.alice.deviceId); assert.equal(find(s.root, node => node.dataset?.locationRecordId), null); assert.match(find(s.root, node => String(node.textContent).includes('access to this phone'))?.textContent || '', /access to this phone/);
+  await s.selectDevice(c.alice.deviceId); assert.equal(find(s.root, node => node.dataset?.locationRecordId), null); assert.ok(find(s.root, node => node.textContent === 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
   await s.selectDevice(c.user.deviceId); const input = find(s.root, node => node.attributes?.get?.('aria-label') === 'Story-world location label'); assert.equal(input.value, ''); assert.ok(findAll(s.root, node => node.dataset?.locationAudience).every(node => node.attributes.get('aria-pressed') === 'false'));
   await assert.rejects(c.phoneWorld.listVisibleLocations({ scope: c.scope, viewerAccountId: 'account_foreign' }), /Unknown scoped.*Account/i);
 });

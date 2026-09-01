@@ -177,6 +177,7 @@ export class ProductionMountManager {
         playerActorId: identity.player.actorId,
         playerInstanceId: identity.player.instanceId,
         selectedDeviceId: identity.player.deviceId,
+        onClose: () => this.hide(),
       });
       if (!shell || typeof shell.mount !== 'function' || typeof shell.dispose !== 'function') throw new Error('Production shell factory did not return TmrwPhoneShell-compatible shell');
       const shellRoot = await shell.mount(host);

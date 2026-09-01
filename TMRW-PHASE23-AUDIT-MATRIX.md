@@ -231,6 +231,40 @@ Qualification evidence:
 - privacy/access and stale-perspective cleanup: PASS.
 - duplicate Production root/launcher protection: PASS through retained Production mount-manager regression.
 - Return to Preview37 architecture: unchanged/retained.
-- real Android visual confirmation of corrected launcher: NOT YET — requires corrected package publication/update.
+- real Android visual confirmation of corrected launcher: FAILED PRODUCT-OWNER VISUAL ACCEPTANCE — Patch2 improved the raw grid but remained a dashboard interpretation and lacked the required Preview37 interaction parity. Superseded by the direct Preview37 visual-parity patch below.
 - user data: untouched.
+- Phase24: NOT STARTED.
+
+### Post-publication real-device Preview37 visual/interaction parity patch
+
+Status: CORRECTED / NARROW QUALIFICATION PASS — publication + Product Owner real-Android visual inspection required.
+
+Product-owner visual authority was clarified after Patch2 real-device inspection: Production must use the retained Preview37 phone UI/interaction composition directly, with Production Phase23 remaining authoritative for data, privacy, routing and actions. Calls use the separately recovered `v3/design/call-ui-authority/` presentation authority rather than Preview37 generic Call visuals.
+
+Direct-port correction evidence:
+
+- retained Preview37 shell/chrome, owner sheet, close/back interaction, dock, home composition, horizontal snap pager and page dots are directly reused/ported into the Production shell.
+- home pager: six real Production apps per page, dynamic page count, swipe/scroll page synchronization and clickable Preview-style dots; no Preview widgets or fake app routes are introduced.
+- Close uses the supported Production `mountManager.hide()` lifecycle; the floating launcher is suppressed while the Phone overlay is open and returns after close.
+- My Phone / Their Phones remain the Production canonical device/perspective authority underneath the Preview37 owner-sheet presentation.
+- current-release app renderers use retained Preview37 presentation families where available; normal-user implementation/debug prose is removed while gated Diagnostics remains technical by design.
+- recovered Call authority (`incoming-call.html`, `outgoing-call.html`, `connected-call-v6.html`, `call-ended.html`) drives Call presentation; Production Call state/actions/privacy/history/transcript remain authoritative. Demo Arin identity, Unsplash assets, sessionStorage timing and fake Voice state are not imported.
+- 390×844 direct Preview shell containment: PASS. Mobile shell fills the bounded Production root rather than requesting a width larger than the 374px safe inner viewport.
+
+Post-port functional-presentation triage and correction:
+
+- initial same bounded regression after direct port: 62/109 PASS, 47 presentation-era failures.
+- read-only classification: 45 `STALE_PRESENTATION_ASSERTION`, 2 `POSSIBLE_FUNCTIONAL_REGRESSION`.
+- B1 Wallet: corrected renderer now exposes every known canonical currency balance, including zero balances, without summing unlike currencies. Example qualification proves `2500 JPY` and `0 USD` are both visible.
+- B2 Gallery: corrected selected-detail presentation now binds/renders the real `selected.assetRef`; qualification proves `asset:shared-story-photo` is preserved and visible without fabricated provenance/reference data.
+- after B1/B2, read-only reclassification: Category B = 0; remaining failures were stale Preview/Patch2 DOM, copy or hydration assumptions only.
+- stale tests were updated only where current Preview37 source/Production structure directly proved the presentation change; service/database/privacy/write assertions were retained, and provenance/source invariants removed from normal UI assertions were reasserted against underlying service state where applicable.
+- final same bounded regression: 109/109 PASS.
+- dedicated direct-Preview presentation gate: 7/7 PASS — Preview37 shell invariants, horizontal pager/page dots, Close/Back/dock/owner sheet, recovered Call authority, zero Preview mock data, normal-user debug-copy absence and 390×844.
+- Preview canonical writes introduced by visual port: 0.
+- Preview fake/mock data imported: 0.
+- user data mutation from visual port: 0.
+- migration/schema behavior: unchanged.
+- Voice runtime/model: untouched.
+- Return to Preview37: retained.
 - Phase24: NOT STARTED.

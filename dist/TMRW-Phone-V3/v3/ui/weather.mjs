@@ -2,18 +2,11 @@ const el = (document, tag, text = '') => { const node = document.createElement(t
 
 export function renderWeather({ document, items = [], authorizationGranted = true, error = null }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-weather';
-  if (!authorizationGranted) { root.append(el(document, 'p', 'Weather is unavailable until access to this phone is granted.')); return root; }
+  if (!authorizationGranted) { root.append(el(document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
   if (error) { const alert = el(document, 'p', `Weather error: ${error}`); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
-  const truth = el(document, 'p', 'Weather shows explicit story-world or provider observations only. TMRW does not generate forecasts or claim device GPS.'); truth.className = 'tmrw-v3-observation-truth'; root.append(truth);
-  if (items.length === 0) { root.append(el(document, 'p', 'No explicit weather observation is available for this phone.')); return root; }
-  const list = el(document, 'ol'); list.className = 'tmrw-v3-weather-list';
-  items.forEach((item, index) => {
-    const row = el(document, 'li'); row.dataset.weatherRecordId = item.recordId;
-    row.append(el(document, index === 0 ? 'h3' : 'strong', index === 0 ? 'Latest explicit observation' : 'Earlier explicit observation'));
-    row.append(el(document, 'p', `${item.condition} · ${Number(item.temperatureC)} °C`), el(document, 'p', `Story/provider location: ${item.locationLabel}`));
-    const source = [item.provider, item.sourceKind].filter(Boolean).join(' · ') || 'Explicit phone-world observation'; row.append(el(document, 'small', `Source: ${source}`));
-    if (item.observedAt) row.append(el(document, 'small', `Observed: ${item.observedAt}`));
-    list.append(row);
-  });
-  root.append(list); return root;
+  if (items.length === 0) { const empty = el(document, 'section'); empty.className = 'tmrw-phone-calendar-empty'; empty.append(el(document, 'strong', 'Weather unavailable'), el(document, 'small', 'ยังไม่มีข้อมูลสภาพอากาศ')); root.append(empty); return root; }
+  const latest = items[0];
+  const hero = el(document, 'section'); hero.className = 'tmrw-phone-weather-hero'; const copy = el(document, 'div'); copy.className = 'tmrw-phone-weather-copy'; copy.append(el(document, 'small', latest.locationLabel || 'Weather'), el(document, 'h1', latest.condition), el(document, 'strong', `${Number(latest.temperatureC)}°`)); if (latest.observedAt) copy.append(el(document, 'time', latest.observedAt)); const art = el(document, 'div'); art.className = 'tmrw-phone-weather-art'; art.setAttribute('aria-hidden', 'true'); art.append(el(document, 'i'), el(document, 'b'), el(document, 'em')); hero.append(copy, art); root.append(hero);
+  if (items.length > 1) { const list = el(document, 'section'); list.className = 'tmrw-phone-weather-forecast'; const heading = el(document, 'header'); heading.append(el(document, 'h2', 'Observations')); list.append(heading); for (const item of items.slice(1, 8)) { const row = el(document, 'div'); row.dataset.weatherRecordId = item.recordId; row.append(el(document, 'b', item.condition), el(document, 'strong', `${Number(item.temperatureC)}°`), el(document, 'small', item.locationLabel || '')); list.append(row); } root.append(list); }
+  return root;
 }

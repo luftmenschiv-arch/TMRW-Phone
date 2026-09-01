@@ -22,6 +22,11 @@
   display: none;
 }
 
+/* Preview37 interaction parity: the floating launcher never overlaps an open Phone. */
+#tmrw-v3-phone-root:not([hidden]) ~ #tmrw-v3-phone-launcher {
+  display: none;
+}
+
 #tmrw-v3-phone-root > .tmrw-v3-shell {
   min-height: min(620px, calc(100dvh - var(--tmrw-v3-viewport-gap) - var(--tmrw-v3-viewport-gap)));
   max-height: calc(100dvh - var(--tmrw-v3-viewport-gap) - var(--tmrw-v3-viewport-gap));

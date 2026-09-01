@@ -11,7 +11,7 @@ import { notificationCenterViewModel } from './notifications.mjs';
 import { renderApprovedCallSurface } from './calls/approved-call-surface.mjs';
 import { renderVoiceSetup } from './voice-setup.mjs';
 import { createAppHeader } from './app-header.mjs';
-import { createHomeAppIcon } from './app-icons.mjs';
+import { createHomeAppIcon, createPreviewIcon } from './app-icons.mjs';
 import { renderGallery } from './gallery.mjs';
 import { renderFiles } from './files.mjs';
 import { renderTheme } from './themes.mjs';
@@ -27,24 +27,50 @@ import { GUIDE_TOPICS, GUIDE_TOPIC_CONTENT } from './guide.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
-const APP_TITLES = Object.freeze({ contacts: 'Contacts', messages: 'Messages', calls: 'Calls', feed: 'Feed', insungram: 'Insungram', live: 'Live', notifications: 'Notifications', gallery: 'Gallery', files: 'Files', theme: 'Theme', maps: 'Maps', calendar: 'Calendar', wallet: 'Wallet', shop: 'Shop', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
+const APP_TITLES = Object.freeze({ contacts: 'Contacts', messages: 'Messages', calls: 'Phone', feed: 'Feed', insungram: 'Insungram', live: 'Live', notifications: 'Notifications', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
+const APP_VISUAL_KIND = Object.freeze({ feed: 'social', insungram: 'social', live: 'social', wallet: 'commerce', shop: 'commerce', maps: 'lifestyle', calendar: 'lifestyle', weather: 'lifestyle', health: 'lifestyle', notes: 'personal', search: 'personal', calls: 'personal', contacts: 'personal', messages: 'personal', notifications: 'personal', gallery: 'utility', files: 'utility', theme: 'utility', guide: 'utility', settings: 'utility', diagnostics: 'utility' });
+const previewClock = () => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+const previewDate = () => new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #deviceRegion; #navRegion; #navigation; #content; #perspectiveSummary; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
-  constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, selectedDeviceId }) {
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #selectedDeviceId; #selectedThreadId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #deviceRegion; #navRegion; #navigation; #content; #perspectiveSummary; #onClose; #deviceSheet; #homeDock; #closeButton; #statusTime; #pageDots; #homePage = 0; #homePageCount = 1; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, selectedDeviceId, onClose = null }) {
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
-    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#selectedDeviceId = selectedDeviceId; this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; void this.renderActive(); } });
+    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#onClose = typeof onClose === 'function' ? onClose : null; this.#selectedDeviceId = selectedDeviceId; this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; if (this.#deviceSheet) this.#deviceSheet.hidden = true; void this.renderActive(); } });
   }
   get metrics() { return Object.freeze({ ...this.#metrics, router: this.#router.route }); }
   get root() { return this.#root; }
   async mount(target) {
     if (this.#root) return this.#root;
-    const root = element(this.#document, 'section'); root.className = 'tmrw-v3-shell'; root.setAttribute('aria-label', 'TMRW Phone v3 beta');
-    const header = element(this.#document, 'header'); header.className = 'tmrw-v3-shell-header'; const title = element(this.#document, 'h1', 'TMRW—Phone'); title.className = 'tmrw-v3-title'; const perspectiveSummary = element(this.#document, 'p', 'Viewing phone perspective'); perspectiveSummary.className = 'tmrw-v3-perspective-summary'; perspectiveSummary.setAttribute('aria-live', 'polite'); header.append(title, perspectiveSummary);
-    const switcher = element(this.#document, 'nav'); switcher.className = 'tmrw-v3-device-switcher'; switcher.setAttribute('aria-label', 'My Phone and Their Phones');
-    const navigation = element(this.#document, 'nav'); navigation.className = 'tmrw-v3-nav'; navigation.setAttribute('aria-label', 'Phone apps');
+    const root = element(this.#document, 'section'); root.className = 'tmrw-v3-shell'; root.setAttribute('aria-label', 'TMRW Phone');
+    const header = element(this.#document, 'header'); header.className = 'tmrw-v3-shell-header'; const title = element(this.#document, 'h1', 'TMRW—Phone'); title.className = 'tmrw-v3-title'; const perspectiveSummary = element(this.#document, 'p', 'My Phone'); perspectiveSummary.className = 'tmrw-v3-perspective-summary'; perspectiveSummary.setAttribute('aria-live', 'polite'); header.append(title, perspectiveSummary);
+
+    const switcher = element(this.#document, 'nav'); switcher.className = 'tmrw-v3-device-switcher tmrw-v3-preview-sheet-layer'; switcher.setAttribute('aria-label', 'My Phone and Their Phones'); switcher.hidden = true;
+    const sheetBackdrop = element(this.#document, 'button'); sheetBackdrop.type = 'button'; sheetBackdrop.className = 'tmrw-v3-preview-sheet-backdrop'; sheetBackdrop.setAttribute('aria-label', 'Close phone selector'); sheetBackdrop.addEventListener('click', () => { switcher.hidden = true; });
+    const sheet = element(this.#document, 'section'); sheet.className = 'tmrw-v3-preview-sheet';
+    const handle = element(this.#document, 'i'); handle.setAttribute('aria-hidden', 'true');
+    const sheetHeader = element(this.#document, 'header'); const sheetHeading = element(this.#document, 'div'); sheetHeading.append(element(this.#document, 'small', 'TMRW—Phone'), element(this.#document, 'h2', 'เลือกเจ้าของเครื่อง'));
+    const closeSheet = element(this.#document, 'button'); closeSheet.type = 'button'; closeSheet.setAttribute('aria-label', 'Close phone selector'); closeSheet.append(createPreviewIcon({ document: this.#document, name: 'close', size: 20 })); closeSheet.addEventListener('click', () => { switcher.hidden = true; }); sheetHeader.append(sheetHeading, closeSheet);
+    const deviceList = element(this.#document, 'div'); deviceList.className = 'tmrw-v3-device-list'; sheet.append(handle, sheetHeader, deviceList); switcher.append(sheetBackdrop, sheet);
+
+    const navigation = element(this.#document, 'nav'); navigation.className = 'tmrw-v3-nav tmrw-phone-app-pages tmrw-phone-full-home-pages'; navigation.dataset.role = 'home-pages'; navigation.setAttribute('aria-label', 'Phone apps'); navigation.addEventListener('scroll', () => this.#scheduleHomePagerSync());
     const content = element(this.#document, 'main'); content.className = 'tmrw-v3-content'; content.setAttribute('aria-live', 'polite');
-    root.append(header, switcher, navigation, content); target.append(root); this.#root = root; this.#deviceRegion = new KeyedRegion(switcher); this.#navRegion = new KeyedRegion(navigation); this.#navigation = navigation; this.#content = content; this.#perspectiveSummary = perspectiveSummary; this.#metrics.shellMounts += 1;
+
+    const status = element(this.#document, 'div'); status.className = 'tmrw-v3-preview-status tmrw-phone-status'; const statusTime = element(this.#document, 'strong', previewClock()); statusTime.className = 'tmrw-v3-live-time';
+    const system = element(this.#document, 'div'); system.setAttribute('aria-hidden', 'true'); const signal = element(this.#document, 'span'); signal.className = 'tmrw-phone-signal'; for (let index = 0; index < 4; index += 1) signal.append(element(this.#document, 'i')); const battery = element(this.#document, 'span'); battery.className = 'tmrw-phone-battery'; battery.textContent = ''; system.append(signal, battery); status.append(statusTime, system);
+
+    const closePhone = element(this.#document, 'button'); closePhone.type = 'button'; closePhone.className = 'tmrw-v3-phone-close tmrw-phone-close-button tmrw-phone-home-lock-button'; closePhone.dataset.action = 'close-phone'; closePhone.setAttribute('aria-label', 'Close TMRW Phone'); closePhone.setAttribute('title', 'Close TMRW Phone'); closePhone.append(createPreviewIcon({ document: this.#document, name: 'lock', size: 18 })); closePhone.addEventListener('click', () => { switcher.hidden = true; if (this.#onClose) this.#onClose(); else root.hidden = true; });
+
+    const dock = element(this.#document, 'nav'); dock.className = 'tmrw-v3-home-dock tmrw-phone-dock'; dock.setAttribute('aria-label', 'Phone shortcuts');
+    const dockAction = (name, label, action) => { const button = element(this.#document, 'button'); button.type = 'button'; button.setAttribute('aria-label', label); button.append(createPreviewIcon({ document: this.#document, name, size: 23 })); button.addEventListener('click', action); dock.append(button); return button; };
+    dockAction('user', 'Choose My Phone or Their Phones', () => { switcher.hidden = false; });
+    dockAction('calls', 'Phone', () => this.#router.navigate('calls'));
+    dockAction('search', 'Search', () => this.#router.navigate('search'));
+    dockAction('settings', 'Settings', () => this.#router.navigate('settings'));
+    const pageDots = element(this.#document, 'nav'); pageDots.className = 'tmrw-v3-home-page-dots tmrw-phone-page-dots'; pageDots.setAttribute('aria-label', 'Home pages');
+    const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-v3-home-indicator tmrw-phone-home-indicator'; indicator.setAttribute('aria-hidden', 'true');
+
+    root.append(header, switcher, navigation, content, status, closePhone, pageDots, dock, indicator); target.append(root); this.#root = root; this.#deviceRegion = new KeyedRegion(deviceList); this.#navRegion = new KeyedRegion(navigation); this.#navigation = navigation; this.#content = content; this.#perspectiveSummary = perspectiveSummary; this.#deviceSheet = switcher; this.#homeDock = dock; this.#closeButton = closePhone; this.#statusTime = statusTime; this.#pageDots = pageDots; this.#metrics.shellMounts += 1;
     await this.render(); return root;
   }
   async render() {
@@ -52,11 +78,16 @@ export class TmrwPhoneShell {
     if (!myPhone) throw new Error('Canonical My Phone device is unavailable for the current Story/Branch');
     if (!roster.some(row => row.deviceId === this.#selectedDeviceId)) this.#selectedDeviceId = myPhone.deviceId;
     const devices = deviceSwitcherViewModel(roster, this.#selectedDeviceId);
-    this.#deviceRegion.patch(devices, { key: row => row.deviceId, create: row => { const button = element(this.#document, 'button', row.label); button.type = 'button'; button.dataset.deviceId = row.deviceId; button.addEventListener('click', () => { void this.selectDevice(row.deviceId); }); return button; }, update: (button, row) => { button.textContent = row.label; button.setAttribute('aria-pressed', String(row.selected)); button.setAttribute('aria-label', row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`); button.title = row.kind === 'my-phone' ? 'Your canonical phone perspective' : `Character phone perspective: ${row.label}`; button.dataset.kind = row.kind; } });
+    this.#deviceRegion.patch(devices, { key: row => row.deviceId, create: row => { const button = element(this.#document, 'button', row.label); button.type = 'button'; button.dataset.deviceId = row.deviceId; button.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = true; void this.selectDevice(row.deviceId); }); return button; }, update: (button, row) => { button.textContent = row.label; button.setAttribute('aria-pressed', String(row.selected)); button.setAttribute('aria-label', row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`); button.title = row.kind === 'my-phone' ? 'My Phone' : `Their Phone: ${row.label}`; button.dataset.kind = row.kind; } });
     const selectedPerspective = devices.find(row => row.selected) || devices.find(row => row.kind === 'my-phone');
     this.#selectedPerspectiveLabel = selectedPerspective?.label || (selectedPerspective?.kind === 'my-phone' ? 'My Phone' : 'Their Phone');
+    this.#selectedPerspectiveKind = selectedPerspective?.kind || 'my-phone';
     if (this.#root) this.#root.dataset.route = this.#router.route;
-    if (this.#perspectiveSummary) this.#perspectiveSummary.textContent = selectedPerspective?.kind === 'my-phone' ? 'Viewing: My Phone' : `Viewing: ${selectedPerspective?.label || 'Their Phone'} · Their Phone`;
+    if (this.#perspectiveSummary) this.#perspectiveSummary.textContent = this.#selectedPerspectiveLabel;
+    if (this.#statusTime) this.#statusTime.textContent = previewClock();
+    if (this.#homeDock) this.#homeDock.hidden = this.#router.route !== 'launcher';
+    if (this.#closeButton) this.#closeButton.hidden = this.#router.route !== 'launcher';
+    if (this.#router.route !== 'launcher' && this.#deviceSheet) this.#deviceSheet.hidden = true;
     const loadingRoutes = ['contacts', 'messages', 'calls', 'notifications', 'gallery', 'files', 'maps', 'calendar', 'wallet', 'shop', 'weather', 'health', 'notes', 'search', 'guide', 'settings', 'diagnostics', 'feed', 'insungram', 'live'];
     if (loadingRoutes.includes(this.#router.route) && this.#content) {
       if (this.#navigation) this.#navigation.hidden = true;
@@ -80,58 +111,123 @@ export class TmrwPhoneShell {
     this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
     const apps = homeViewModel({ developerMode: view.settings.developerDiagnosticsEnabled, messagingEnabled: view.messagingEnabled, callsEnabled: view.callsEnabled, socialEnabled: view.socialEnabled, liveEnabled: view.liveEnabled, notificationsEnabled: view.notificationsEnabled, phoneWorldEnabled: view.phoneWorldUtilitiesEnabled, calendarEnabled: view.calendarEnabled, commerceEnabled: view.commerceEnabled, badges: view.phoneWorld.badges });
-    this.#navRegion.patch(apps, {
-      key: app => app.id,
-      create: app => {
-        const button = element(this.#document, 'button');
-        button.type = 'button';
-        button.className = 'tmrw-v3-home-app';
-        button.dataset.route = app.id;
-        const icon = createHomeAppIcon({ document: this.#document, appId: app.id });
-        const label = element(this.#document, 'span', app.label); label.className = 'tmrw-v3-home-app-label';
-        const badge = element(this.#document, 'span'); badge.className = 'tmrw-v3-home-app-badge'; badge.setAttribute('aria-hidden', 'true');
-        button.append(icon, label, badge);
-        button.addEventListener('click', () => this.#router.navigate(app.id));
-        return button;
-      },
-      update: (button, app) => {
-        const label = button.children?.[1]; const badge = button.children?.[2];
-        if (label) label.textContent = app.label;
-        if (badge) { badge.textContent = app.badge > 0 ? String(app.badge > 99 ? '99+' : app.badge) : ''; badge.hidden = app.badge <= 0; }
-        button.dataset.badge = String(app.badge); button.dataset.disposition = app.disposition; button.disabled = !app.available;
-        button.title = app.reason || app.title || app.label; button.setAttribute('aria-label', app.badge > 0 ? `${app.label}, ${app.badge} unread` : app.label);
-        if (app.reason) button.setAttribute('aria-description', app.reason); else button.attributes?.delete?.('aria-description');
-        button.setAttribute('aria-current', String(this.#router.route === app.id));
+    const appPages = []; for (let offset = 0; offset < apps.length; offset += 6) appPages.push(Object.freeze({ id: `home-page-${offset / 6}`, index: offset / 6, apps: apps.slice(offset, offset + 6) }));
+    const createAppButton = app => {
+      const button = element(this.#document, 'button'); button.type = 'button'; button.className = 'tmrw-v3-home-app tmrw-phone-app'; button.dataset.route = app.id;
+      const icon = createHomeAppIcon({ document: this.#document, appId: app.id }); icon.className += ' tmrw-phone-app-icon';
+      const label = element(this.#document, 'b', app.label); label.className = 'tmrw-v3-home-app-label';
+      const badge = element(this.#document, 'span'); badge.className = 'tmrw-v3-home-app-badge'; badge.setAttribute('aria-hidden', 'true');
+      if (app.badge > 0) badge.textContent = String(app.badge > 99 ? '99+' : app.badge); else badge.hidden = true;
+      button.append(icon, label, badge); button.dataset.badge = String(app.badge); button.dataset.disposition = app.disposition; button.disabled = !app.available;
+      button.title = app.reason || app.title || app.label; button.setAttribute('aria-label', app.badge > 0 ? `${app.label}, ${app.badge} unread` : app.label);
+      if (app.reason) button.setAttribute('aria-description', app.reason); button.addEventListener('click', () => this.#router.navigate(app.id)); return button;
+    };
+    this.#navRegion.patch(appPages, {
+      key: page => page.id,
+      create: page => { const section = element(this.#document, 'section'); section.className = page.index === 0 ? 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main' : 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--apps'; section.dataset.page = String(page.index); const grid = element(this.#document, 'div'); grid.className = `tmrw-phone-app-grid ${page.index === 0 ? 'tmrw-phone-primary-grid' : 'tmrw-phone-secondary-grid'}`; section.append(grid); return section; },
+      update: (section, page) => {
+        section.className = page.index === 0 ? 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main' : 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--apps'; section.dataset.page = String(page.index);
+        let grid = section.children?.[section.children.length - 1]; if (!grid || !String(grid.className || '').includes('tmrw-phone-app-grid')) { grid = element(this.#document, 'div'); section.append(grid); }
+        grid.className = `tmrw-phone-app-grid ${page.index === 0 ? 'tmrw-phone-primary-grid' : 'tmrw-phone-secondary-grid'}`; grid.replaceChildren(...page.apps.map(createAppButton));
+        if (page.index === 0) {
+          const owner = element(this.#document, 'button'); owner.type = 'button'; owner.className = 'tmrw-v3-owner-pill tmrw-phone-owner-pill'; owner.dataset.action = 'open-phone-selector'; owner.setAttribute('aria-label', `Choose phone. Current: ${this.#selectedPerspectiveLabel}`);
+          const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'small', 'เจ้าของโทรศัพท์'), element(this.#document, 'strong', this.#selectedPerspectiveLabel)); owner.append(createPreviewIcon({ document: this.#document, name: 'user', size: 22 }), copy, createPreviewIcon({ document: this.#document, name: 'chevron', size: 16 })); owner.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = false; });
+          const clock = element(this.#document, 'section'); clock.className = 'tmrw-v3-home-clock tmrw-phone-clock-block'; const time = element(this.#document, 'div', previewClock()); time.className = 'tmrw-v3-home-time tmrw-phone-home-time'; const date = element(this.#document, 'div', previewDate()); date.className = 'tmrw-v3-home-date tmrw-phone-home-date'; const state = view.opened.authorization.granted ? (view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน') : 'โทรศัพท์ถูกล็อก'; clock.append(time, date, element(this.#document, 'p', state));
+          section.replaceChildren(owner, clock, grid);
+        } else section.replaceChildren(grid);
       },
     });
+    this.#syncHomePager(appPages.length);
     if (this.#navigation) this.#navigation.hidden = this.#router.route !== 'launcher';
+    if (this.#pageDots) this.#pageDots.hidden = this.#router.route !== 'launcher';
+    if (this.#content) this.#content.hidden = this.#router.route === 'launcher';
     await this.#renderContent(view); return view;
   }
   async selectDevice(deviceId) { if (deviceId === this.#selectedDeviceId) return; this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#selectedDeviceId = deviceId; this.#selectedGalleryRecordId = null; this.#selectedFileRecordId = null; this.#locationDraftLabel = ''; this.#selectedLocationAudienceIds.clear(); this.#calendarFormMode = null; this.#lastCalendarError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#lastCommerceError = null; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastSocialActionError = null; this.#socialBusy = false; this.#pendingRemoval = null; await this.render(); }
   async renderActive() { if (this.#root) await this.render(); }
+  #paintHomePageDots() {
+    if (!this.#pageDots) return;
+    for (const dot of this.#pageDots.children || []) {
+      const page = Number(dot.dataset?.homePage || 0);
+      const active = page === this.#homePage;
+      dot.className = active ? 'tmrw-v3-home-page-dot is-active' : 'tmrw-v3-home-page-dot';
+      dot.setAttribute('aria-current', String(active));
+    }
+  }
+  #scrollHomePager(page, { behavior = 'smooth' } = {}) {
+    const next = Math.max(0, Math.min(this.#homePageCount - 1, Number(page) || 0));
+    this.#homePage = next;
+    this.#paintHomePageDots();
+    const pager = this.#navigation;
+    if (!pager) return;
+    const width = Math.max(1, Number(pager.clientWidth || 0));
+    const left = next * width;
+    if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior });
+    else pager.scrollLeft = left;
+  }
+  #scheduleHomePagerSync() {
+    if (!this.#navigation) return;
+    if (this.#homePagerTimer != null) clearTimeout(this.#homePagerTimer);
+    this.#homePagerTimer = setTimeout(() => {
+      this.#homePagerTimer = null;
+      const width = Math.max(1, Number(this.#navigation?.clientWidth || 0));
+      const page = Math.round(Number(this.#navigation?.scrollLeft || 0) / width);
+      this.#homePage = Math.max(0, Math.min(this.#homePageCount - 1, page));
+      this.#paintHomePageDots();
+    }, 70);
+  }
+  #syncHomePager(pageCount) {
+    const count = Math.max(1, Number(pageCount) || 1);
+    this.#homePageCount = count;
+    this.#homePage = Math.max(0, Math.min(count - 1, this.#homePage));
+    if (this.#pageDots) {
+      const dots = [];
+      for (let page = 0; page < count; page += 1) {
+        const dot = element(this.#document, 'button'); dot.type = 'button'; dot.dataset.homePage = String(page); dot.setAttribute('aria-label', `หน้าโฮม ${page + 1}`); dot.addEventListener('click', () => this.#scrollHomePager(page)); dots.push(dot);
+      }
+      this.#pageDots.replaceChildren(...dots); this.#paintHomePageDots();
+    }
+    this.#scrollHomePager(this.#homePage, { behavior: 'auto' });
+  }
   async #renderContent(view) {
     const route = this.#router.route; const panel = element(this.#document, 'section'); panel.className = 'tmrw-v3-panel'; panel.dataset.route = route;
+    const visualKind = APP_VISUAL_KIND[route] || null;
+    if (visualKind === 'social') panel.className += ' tmrw-v3-preview-app tmrw-v3-preview-social tmrw-phone-social-shell';
+    else if (visualKind === 'commerce') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-commerce tmrw-phone-utility tmrw-phone-commerce tmrw-phone-commerce--${route}`;
+    else if (visualKind === 'lifestyle') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-lifestyle tmrw-phone-utility tmrw-phone-lifestyle tmrw-phone-lifestyle--${route}`;
+    else if (visualKind === 'personal') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-personal tmrw-phone-utility tmrw-phone-personal-shell tmrw-phone-utility--${route}`;
+    else if (visualKind === 'utility') panel.className += ` tmrw-v3-preview-app tmrw-v3-preview-utility tmrw-phone-utility tmrw-phone-utility--${route}`;
     if (route !== 'launcher') panel.append(createAppHeader({ document: this.#document, title: APP_TITLES[route] || route, onBack: () => this.#router.navigate('launcher') }));
-    if (route === 'contacts') { panel.append(element(this.#document, 'h2', 'Contacts')); const list = element(this.#document, 'ul'); for (const contact of contactsViewModel(view.contacts)) { const item = element(this.#document, 'li'); item.append(element(this.#document, 'strong', contact.primary), element(this.#document, 'span', contact.secondary)); list.append(item); } if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Contacts are unavailable until access is granted.')); else if (view.contacts.length === 0) panel.append(element(this.#document, 'p', 'No contacts saved on this phone yet.')); else panel.append(list); }
+    if (route === 'contacts') {
+      panel.append(element(this.#document, 'h2', 'Contacts'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
+      else {
+        const contacts = contactsViewModel(view.contacts);
+        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-personal-app';
+        const searchShell = element(this.#document, 'div'); searchShell.className = 'tmrw-phone-personal-search tmrw-phone-soft-search'; searchShell.append(createPreviewIcon({ document: this.#document, name: 'search', size: 19 }), element(this.#document, 'span', 'Saved Names')); body.append(searchShell);
+        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-contact-list tmrw-phone-contact-list--complete';
+        contacts.forEach(contact => { const row = element(this.#document, 'article'); row.className = 'tmrw-v3-contact-row'; row.dataset.contactPointId = contact.id; const avatar = element(this.#document, 'span', String(contact.primary || '?').slice(0, 1).toUpperCase()); avatar.className = 'tmrw-v3-contact-avatar'; const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', contact.primary), element(this.#document, 'small', contact.secondary)); row.append(avatar, copy); list.append(row); });
+        if (contacts.length === 0) body.append(element(this.#document, 'p', 'ยังไม่มีรายชื่อที่บันทึกไว้')); else body.append(list); panel.append(body);
+      }
+    }
     else if (route === 'messages') {
       panel.append(element(this.#document, 'h2', 'Messages'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Messages are unavailable until access is granted.'));
-      else if (view.threads.length === 0) panel.append(element(this.#document, 'p', 'No conversations on this phone yet.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
+      else if (view.threads.length === 0) panel.append(element(this.#document, 'p', 'ยังไม่มีข้อความ'));
       else {
-        const threads = element(this.#document, 'ul');
-        for (const thread of view.threads) { const item = element(this.#document, 'li'); const button = element(this.#document, 'button', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation'); button.type = 'button'; button.dataset.threadId = thread.threadId; button.setAttribute('aria-current', String(thread.threadId === view.activeThreadId)); button.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); item.append(button); threads.append(item); }
-        panel.append(threads);
-        const messages = element(this.#document, 'ol');
-        for (const message of view.messages) { const item = element(this.#document, 'li'); item.dataset.messageId = message.messageId; item.append(element(this.#document, 'p', message.text)); messages.append(item); }
-        panel.append(messages);
-        if (view.messages.length === 0) panel.append(element(this.#document, 'p', 'No messages in this conversation yet.'));
-        if (this.#lastMessageError) { const error = element(this.#document, 'p', this.#lastMessageError); error.className = 'tmrw-v3-message-error'; error.setAttribute('role', 'alert'); panel.append(error); }
-        const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Message text'); input.placeholder = 'Write a message…'; const send = element(this.#document, 'button', 'Send'); send.type = 'button'; send.disabled = true; const syncSend = () => { send.disabled = !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); let busy = false; send.addEventListener('click', () => { if (busy || !String(input.value || '').trim()) return; busy = true; send.disabled = true; void this.#sendMessage(view, input).finally(() => { busy = false; }); }); panel.append(input, send);
+        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-messages tmrw-v3-messages-app';
+        const threads = element(this.#document, 'div'); threads.className = 'tmrw-phone-thread-list tmrw-v3-thread-selector';
+        view.threads.forEach((thread, index) => { const button = element(this.#document, 'button'); button.type = 'button'; button.className = 'tmrw-phone-thread'; button.dataset.threadId = thread.threadId; button.setAttribute('aria-current', String(thread.threadId === view.activeThreadId)); const marker = element(this.#document, 'span', thread.kind === 'dm' ? 'DM' : 'GROUP'); marker.className = 'tmrw-v3-thread-avatar'; const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', thread.kind === 'dm' ? `ข้อความส่วนตัว ${index + 1}` : `กลุ่ม ${index + 1}`), element(this.#document, 'small', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation')); button.append(marker, copy); button.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); threads.append(button); }); body.append(threads);
+        const bubbles = element(this.#document, 'div'); bubbles.className = 'tmrw-phone-bubbles';
+        for (const message of view.messages) { const mine = message.senderAccountId === view.opened.perspective.accountId; const row = element(this.#document, 'div'); row.className = `tmrw-phone-bubble-row ${mine ? 'is-mine' : ''}`; row.dataset.messageId = message.messageId; const bubble = element(this.#document, 'div'); const text = element(this.#document, 'p', message.text); bubble.append(text); row.append(bubble); bubbles.append(row); }
+        if (view.messages.length === 0) bubbles.append(element(this.#document, 'p', 'ยังไม่มีข้อความในบทสนทนานี้')); body.append(bubbles);
+        if (this.#lastMessageError) { const error = element(this.#document, 'p', this.#lastMessageError); error.className = 'tmrw-v3-message-error'; error.setAttribute('role', 'alert'); body.append(error); }
+        const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-readonly-composer tmrw-v3-message-composer'; const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Message text'); input.placeholder = 'พิมพ์ข้อความ…'; const send = element(this.#document, 'button'); send.type = 'button'; send.className = 'is-send'; send.setAttribute('aria-label', 'ส่งข้อความ'); send.append(createPreviewIcon({ document: this.#document, name: 'send', size: 20 })); send.disabled = true; const syncSend = () => { send.disabled = !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); let busy = false; send.addEventListener('click', () => { if (busy || !String(input.value || '').trim()) return; busy = true; send.disabled = true; void this.#sendMessage(view, input).finally(() => { busy = false; }); }); composer.append(input, send); body.append(composer); panel.append(body);
       }
     }
     else if (route === 'calls') {
       panel.append(element(this.#document, 'h2', 'Calls'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Calls are unavailable until access is granted.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
       else {
         const callUi = view.callUi;
         if (this.#lastCallError) { const error = element(this.#document, 'p', this.#lastCallError); error.className = 'tmrw-v3-call-error'; error.setAttribute('role', 'alert'); panel.append(error); }
@@ -145,7 +241,7 @@ export class TmrwPhoneShell {
           dial.append(targets); panel.append(dial);
         }
         const historyHeading = element(this.#document, 'h3', 'Call history'); historyHeading.className = 'tmrw-v3-call-history-heading'; panel.append(historyHeading);
-        if (callUi.history.length === 0) panel.append(element(this.#document, 'p', 'No canonical calls on this phone yet.'));
+        if (callUi.history.length === 0) panel.append(element(this.#document, 'p', 'No calls yet.'));
         else {
           const list = element(this.#document, 'ul'); list.className = 'tmrw-v3-call-history';
           for (const row of callUi.history) {
@@ -164,6 +260,10 @@ export class TmrwPhoneShell {
             onSend: input => { if (!call) return null; return this.#sendCallText(view, call, input); },
             onClose: () => { this.#closedCallSurfaceId = island.callSessionId; return this.renderActive(); },
             onContinueOnce: island.kind === 'ended' && this.#callStoryIntegration && this.#storyContinuation ? () => this.#continueAfterEnded(island.callSessionId) : null,
+            onNavigate: target => {
+              if (target === 'settings') this.#router.navigate('settings');
+              else if (target === 'history') { this.#closedCallSurfaceId = island.callSessionId; void this.renderActive(); }
+            },
           });
           panel.append(surface);
         }
@@ -171,64 +271,75 @@ export class TmrwPhoneShell {
     }
     else if (route === 'feed') {
       panel.append(element(this.#document, 'h2', 'Feed'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Feed is unavailable until access is granted.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
       else if (view.socialError) {
         const error = element(this.#document, 'p', `Feed could not be loaded: ${view.socialError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry Feed'); retry.type = 'button'; retry.dataset.action = 'retry-feed'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
+        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-feed'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
       } else {
-        panel.append(element(this.#document, 'p', 'Manual canonical posts only. Autonomous Social generation is disabled.'));
         if (this.#lastSocialActionError) { const error = element(this.#document, 'p', this.#lastSocialActionError); error.setAttribute('role', 'alert'); panel.append(error); }
-        const posts = element(this.#document, 'ol'); for (const post of feedViewModel(view.feed)) { const item = element(this.#document, 'li'); item.dataset.postId = post.postId; item.append(element(this.#document, 'p', post.text), element(this.#document, 'small', post.audience)); posts.append(item); }
-        if (view.feed.items.length === 0) panel.append(element(this.#document, 'p', 'No canonical posts yet.')); else panel.append(posts);
+        const feed = element(this.#document, 'section'); feed.className = 'tmrw-phone-feed';
+        const posts = element(this.#document, 'div'); posts.className = 'tmrw-v3-feed-posts';
+        for (const post of feedViewModel(view.feed)) {
+          const item = element(this.#document, 'article'); item.className = 'tmrw-phone-post'; item.dataset.postId = post.postId;
+          const header = element(this.#document, 'header'); header.append(element(this.#document, 'strong', 'Feed'), element(this.#document, 'small', post.audience));
+          item.append(header, element(this.#document, 'p', post.text)); posts.append(item);
+        }
+        if (view.feed.items.length === 0) feed.append(element(this.#document, 'p', 'ยังไม่มีโพสต์')); else feed.append(posts);
         if (this.#social && view.opened.perspective.accountId) {
-          const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Post text'); input.placeholder = 'Write a canonical post…';
-          const send = element(this.#document, 'button', 'Post'); send.type = 'button'; send.disabled = true; send.dataset.action = 'create-feed-post';
+          const composer = element(this.#document, 'div'); composer.className = 'tmrw-v3-feed-composer';
+          const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'Post text'); input.placeholder = 'เขียนโพสต์…';
+          const send = element(this.#document, 'button', 'โพสต์'); send.type = 'button'; send.disabled = true; send.dataset.action = 'create-feed-post';
           const sync = () => { send.disabled = this.#socialBusy || !String(input.value || '').trim(); }; input.addEventListener('input', sync);
           send.addEventListener('click', () => { if (this.#socialBusy || !String(input.value || '').trim()) return; this.#socialBusy = true; send.disabled = true; void this.#createPost(view, input).finally(() => { this.#socialBusy = false; }); });
-          panel.append(input, send);
+          composer.append(input, send); feed.append(composer);
         }
+        panel.append(feed);
       }
     }
     else if (route === 'insungram') {
       panel.append(element(this.#document, 'h2', 'Insungram'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Insungram is unavailable until access is granted.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
       else if (view.socialError) {
         const error = element(this.#document, 'p', `Insungram could not be loaded: ${view.socialError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry Insungram'); retry.type = 'button'; retry.dataset.action = 'retry-insungram'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
+        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-insungram'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
       } else {
-        panel.append(element(this.#document, 'p', 'Read-only view of existing canonical conversations. Autonomous Social generation is disabled.'));
-        if (view.socialProfile) panel.append(element(this.#document, 'p', view.socialProfile.captionStyle || 'Canonical profile'));
-        const list = element(this.#document, 'ul'); for (const thread of view.insungramThreads) { const item = element(this.#document, 'li', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation'); item.dataset.threadId = thread.threadId; list.append(item); }
-        if (view.insungramThreads.length === 0) panel.append(element(this.#document, 'p', 'No canonical conversations.')); else panel.append(list);
+        const messages = element(this.#document, 'section'); messages.className = 'tmrw-phone-messages';
+        const heading = element(this.#document, 'div'); heading.className = 'tmrw-phone-message-section-title'; heading.append(element(this.#document, 'strong', 'ข้อความ'));
+        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-thread-list';
+        for (const thread of view.insungramThreads) { const item = element(this.#document, 'article'); item.className = 'tmrw-phone-thread tmrw-v3-insungram-thread'; item.dataset.threadId = thread.threadId; item.append(element(this.#document, 'strong', thread.kind === 'dm' ? 'Private conversation' : 'Group conversation')); list.append(item); }
+        messages.append(heading); if (view.insungramThreads.length === 0) messages.append(element(this.#document, 'p', 'ยังไม่มีข้อความ')); else messages.append(list); panel.append(messages);
       }
     }
     else if (route === 'live') {
       panel.append(element(this.#document, 'h2', 'Live'));
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Live is unavailable until access is granted.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
       else if (view.liveError) {
         const error = element(this.#document, 'p', `Live could not be loaded: ${view.liveError}`); error.setAttribute('role', 'alert');
-        const retry = element(this.#document, 'button', 'Retry Live'); retry.type = 'button'; retry.dataset.action = 'retry-live'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
+        const retry = element(this.#document, 'button', 'Retry'); retry.type = 'button'; retry.dataset.action = 'retry-live'; retry.addEventListener('click', () => { retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
       } else {
-        panel.append(element(this.#document, 'p', 'Read-only canonical Live state. Autonomous Live generation is disabled.'));
         const live = liveViewModel({ session: view.selectedLive, viewers: view.liveViewers, messages: view.liveMessages });
-        if (live.empty) panel.append(element(this.#document, 'p', 'No canonical Live sessions.'));
-        else { panel.append(element(this.#document, 'h3', live.session.title), element(this.#document, 'p', `${live.session.status} · ${live.viewerCount} viewers`)); const chat = element(this.#document, 'ol'); for (const message of live.messages) { const item = element(this.#document, 'li', message.text); item.dataset.liveMessageId = message.messageId; chat.append(item); } if (live.messages.length === 0) panel.append(element(this.#document, 'p', 'No canonical Live comments.')); else panel.append(chat); }
+        const body = element(this.#document, 'section'); body.className = 'tmrw-phone-live-list';
+        if (live.empty) body.append(element(this.#document, 'p', 'ตอนนี้ยังไม่มีไลฟ์'));
+        else {
+          const hero = element(this.#document, 'div'); hero.className = 'tmrw-phone-live-hero'; hero.append(element(this.#document, 'span', 'LIVE'), element(this.#document, 'h2', live.session.title), element(this.#document, 'p', `${live.viewerCount} viewers`)); body.append(hero);
+          const chat = element(this.#document, 'div'); chat.className = 'tmrw-phone-live-chat'; for (const message of live.messages) { const item = element(this.#document, 'p', message.text); item.dataset.liveMessageId = message.messageId; chat.append(item); } if (live.messages.length === 0) body.append(element(this.#document, 'p', 'ยังไม่มีความคิดเห็น')); else body.append(chat);
+        }
+        panel.append(body);
       }
     }
     else if (route === 'notifications') {
       panel.append(element(this.#document, 'h2', 'Notifications'));
       const items = notificationCenterViewModel({ items: view.phoneWorld.recent });
       if (this.#lastNotificationError) { const error = element(this.#document, 'p', this.#lastNotificationError); error.className = 'tmrw-v3-notification-error'; error.setAttribute('role', 'alert'); panel.append(error); }
-      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'Notifications are unavailable until access is granted.'));
-      else if (items.length === 0) panel.append(element(this.#document, 'p', 'No canonical notifications.'));
+      if (!view.opened.authorization.granted) panel.append(element(this.#document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่'));
+      else if (items.length === 0) panel.append(element(this.#document, 'p', 'ยังไม่มีการแจ้งเตือน'));
       else {
-        const list = element(this.#document, 'ol');
+        const list = element(this.#document, 'div'); list.className = 'tmrw-phone-activity-card tmrw-v3-notification-list';
         for (const notification of items) {
-          const item = element(this.#document, 'li'); item.dataset.notificationId = notification.notificationId;
-          const open = element(this.#document, 'button', `${notification.title}${notification.groupCount > 1 ? ` (${notification.groupCount})` : ''}`); open.type = 'button'; open.setAttribute('aria-label', `Open ${notification.title}`); let openBusy = false; open.addEventListener('click', () => { if (openBusy || open.disabled) return; openBusy = true; open.disabled = true; void this.#openNotification(view, notification); }); item.append(open);
-          if (notification.preview) item.append(element(this.#document, 'p', notification.preview));
-          const dismiss = element(this.#document, 'button', 'Dismiss'); dismiss.type = 'button'; dismiss.setAttribute('aria-label', `Dismiss ${notification.title}`); let dismissBusy = false; dismiss.addEventListener('click', () => { if (dismissBusy || dismiss.disabled) return; dismissBusy = true; dismiss.disabled = true; void this.#dismissNotification(view, notification.notificationId); }); item.append(dismiss);
-          list.append(item);
+          const row = element(this.#document, 'article'); row.className = 'tmrw-v3-notification-row'; row.dataset.notificationId = notification.notificationId;
+          const open = element(this.#document, 'button'); open.type = 'button'; open.className = 'tmrw-v3-notification-open'; open.setAttribute('aria-label', `Open ${notification.title}`); const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', `${notification.title}${notification.groupCount > 1 ? ` (${notification.groupCount})` : ''}`)); if (notification.preview) copy.append(element(this.#document, 'small', notification.preview)); open.append(copy); let openBusy = false; open.addEventListener('click', () => { if (openBusy || open.disabled) return; openBusy = true; open.disabled = true; void this.#openNotification(view, notification); });
+          const dismiss = element(this.#document, 'button', '×'); dismiss.type = 'button'; dismiss.className = 'tmrw-v3-notification-dismiss'; dismiss.setAttribute('aria-label', `Dismiss ${notification.title}`); let dismissBusy = false; dismiss.addEventListener('click', () => { if (dismissBusy || dismiss.disabled) return; dismissBusy = true; dismiss.disabled = true; void this.#dismissNotification(view, notification.notificationId); });
+          row.append(open, dismiss); list.append(row);
         }
         panel.append(list);
       }
@@ -341,14 +452,12 @@ export class TmrwPhoneShell {
         const error = element(this.#document, 'p', `Guide could not be loaded: ${guideError}`); error.setAttribute('role', 'alert');
         const retry = element(this.#document, 'button', 'Retry Guide'); retry.type = 'button'; retry.dataset.action = 'retry-guide'; retry.addEventListener('click', () => { this.#lastGuideError = null; retry.disabled = true; void this.renderActive(); }); panel.append(error, retry);
       } else if (view.guideState) {
-        panel.append(element(this.#document, 'p', 'Guide state is player UI state, not story canon. Topics and actions below use the current built-in Guide contract.'));
         const topics = element(this.#document, 'section'); topics.className = 'tmrw-v3-guide-topics'; topics.append(element(this.#document, 'h3', 'Topics'));
         const topicList = element(this.#document, 'div'); topicList.className = 'tmrw-v3-guide-topic-list';
         for (const topic of GUIDE_TOPICS) { const button = element(this.#document, 'button', topic); button.type = 'button'; button.dataset.guideTopic = topic; button.setAttribute('aria-current', String(topic === this.#selectedGuideTopic)); button.addEventListener('click', () => { this.#selectedGuideTopic = topic; void this.renderActive(); }); topicList.append(button); }
         topics.append(topicList); panel.append(topics);
         const selected = GUIDE_TOPICS.includes(this.#selectedGuideTopic) ? this.#selectedGuideTopic : GUIDE_TOPICS[0];
         const article = element(this.#document, 'article'); article.className = 'tmrw-v3-guide-topic'; article.append(element(this.#document, 'h3', selected), element(this.#document, 'p', GUIDE_TOPIC_CONTENT[selected])); panel.append(article);
-        panel.append(element(this.#document, 'p', `Tutorial replays: ${Number(view.guideState.tutorialReplayCount || 0)}. Dismissed tips: ${Array.isArray(view.guideState.dismissedTips) ? view.guideState.dismissedTips.length : 0}.`));
         const actions = element(this.#document, 'div'); actions.className = 'tmrw-v3-guide-actions';
         const reset = element(this.#document, 'button', 'Reset tips'); reset.type = 'button'; reset.dataset.action = 'reset-guide-tips'; reset.disabled = this.#guideBusy; reset.addEventListener('click', () => { if (this.#guideBusy) return; reset.disabled = true; void this.#resetGuideTips(); });
         const replay = element(this.#document, 'button', 'Replay tutorial'); replay.type = 'button'; replay.dataset.action = 'replay-guide-tutorial'; replay.disabled = this.#guideBusy; replay.addEventListener('click', () => { if (this.#guideBusy) return; replay.disabled = true; void this.#replayGuideTutorial(); });
@@ -360,20 +469,20 @@ export class TmrwPhoneShell {
       if (this.#lastSettingsError) { const error = element(this.#document, 'p', `Settings update failed: ${this.#lastSettingsError}`); error.setAttribute('role', 'alert'); panel.append(error); }
       const experience = element(this.#document, 'section'); experience.className = 'tmrw-v3-settings-group'; experience.append(element(this.#document, 'h3', 'Experience'));
       const presetControls = element(this.#document, 'div'); presetControls.className = 'tmrw-v3-settings-options';
-      for (const preset of [EXPERIENCE_PRESET.SIMPLE, EXPERIENCE_PRESET.STORY, EXPERIENCE_PRESET.IMMERSIVE]) { const button = element(this.#document, 'button', `Experience: ${preset}`); button.type = 'button'; button.dataset.setting = `preset-${preset}`; button.setAttribute('aria-pressed', String(view.settings.preset === preset)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.preset === preset) return; button.disabled = true; void this.#setExperiencePreset(preset); }); presetControls.append(button); }
-      experience.append(presetControls, element(this.#document, 'p', `Current phone access mode: ${view.settings.phoneAccessMode}.`));
+      for (const preset of [EXPERIENCE_PRESET.SIMPLE, EXPERIENCE_PRESET.STORY, EXPERIENCE_PRESET.IMMERSIVE]) { const button = element(this.#document, 'button', preset === EXPERIENCE_PRESET.SIMPLE ? 'Simple' : preset === EXPERIENCE_PRESET.STORY ? 'Story' : 'Immersive'); button.type = 'button'; button.dataset.setting = `preset-${preset}`; button.setAttribute('aria-pressed', String(view.settings.preset === preset)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.preset === preset) return; button.disabled = true; void this.#setExperiencePreset(preset); }); presetControls.append(button); }
+      experience.append(presetControls);
       const discovery = element(this.#document, 'div'); discovery.className = 'tmrw-v3-settings-options'; discovery.append(element(this.#document, 'h4', 'Phone number discovery'));
-      for (const value of [PHONE_NUMBER_DISCOVERY.SMART, PHONE_NUMBER_DISCOVERY.ON, PHONE_NUMBER_DISCOVERY.OFF]) { const button = element(this.#document, 'button', `Number discovery: ${value}`); button.type = 'button'; button.dataset.setting = `number-discovery-${value}`; button.setAttribute('aria-pressed', String(view.settings.phoneNumberDiscovery === value)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.phoneNumberDiscovery === value) return; button.disabled = true; void this.#setPhoneNumberDiscovery(value); }); discovery.append(button); }
+      for (const value of [PHONE_NUMBER_DISCOVERY.SMART, PHONE_NUMBER_DISCOVERY.ON, PHONE_NUMBER_DISCOVERY.OFF]) { const button = element(this.#document, 'button', value === PHONE_NUMBER_DISCOVERY.SMART ? 'Smart' : value === PHONE_NUMBER_DISCOVERY.ON ? 'On' : 'Off'); button.type = 'button'; button.dataset.setting = `number-discovery-${value}`; button.setAttribute('aria-pressed', String(view.settings.phoneNumberDiscovery === value)); button.disabled = this.#settingsBusy; button.addEventListener('click', () => { if (this.#settingsBusy || view.settings.phoneNumberDiscovery === value) return; button.disabled = true; void this.#setPhoneNumberDiscovery(value); }); discovery.append(button); }
       experience.append(discovery); panel.append(experience);
 
-      const diagnostics = element(this.#document, 'section'); diagnostics.className = 'tmrw-v3-settings-group'; diagnostics.append(element(this.#document, 'h3', 'Developer Diagnostics'));
-      const diagnosticsToggle = element(this.#document, 'button', `Developer Diagnostics: ${view.settings.developerDiagnosticsEnabled ? 'On' : 'Off'}`); diagnosticsToggle.type = 'button'; diagnosticsToggle.dataset.setting = 'developer-diagnostics'; diagnosticsToggle.setAttribute('aria-pressed', String(Boolean(view.settings.developerDiagnosticsEnabled))); diagnosticsToggle.disabled = this.#settingsBusy; diagnosticsToggle.addEventListener('click', () => { if (this.#settingsBusy) return; diagnosticsToggle.disabled = true; void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled); }); diagnostics.append(diagnosticsToggle, element(this.#document, 'p', 'Diagnostics show bounded runtime and selected-phone health metadata. They do not expose provider credentials or API keys.'));
+      const diagnostics = element(this.#document, 'section'); diagnostics.className = 'tmrw-v3-settings-group'; diagnostics.append(element(this.#document, 'h3', 'Advanced'));
+      const diagnosticsToggle = element(this.#document, 'button', `Diagnostics: ${view.settings.developerDiagnosticsEnabled ? 'On' : 'Off'}`); diagnosticsToggle.type = 'button'; diagnosticsToggle.dataset.setting = 'developer-diagnostics'; diagnosticsToggle.setAttribute('aria-pressed', String(Boolean(view.settings.developerDiagnosticsEnabled))); diagnosticsToggle.disabled = this.#settingsBusy; diagnosticsToggle.addEventListener('click', () => { if (this.#settingsBusy) return; diagnosticsToggle.disabled = true; void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled); }); diagnostics.append(diagnosticsToggle);
       if (view.settings.developerDiagnosticsEnabled) { const openDiagnostics = element(this.#document, 'button', 'Open Diagnostics'); openDiagnostics.type = 'button'; openDiagnostics.dataset.action = 'open-diagnostics'; openDiagnostics.addEventListener('click', () => this.#router.navigate('diagnostics')); diagnostics.append(openDiagnostics); }
       panel.append(diagnostics);
 
       const calls = element(this.#document, 'section'); calls.className = 'tmrw-v3-settings-calls'; calls.append(element(this.#document, 'h3', 'Calls'));
       const toggle = element(this.#document, 'button', `Continue story after calls: ${view.settings.continueStoryAfterCalls ? 'On' : 'Off'}`); toggle.type = 'button'; toggle.dataset.setting = 'continue-story-after-calls'; toggle.setAttribute('aria-pressed', String(Boolean(view.settings.continueStoryAfterCalls))); toggle.disabled = this.#settingsBusy; toggle.addEventListener('click', () => { if (this.#settingsBusy) return; toggle.disabled = true; void this.#setContinueStoryAfterCalls(!view.settings.continueStoryAfterCalls); });
-      calls.append(toggle, element(this.#document, 'p', 'When enabled, Call canon commits first, then TMRW may request one additional text generation using Generate after a USER turn or Continue after a BOT turn. Turning this off never discards Call canon.'));
+      calls.append(toggle, element(this.#document, 'p', 'Continue the story automatically after a call ends.'));
       panel.append(calls);
 
       const voiceRoster = (await this.#models.deviceRoster(this.#scope)).filter(row => row.kind === 'their-phone');
@@ -419,16 +528,14 @@ export class TmrwPhoneShell {
       }
     }
     else {
-      panel.className = 'tmrw-v3-panel tmrw-v3-home-overview';
-      const hero = element(this.#document, 'section'); hero.className = 'tmrw-v3-home-hero';
-      const eyebrow = element(this.#document, 'span', view.opened.perspective.kind === 'my-phone' ? 'MY PHONE' : 'THEIR PHONE'); eyebrow.className = 'tmrw-v3-home-eyebrow';
-      const title = element(this.#document, 'h2', this.#selectedPerspectiveLabel); title.className = 'tmrw-v3-home-perspective-title';
-      const meta = element(this.#document, 'div'); meta.className = 'tmrw-v3-home-meta';
-      const lock = element(this.#document, 'span', `Status · ${view.opened.perspective.lockState}`);
-      const unread = element(this.#document, 'span', view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} unread` : 'No unread notifications');
-      meta.append(lock, unread); hero.append(eyebrow, title, meta); panel.append(hero);
+      panel.className = 'tmrw-v3-panel tmrw-v3-home-overview tmrw-phone-home';
+      const owner = element(this.#document, 'button'); owner.type = 'button'; owner.className = 'tmrw-v3-owner-pill tmrw-phone-owner-pill'; owner.dataset.action = 'open-phone-selector'; owner.setAttribute('aria-label', `Choose phone. Current: ${this.#selectedPerspectiveLabel}`);
+      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'small', 'เจ้าของโทรศัพท์'), element(this.#document, 'strong', this.#selectedPerspectiveLabel)); owner.append(createPreviewIcon({ document: this.#document, name: 'user', size: 22 }), copy, createPreviewIcon({ document: this.#document, name: 'chevron', size: 16 })); owner.addEventListener('click', () => { if (this.#deviceSheet) this.#deviceSheet.hidden = false; });
+      const clock = element(this.#document, 'section'); clock.className = 'tmrw-v3-home-clock tmrw-phone-clock-block'; const time = element(this.#document, 'div', previewClock()); time.className = 'tmrw-v3-home-time tmrw-phone-home-time'; const date = element(this.#document, 'div', previewDate()); date.className = 'tmrw-v3-home-date tmrw-phone-home-date';
+      const state = view.opened.authorization.granted ? (view.phoneWorld.unreadTotal > 0 ? `${view.phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน') : 'โทรศัพท์ถูกล็อก'; clock.append(time, date, element(this.#document, 'p', state));
+      panel.append(owner, clock);
     }
-    const tip = blockedAccessTip(view.opened.authorization); if (tip) panel.append(element(this.#document, 'aside', `${tip.title}: ${tip.text}`)); this.#content.replaceChildren(panel); this.#metrics.appRegionUpdates += 1;
+    this.#content.replaceChildren(panel); this.#metrics.appRegionUpdates += 1;
   }
   async #sendMessage(view, input) {
     const text = String(input.value || '').trim(); if (!text || !this.#messaging || !view.activeThreadId || !view.opened.perspective.accountId) return false;
@@ -563,11 +670,11 @@ export class TmrwPhoneShell {
       this.#checkoutResult = result; this.#checkoutConfirmationRecordId = null; this.#checkoutBusy = false; await this.renderActive(); return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error); this.#checkoutBusy = false; this.#checkoutResult = null;
-      if (/changed after|item changed|catalog.*changed/i.test(message)) { this.#shopStaleRecordId = item.recordId; this.#checkoutConfirmationRecordId = null; this.#lastCommerceError = 'ITEM CHANGED — refresh the canonical item and confirm again.'; }
-      else if (/insufficient/i.test(message)) this.#lastCommerceError = 'INSUFFICIENT KNOWN FUNDS — this paid order was not created.';
-      else if (/balance is unavailable|cannot fabricate funds/i.test(message)) this.#lastCommerceError = 'UNKNOWN FUNDS — no canonical Wallet balance is available for this currency.';
-      else if (/access|authorization|another Device|Account does not match|Unknown scoped/i.test(message)) this.#lastCommerceError = 'Commerce access is unavailable for this phone perspective.';
-      else this.#lastCommerceError = 'Shop checkout failed. Refresh the item and try again.';
+      if (/changed after|item changed|catalog.*changed/i.test(message)) { this.#shopStaleRecordId = item.recordId; this.#checkoutConfirmationRecordId = null; this.#lastCommerceError = 'สินค้ามีการเปลี่ยนแปลง กรุณารีเฟรชแล้วตรวจสอบอีกครั้ง'; }
+      else if (/insufficient/i.test(message)) this.#lastCommerceError = 'ยอดเงินไม่เพียงพอ';
+      else if (/balance is unavailable|cannot fabricate funds/i.test(message)) this.#lastCommerceError = 'ยังตรวจสอบยอดเงินสกุลนี้ไม่ได้';
+      else if (/access|authorization|another Device|Account does not match|Unknown scoped/i.test(message)) this.#lastCommerceError = 'โทรศัพท์เครื่องนี้ยังล็อกอยู่';
+      else this.#lastCommerceError = 'สั่งซื้อไม่สำเร็จ กรุณาลองอีกครั้ง';
       await this.renderActive(); return false;
     }
   }
@@ -711,5 +818,5 @@ export class TmrwPhoneShell {
       return false;
     }
   }
-  dispose() { if (!this.#root) return; this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
+  dispose() { if (!this.#root) return; if (this.#homePagerTimer != null) { clearTimeout(this.#homePagerTimer); this.#homePagerTimer = null; } this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
 }

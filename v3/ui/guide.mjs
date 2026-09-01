@@ -2,21 +2,20 @@ import { V3UnitOfWork } from '../storage/unit-of-work.mjs';
 import { requireEventScope } from '../domain/events/event-validator.mjs';
 import { requireText } from '../domain/identity/identity-record.mjs';
 
-export const GUIDE_TOPICS = Object.freeze(['Start Here', 'My Phone vs Their Phones', 'Canon vs player-only access', 'Calls & Contacts', 'Phone Number Discovery', 'Phone Access modes', 'Privacy & Character Knowledge', 'Messages / Groups', 'Stickers', 'Notes & Clues', 'Director Mode / Promote to Canon / Undo', 'Voice & Calls', 'Troubleshooting']);
+export const GUIDE_TOPICS = Object.freeze(['Start Here', 'My Phone & Their Phones', 'Calls & Contacts', 'Phone Numbers', 'Phone Access', 'Privacy', 'Messages & Groups', 'Stickers', 'Notes', 'Director Tools', 'Voice & Calls', 'Help']);
 export const GUIDE_TOPIC_CONTENT = Object.freeze({
-  'Start Here': 'Use My Phone for the player device. Their Phones remain separate perspectives and require the access granted by the current Story/Branch.',
-  'My Phone vs Their Phones': 'My Phone is the player-controlled canonical device. Each Their Phone belongs to its own Character Instance and never inherits player access automatically.',
-  'Canon vs player-only access': 'Opening or inspecting a phone does not by itself create story canon or Character Knowledge. Canon changes only through supported canonical actions.',
-  'Calls & Contacts': 'Contacts and Calls use the selected phone Account and Device. Call actions remain bounded by the current phone access and call state.',
-  'Phone Number Discovery': 'Phone number discovery follows the current Settings preference. The Guide does not manufacture numbers or contact evidence.',
-  'Phone Access modes': 'Phone access follows the configured experience preset and canonical access state. A visible device is not proof that its private apps are readable.',
-  'Privacy & Character Knowledge': 'Player-visible private phone state does not automatically become Character Knowledge. Knowledge grants require their own canonical evidence.',
-  'Messages / Groups': 'Messages and Groups read and write through canonical messaging services for the selected Account. Private conversations stay outside public Feed state.',
-  'Stickers': 'Sticker behavior is available only where the current messaging surface supports it. This Guide does not imply unsupported sticker actions.',
-  'Notes & Clues': 'Notes are private phone state. Creating or editing a Note does not grant that content to Characters as Knowledge.',
-  'Director Mode / Promote to Canon / Undo': 'Director operations use their dedicated canonical correction tools. Normal phone navigation never performs Director writes.',
-  'Voice & Calls': 'Voice controls reflect the current Voice capability. When the runtime is unavailable, text Calls remain available and Voice stays unavailable.',
-  'Troubleshooting': 'Use app error states and Diagnostics when enabled. Retry only the affected app; normal navigation does not start background Social or Live generation.',
+  'Start Here': 'เลือก My Phone สำหรับโทรศัพท์ของคุณ หรือ Their Phones เพื่อดูโทรศัพท์ของตัวละครที่คุณเข้าถึงได้',
+  'My Phone & Their Phones': 'โทรศัพท์แต่ละเครื่องแยกจากกัน เลือกเจ้าของเครื่องจากหน้าหลักได้ตลอดเวลา',
+  'Calls & Contacts': 'รายชื่อและสายโทรใช้ข้อมูลของโทรศัพท์เครื่องที่กำลังเปิดอยู่',
+  'Phone Numbers': 'การค้นพบเบอร์โทรทำงานตามตัวเลือกใน Settings และสิ่งที่เกิดขึ้นในเรื่อง',
+  'Phone Access': 'บางเครื่องหรือบางแอปอาจยังล็อกอยู่ จนกว่าจะเข้าถึงได้ตามเนื้อเรื่อง',
+  'Privacy': 'สิ่งที่คุณเห็นในโทรศัพท์ของตัวละครไม่ได้แปลว่าตัวละครนั้นรู้สิ่งเดียวกันโดยอัตโนมัติ',
+  'Messages & Groups': 'อ่านข้อความ ส่งข้อความ และสลับบทสนทนาได้จากโทรศัพท์เครื่องที่เลือก',
+  'Stickers': 'สติกเกอร์จะแสดงเฉพาะในหน้าข้อความที่รองรับ',
+  'Notes': 'Notes เป็นบันทึกส่วนตัวของโทรศัพท์เครื่องนั้น',
+  'Director Tools': 'ใช้เครื่องมือ Director เมื่อคุณต้องการยืนยันหรือย้อนการเปลี่ยนแปลงในเนื้อเรื่อง',
+  'Voice & Calls': 'สายข้อความยังใช้งานได้แม้ Voice จะยังไม่พร้อม',
+  'Help': 'หากแอปเปิดไม่สำเร็จ ให้ลอง Retry หรือกลับหน้าหลักแล้วเปิดใหม่อีกครั้ง',
 });
 const guideId = (scope, playerInstanceId) => `phone-guide:${scope.storyId}:${scope.branchId}:${playerInstanceId}`;
 export class GuideStateService {

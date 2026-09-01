@@ -47,7 +47,7 @@ test('C2-4 Calendar route shows observable loading, then truthful empty state an
   await waitFor(() => Boolean(find(shell.root, node => node.attributes?.get?.('role') === 'status' && /Loading Calendar/.test(node.textContent))));
   release(); await waitFor(() => /No calendar items/.test(allText(shell.root)));
   const panel = shell.root.children[3].children[0];
-  assert.match(allText(panel), /Opening this app never advances story time/);
+  assert.match(allText(panel), /No calendar items|ยังไม่มีนัดหมายหรือเตือนความจำ/);
   const back = find(panel, node => node.dataset?.navAction === 'back'); assert.ok(back); back.click(); await settle();
   assert.equal(shell.root.children[2].hidden, false);
 });
@@ -86,7 +86,7 @@ test('C2-4 device switch clears transient Calendar form and unauthorized Their P
   const c = await setupCalendarUi('p23-calendar-device-switch'); await c.calendar.createReminder({ scope: c.scope, deviceId: c.user.deviceId, ownerActorId: c.user.actorId, ownerInstanceId: c.user.instanceId, ownerAccountId: c.user.accountId, title: 'Private reminder', due: { kind: 'ordinal', targetOrdinal: 20 }, source: { authority: 'calendar-ui-test', kind: 'test', recordId: 'private-reminder', version: '1' }, producer: 'calendar-ui-test', idempotencyKey: 'private-reminder' });
   const shell = shellFor(c); await shell.mount(c.target); let panel = await open(shell, 'calendar'); find(panel, node => node.dataset?.calendarAction === 'new-reminder').click(); await settle();
   assert.ok(find(shell.root, node => node.dataset?.calendarForm === 'reminder'));
-  await shell.selectDevice(c.alice.deviceId); panel = shell.root.children[3].children[0]; assert.match(allText(panel), /Calendar is unavailable until access to this phone is granted|access/i); assert.doesNotMatch(allText(panel), /Private reminder/);
+  await shell.selectDevice(c.alice.deviceId); panel = shell.root.children[3].children[0]; assert.match(allText(panel), /โทรศัพท์เครื่องนี้ยังล็อกอยู่/); assert.doesNotMatch(allText(panel), /Private reminder/);
   await shell.selectDevice(c.user.deviceId); panel = shell.root.children[3].children[0]; assert.equal(find(panel, node => node.dataset?.calendarForm), null); assert.match(allText(panel), /Private reminder/);
 });
 

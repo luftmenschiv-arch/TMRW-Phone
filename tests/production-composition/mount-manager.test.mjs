@@ -204,11 +204,12 @@ test('My Phone and Their Phones remain dynamic for cast sizes 1, 2, and 12 throu
       const switcher = shell.children[1];
       const identity = await h.runtime.resolveCurrentIdentity();
       const roster = await h.runtime.services.viewModels.deviceRoster(identity.scope);
-      assert.equal(switcher.children.length, castSize + 1);
+      const deviceButtons = allNodes(switcher).filter(node => node.dataset.kind === 'my-phone' || node.dataset.kind === 'their-phone');
+      assert.equal(deviceButtons.length, castSize + 1);
       assert.equal(roster.filter(row => row.kind === 'my-phone').length, 1);
       assert.equal(roster.filter(row => row.kind === 'their-phone').length, castSize);
-      const myButtons = switcher.children.filter(node => node.dataset.kind === 'my-phone');
-      const theirButtons = switcher.children.filter(node => node.dataset.kind === 'their-phone');
+      const myButtons = deviceButtons.filter(node => node.dataset.kind === 'my-phone');
+      const theirButtons = deviceButtons.filter(node => node.dataset.kind === 'their-phone');
       assert.equal(myButtons.length, 1);
       assert.equal(myButtons[0].attributes.get('aria-pressed'), 'true');
       assert.equal(theirButtons.length, castSize);
@@ -359,7 +360,7 @@ test('S09 reuses the S08 graph, performs no passive canonical write, exposes Tex
     assert.equal(after, before);
     const shell = nodesById(h.document.body, V3_ROOT_ID)[0].children[0];
     const nav = shell.children[2];
-    assert.ok(nav.children.some(node => node.dataset.route === 'calls'));
+    assert.ok(allNodes(nav).some(node => node.dataset?.route === 'calls'));
     assert.equal(h.runtime.voiceCapability.runtimeAvailable, false);
     assert.equal(h.runtime.services.viewModels.voiceCapability.runtimeAvailable, false);
     assert.equal(h.runtime.composition.normalDatabase.capability, 'normal');

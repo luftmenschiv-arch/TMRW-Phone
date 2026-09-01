@@ -6,21 +6,30 @@ function localResults(sources, query) {
 }
 
 export function renderSearch({ document, history = [], sources = [], authorizationGranted = true, error = null, query = '', submittedQuery = '', clearBusy = false, onQuery, onSubmit, onClearHistory }) {
-  const root = el(document, 'section'); root.className = 'tmrw-v3-search';
-  if (!authorizationGranted) { root.append(el(document, 'p', 'Search is unavailable until access to this phone is granted.')); return root; }
+  const root = el(document, 'section'); root.className = 'tmrw-v3-search tmrw-phone-personal-app';
+  if (!authorizationGranted) { root.append(el(document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
   if (error) { const alert = el(document, 'p', `Search error: ${error}`); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
-  const truth = el(document, 'p', 'Search is local to authoritative content on this phone. TMRW does not fabricate internet results or a Discover feed.'); truth.className = 'tmrw-v3-search-truth'; root.append(truth);
-  const form = el(document, 'section'); form.className = 'tmrw-v3-search-form'; const input = el(document, 'input'); input.type = 'search'; input.value = query; input.placeholder = 'Search this phone'; input.setAttribute('aria-label', 'Search this phone'); const submit = el(document, 'button', 'Search'); submit.type = 'button'; submit.dataset.searchAction = 'submit'; const sync = () => { submit.disabled = !String(input.value || '').trim(); onQuery?.(String(input.value || '')); }; input.addEventListener('input', sync); sync(); let busy = false; submit.addEventListener('click', () => { const value = String(input.value || '').trim(); if (!value || busy || submit.disabled) return; busy = true; submit.disabled = true; void Promise.resolve(onSubmit?.(value)).finally(() => { busy = false; }); }); form.append(input, submit); root.append(form);
 
-  const historySection = el(document, 'section'); historySection.className = 'tmrw-v3-search-history'; historySection.append(el(document, 'h3', 'Search history'));
-  if (history.length === 0) historySection.append(el(document, 'p', 'No search history on this phone yet.'));
-  else { const clear = el(document, 'button', clearBusy ? 'Clearing…' : 'Clear history'); clear.type = 'button'; clear.dataset.searchAction = 'clear-history'; clear.disabled = Boolean(clearBusy); clear.setAttribute('aria-label', 'Clear search history on this phone'); clear.addEventListener('click', () => { if (!clear.disabled) void onClearHistory?.(); }); historySection.append(clear); const list = el(document, 'ul'); for (const row of history) { const item = el(document, 'li'); item.append(el(document, 'strong', row.query), el(document, 'small', `Source: ${row.provider || row.sourceKind || 'local phone-world search'}`)); list.append(item); } historySection.append(list); }
+  const form = el(document, 'label'); form.className = 'tmrw-v3-search-form tmrw-phone-personal-search tmrw-phone-soft-search';
+  const input = el(document, 'input'); input.type = 'search'; input.value = query; input.placeholder = 'Search in TMRW—Phone'; input.setAttribute('aria-label', 'Search this phone');
+  const submit = el(document, 'button', 'Search'); submit.type = 'button'; submit.dataset.searchAction = 'submit';
+  const sync = () => { submit.disabled = !String(input.value || '').trim(); onQuery?.(String(input.value || '')); }; input.addEventListener('input', sync); sync(); let busy = false;
+  submit.addEventListener('click', () => { const value = String(input.value || '').trim(); if (!value || busy || submit.disabled) return; busy = true; submit.disabled = true; void Promise.resolve(onSubmit?.(value)).finally(() => { busy = false; }); });
+  form.append(input, submit); root.append(form);
+
+  const historySection = el(document, 'section'); historySection.className = 'tmrw-v3-search-history tmrw-phone-search-history-card';
+  const historyHeader = el(document, 'header'); historyHeader.append(el(document, 'h3', 'Recent searches'));
+  if (history.length > 0) { const clear = el(document, 'button', clearBusy ? 'Clearing…' : 'Clear all'); clear.type = 'button'; clear.dataset.searchAction = 'clear-history'; clear.disabled = Boolean(clearBusy); clear.setAttribute('aria-label', 'Clear search history on this phone'); clear.addEventListener('click', () => { if (!clear.disabled) void onClearHistory?.(); }); historyHeader.append(clear); }
+  historySection.append(historyHeader);
+  if (history.length === 0) historySection.append(el(document, 'p', 'ยังไม่มีประวัติการค้นหา'));
+  else for (const row of history.slice(0, 10)) { const item = el(document, 'div'); item.className = 'tmrw-v3-search-history-row'; item.append(el(document, 'span', row.query)); historySection.append(item); }
   root.append(historySection);
 
-  if (!submittedQuery) { root.append(el(document, 'p', 'Enter a query to search local phone-world content.')); return root; }
-  const results = localResults(sources, submittedQuery); const resultSection = el(document, 'section'); resultSection.className = 'tmrw-v3-search-results'; resultSection.append(el(document, 'h3', `Results for “${submittedQuery}”`));
-  if (results.length === 0) resultSection.append(el(document, 'p', 'No local results found.'));
-  else { const list = el(document, 'ul'); for (const row of results) { const item = el(document, 'li'); item.dataset.searchResultKind = row.kind; item.dataset.searchResultRecordId = row.recordId; item.append(el(document, 'strong', row.title || row.recordId), el(document, 'small', row.kind)); list.append(item); } resultSection.append(list); }
+  if (!submittedQuery) return root;
+  const results = localResults(sources, submittedQuery); const resultSection = el(document, 'section'); resultSection.className = 'tmrw-v3-search-results tmrw-phone-personal-section'; resultSection.append(el(document, 'h3', `Results for “${submittedQuery}”`));
+  const list = el(document, 'div'); list.className = 'tmrw-phone-unified-results';
+  for (const row of results) { const item = el(document, 'article'); item.dataset.searchResultKind = row.kind; item.dataset.searchResultRecordId = row.recordId; const copy = el(document, 'span'); copy.append(el(document, 'small', row.kind.toUpperCase()), el(document, 'strong', row.title || row.recordId)); if (row.text) copy.append(el(document, 'em', row.text)); item.append(copy); list.append(item); }
+  if (results.length === 0) resultSection.append(el(document, 'p', 'ไม่พบผลลัพธ์')); else resultSection.append(list);
   root.append(resultSection); return root;
 }
 

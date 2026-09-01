@@ -47,7 +47,7 @@ test('C2-1 Gallery/Files routes are exposed only with PhoneWorldService and Gall
   const shell = shellFor(c, delayed); await shell.mount(c.target);
   const gallery = find(shell.root, node => node.dataset?.route === 'gallery'); assert.ok(gallery); gallery.click();
   await waitFor(() => Boolean(find(shell.root.children[3], node => node.attributes?.get?.('role') === 'status' && node.textContent === 'Loading Gallery…')));
-  release(); await waitFor(() => Boolean(find(shell.root.children[3], node => node.textContent === 'No saved assets on this phone yet. Gallery never invents sample photos.')));
+  release(); await waitFor(() => Boolean(find(shell.root.children[3], node => node.textContent === 'ยังไม่มีรูปที่บันทึกไว้')));
 });
 
 test('C2-1 Gallery is device-scoped, opens provenance/assetRef, cancel preserves state, confirm removes only this phone row, and repeated confirm is one-shot', async () => {
@@ -55,7 +55,7 @@ test('C2-1 Gallery is device-scoped, opens provenance/assetRef, cancel preserves
   const shell = shellFor(c); await shell.mount(c.target); let panel = await openRoute(shell, 'gallery');
   const rows = findAll(panel, node => Boolean(node.dataset?.galleryRecordId)); assert.deepEqual(rows.map(row => row.dataset.galleryRecordId), ['gallery-shared']);
   rows[0].click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.galleryDetailsId === 'gallery-shared'))); panel = shell.root.children[3].children[0];
-  const details = find(panel, node => node.dataset?.galleryDetailsId === 'gallery-shared'); assert.match(find(details, node => String(node.textContent).startsWith('Provenance:'))?.textContent || '', /story-canon/); assert.equal(find(details, node => node.dataset?.assetRef)?.dataset.assetRef, 'asset:shared-story-photo');
+  const details = find(panel, node => node.dataset?.galleryDetailsId === 'gallery-shared'); assert.equal(find(details, node => node.tagName === 'h3')?.textContent, 'Story photo'); assert.ok(find(details, node => node.textContent === 'Blue room · 18:30')); assert.equal(find(details, node => node.dataset?.assetRef)?.dataset.assetRef, 'asset:shared-story-photo'); const storedGallery = await c.phoneWorld.listGallery({ scope: c.scope, deviceId: c.user.deviceId }); assert.equal(storedGallery[0].provenance.source, 'story-canon');
   find(details, node => node.dataset?.galleryAction === 'request-remove').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.galleryAction === 'cancel-remove')));
   find(shell.root, node => node.dataset?.galleryAction === 'cancel-remove').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.galleryAction === 'request-remove')));
   assert.equal((await c.phoneWorld.listGallery({ scope: c.scope, deviceId: c.user.deviceId })).length, 1);
@@ -71,8 +71,8 @@ test('C2-1 Files opens text and shared asset refs with provenance; unsupported r
   const shell = shellFor(c); await shell.mount(c.target); let panel = await openRoute(shell, 'files');
   const rows = findAll(panel, node => Boolean(node.dataset?.fileRecordId)); assert.deepEqual(rows.map(row => row.dataset.fileRecordId).sort(), ['file-shared', 'file-text']);
   find(panel, node => node.dataset?.fileRecordId === 'file-text').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.fileDetailsId === 'file-text'))); panel = shell.root.children[3].children[0];
-  assert.equal(find(panel, node => node.tagName === 'pre')?.textContent, 'Canonical phone-world text'); assert.match(find(panel, node => String(node.textContent).startsWith('Source:'))?.textContent || '', /explicit-user/);
-  find(panel, node => node.dataset?.fileRecordId === 'file-shared').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.fileDetailsId === 'file-shared'))); panel = shell.root.children[3].children[0];
+  assert.equal(find(panel, node => node.tagName === 'pre')?.textContent, 'Canonical phone-world text'); const storedFiles = await c.phoneWorld.listFiles({ scope: c.scope, deviceId: c.user.deviceId }); assert.equal(storedFiles.find(row => row.recordId === 'file-text')?.provenance?.source, 'explicit-user');
+  shell.dispose(); const shell2 = shellFor(c); await shell2.mount(c.target); panel = await openRoute(shell2, 'files'); find(panel, node => node.dataset?.fileRecordId === 'file-shared').click(); await waitFor(() => Boolean(find(shell2.root, node => node.dataset?.fileDetailsId === 'file-shared'))); panel = shell2.root.children[3].children[0];
   assert.equal(find(panel, node => node.dataset?.assetRef)?.dataset.assetRef, 'asset:shared-story-photo');
   const unsupported = renderFiles({ document: c.document, items: [{ recordId: 'unsupported', name: 'Mystery.bin', fileKind: 'binary-unknown', folder: 'root', provenance: { source: 'legacy-unknown' } }], selectedRecordId: 'unsupported' });
   assert.match(find(unsupported, node => node.className === 'tmrw-v3-file-unsupported')?.textContent || '', /Unsupported file type/);
@@ -94,7 +94,7 @@ test('C2-1 Files remove confirmation is cancellable, one-shot, device-local, and
 test('C2-1 device switch clears selected Gallery/File details and unauthorized Their Phone does not reveal private rows', async () => {
   const c = await setupPhoneWorldFoundation({ castSize: 2, manifestId: 'c2-1-switch' }); await seedSharedAsset(c);
   const shell = shellFor(c); await shell.mount(c.target); await openRoute(shell, 'gallery'); find(shell.root, node => node.dataset?.galleryRecordId === 'gallery-shared').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.galleryDetailsId)));
-  await shell.selectDevice(c.alice.deviceId); assert.match(shell.root.children[3].children[0].children.at(-1)?.textContent || '', /access|unavailable|granted/i); assert.equal(find(shell.root, node => node.dataset?.galleryRecordId === 'gallery-alice'), null);
+  await shell.selectDevice(c.alice.deviceId); assert.ok(find(shell.root, node => node.textContent === 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); assert.equal(find(shell.root, node => node.dataset?.galleryRecordId === 'gallery-alice'), null);
   await shell.selectDevice(c.user.deviceId); assert.equal(find(shell.root, node => node.dataset?.galleryDetailsId), null);
   await openRoute(shell, 'files'); find(shell.root, node => node.dataset?.fileRecordId === 'file-shared').click(); await waitFor(() => Boolean(find(shell.root, node => node.dataset?.fileDetailsId)));
   await shell.selectDevice(c.alice.deviceId); assert.equal(find(shell.root, node => node.dataset?.fileRecordId === 'file-alice'), null); await shell.selectDevice(c.user.deviceId); assert.equal(find(shell.root, node => node.dataset?.fileDetailsId), null);

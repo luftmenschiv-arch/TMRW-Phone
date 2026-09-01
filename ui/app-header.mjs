@@ -1,16 +1,19 @@
+import { createPreviewIcon } from './app-icons.mjs';
+
 const node = (document, tag, text = '') => { const element = document.createElement(tag); element.textContent = text; return element; };
 
 export function createAppHeader({ document, title, onBack, action = null }) {
   if (!document?.createElement) throw new TypeError('App header requires a DOM document');
   if (typeof onBack !== 'function') throw new TypeError('App header requires real Back behavior');
   const header = node(document, 'header');
-  header.className = 'tmrw-v3-app-header';
+  header.className = 'tmrw-v3-app-header tmrw-phone-personal-header';
 
-  const back = node(document, 'button', '←');
+  const back = node(document, 'button');
   back.type = 'button';
   back.className = 'tmrw-v3-app-back';
   back.dataset.navAction = 'back';
   back.setAttribute('aria-label', 'Back');
+  back.append(createPreviewIcon({ document, name: 'back', size: 24 }));
   back.addEventListener('click', onBack);
 
   const heading = node(document, 'h2', String(title || 'App'));

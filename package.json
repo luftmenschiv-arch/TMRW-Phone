@@ -1,9 +1,9 @@
 {
   "name": "tmrw-phone-v3-beta",
-  "version": "0.0.0-phase23-qualified-patch2",
+  "version": "0.0.0-phase23-qualified-patch3",
   "private": true,
   "type": "module",
-  "description": "Private TMRW—Phone v3 Phase23 qualified candidate with post-publication migration-dependency and Production-home presentation patches. Phase 24 is not started; autonomous Social/Live AI and real Voice runtime remain disabled/unavailable.",
+  "description": "Private TMRW—Phone v3 Phase23 qualified Patch3 candidate with direct Preview37 UI/interaction parity, recovered Call UI authority, and retained Production canonical behavior. Phase 24 is not started; autonomous Social/Live AI and real Voice runtime remain disabled/unavailable.",
   "scripts": {
     "test": "npm run test:p23-e && npm run test:p23-f",
     "test:phase23": "npm run test:p23-e && npm run test:p23-f",

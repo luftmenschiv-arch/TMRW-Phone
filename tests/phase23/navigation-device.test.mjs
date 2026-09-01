@@ -28,7 +28,7 @@ test('P23 My Phone is first, explicitly discoverable, selected by default, and T
   assert.equal(buttons[0].attributes.get('aria-label'), 'My Phone');
   assert.ok(buttons.slice(1).every(button => button.dataset.kind === 'their-phone'));
   assert.ok(buttons.slice(1).every(button => String(button.attributes.get('aria-label')).startsWith('Their Phone:')));
-  assert.equal(shell.root.children[0].children[1].textContent, 'Viewing: My Phone');
+  assert.equal(shell.root.children[0].children[1].textContent, 'My Phone');
 });
 
 test('P23 switching perspective uses the real canonical device context and performs no ownership/domain write', async () => {
@@ -43,7 +43,7 @@ test('P23 switching perspective uses the real canonical device context and perfo
   const alice = buttons.find(button => button.dataset.deviceId === context.alice.deviceId);
   assert.equal(myPhone.attributes.get('aria-pressed'), 'false');
   assert.equal(alice.attributes.get('aria-pressed'), 'true');
-  assert.match(shell.root.children[0].children[1].textContent, /Their Phone/);
+  assert.equal(shell.root.children[0].children[1].textContent, "Character 1's Phone");
   const playerPerspective = await context.phones.getPerspective(context.scope, context.user.deviceId);
   const alicePerspective = await context.phones.getPerspective(context.scope, context.alice.deviceId);
   assert.equal(playerPerspective.deviceOwnerActorId, context.user.actorId);

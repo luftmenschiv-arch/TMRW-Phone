@@ -15,11 +15,10 @@ const el = (document, tag, text = '') => { const node = document.createElement(t
 
 export function renderTheme({ document, selectedTheme, onSelect }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-theme';
-  root.append(el(document, 'p', 'Theme changes apply immediately to your Phone UI and do not alter story canon.'));
-  const choices = el(document, 'div'); choices.className = 'tmrw-v3-theme-choices';
+  const choices = el(document, 'div'); choices.className = 'tmrw-v3-theme-choices tmrw-phone-utility-list';
   for (const theme of PHONE_THEMES) {
     const button = el(document, 'button'); button.type = 'button'; button.dataset.themeChoice = theme.id; button.setAttribute('aria-pressed', String(theme.id === selectedTheme)); button.setAttribute('aria-label', `Use ${theme.label} theme`);
-    button.append(el(document, 'strong', theme.label), el(document, 'small', theme.description));
+    const copy = el(document, 'span'); copy.append(el(document, 'strong', theme.label), el(document, 'small', theme.description)); button.append(copy, el(document, 'b', theme.id === selectedTheme ? '✓' : ''));
     let busy = false; button.addEventListener('click', () => { if (busy || button.disabled || theme.id === selectedTheme) return; busy = true; button.disabled = true; void Promise.resolve(onSelect?.(theme.id)).finally(() => { busy = false; }); });
     choices.append(button);
   }

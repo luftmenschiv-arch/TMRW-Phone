@@ -20,9 +20,16 @@ const ICONS = Object.freeze({
   guide: '<path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H12v18H7.5A3.5 3.5 0 0 0 4 23V5.5Z"/><path d="M20 5.5A3.5 3.5 0 0 0 16.5 2H12v18h4.5A3.5 3.5 0 0 1 20 23V5.5Z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19 13.5v-3l-2-.7a7 7 0 0 0-.6-1.4l.9-1.9-2.1-2.1-1.9.9a7 7 0 0 0-1.4-.6L11.2 3h-3l-.7 2a7 7 0 0 0-1.4.6l-1.9-.9-2.1 2.1.9 1.9a7 7 0 0 0-.6 1.4l-2 .7v3l2 .7a7 7 0 0 0 .6 1.4l-.9 1.9 2.1 2.1 1.9-.9a7 7 0 0 0 1.4.6l.7 2h3l.7-2a7 7 0 0 0 1.4-.6l1.9.9 2.1-2.1-.9-1.9a7 7 0 0 0 .6-1.4l2-.7Z"/>',
   diagnostics: '<path d="M3 12h4l2-5 4 10 2-5h6"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
+  close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
+  more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c.7-5 3.4-7 8-7s7.3 2 8 7"/>',
+  lock: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  home: '<path d="m3 11 9-8 9 8"/><path d="M5.5 10.5V21h13V10.5M10 21v-6h4v6"/>',
 });
 
-const FALLBACK = Object.freeze({ contacts: 'C', messages: 'M', calls: 'P', feed: 'F', insungram: 'I', live: 'L', notifications: 'N', gallery: 'G', search: 'S', maps: 'M', calendar: 'C', notes: 'N', files: 'F', wallet: 'W', shop: 'S', weather: 'W', health: 'H', theme: 'T', guide: '?', settings: 'S', diagnostics: 'D' });
+const FALLBACK = Object.freeze({ contacts: 'C', messages: 'M', calls: 'P', feed: 'F', insungram: 'I', live: 'L', notifications: 'N', gallery: 'G', search: 'S', maps: 'M', calendar: 'C', notes: 'N', files: 'F', wallet: 'W', shop: 'S', weather: 'W', health: 'H', theme: 'T', guide: '?', settings: 'S', diagnostics: 'D', back: '‹', close: '×', chevron: '›', more: '⋯', user: 'U', lock: '⌑', home: 'H' });
 
 export function createHomeAppIcon({ document, appId }) {
   const wrapper = document.createElement('span');
@@ -31,9 +38,20 @@ export function createHomeAppIcon({ document, appId }) {
   wrapper.setAttribute?.('aria-hidden', 'true');
   const markup = ICONS[appId] || ICONS.guide;
   if ('innerHTML' in wrapper) {
-    wrapper.innerHTML = `<svg viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" focusable="false">${markup}</svg>`;
+    wrapper.innerHTML = `<svg class="tmrw-phone-svg" viewBox="0 0 24 24" width="25" height="25" aria-hidden="true" focusable="false">${markup}</svg>`;
   } else {
     wrapper.textContent = FALLBACK[appId] || String(appId || '?').slice(0, 1).toUpperCase();
   }
+  return wrapper;
+}
+
+export function createPreviewIcon({ document, name, size = 24, className = '' }) {
+  const wrapper = document.createElement('span');
+  wrapper.className = ['tmrw-v3-preview-icon', className].filter(Boolean).join(' ');
+  wrapper.dataset.icon = name;
+  wrapper.setAttribute?.('aria-hidden', 'true');
+  const markup = ICONS[name] || ICONS.calls;
+  if ('innerHTML' in wrapper) wrapper.innerHTML = `<svg class="tmrw-phone-svg" viewBox="0 0 24 24" width="${Number(size) || 24}" height="${Number(size) || 24}" aria-hidden="true" focusable="false">${markup}</svg>`;
+  else wrapper.textContent = FALLBACK[name] || '?';
   return wrapper;
 }
