@@ -240,6 +240,32 @@ test('extension hook automatically starts the single TMRW Phone and reaches only
   assert.equal(h.document.querySelector('#tmrw-v3-phone-launcher'), null);
 });
 
+test('stale disabled Preview state with requested=false resumes the single TMRW Phone without Preview re-enable', async () => {
+  const h = harness();
+  h.previewEnabled = false;
+  h.control.mount();
+  await h.control.handleExtensionHook();
+  assert.equal(h.flag.read().requested, true);
+  assert.equal(h.previewEnabled, false);
+  assert.equal(h.active, true);
+  assert.deepEqual(h.calls, ['configure-preflight', 'check-post-reload', 'configure-active', 'start-active', 'dispose-preflight']);
+  assert.equal(h.calls.includes('return-preview'), false);
+  assert.equal(h.control.status.userStatus, 'TMRW Phone');
+});
+
+test('Retry repairs stale disabled Preview state by persisting TMRW Phone intent and reopening authoring', async () => {
+  const h = harness();
+  h.previewEnabled = false;
+  h.control.mount();
+  await h.control.retryStartup();
+  assert.equal(h.flag.read().requested, true);
+  assert.equal(h.previewEnabled, false);
+  assert.equal(h.active, true);
+  assert.deepEqual(h.calls, ['configure-preflight', 'check-post-reload', 'configure-active', 'start-active', 'dispose-preflight']);
+  assert.equal(h.calls.includes('return-preview'), false);
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, true);
+});
+
 test('post-reload TMRW Phone intent reuses selection/startup contracts exactly once with no alternate-mode control', async () => {
   const h = harness();
   h.flag.requestEnable();

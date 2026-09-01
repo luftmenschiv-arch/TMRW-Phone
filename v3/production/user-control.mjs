@@ -338,7 +338,10 @@ export class ProductionUserControl {
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
     if (preview?.enabled === true) return this.useProduction({ host });
-    if (this.#featureFlag?.read().requested === true) return this.resumePendingSelection({ host });
+    if (preview && this.#featureFlag) {
+      if (this.#featureFlag.read().requested !== true) this.#featureFlag.requestEnable();
+      return this.resumePendingSelection({ host });
+    }
     this.#fail(new Error('TMRW Phone startup prerequisites are unavailable'));
     return this.status;
   }
@@ -387,7 +390,10 @@ export class ProductionUserControl {
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
     if (preview?.enabled === true) return this.useProduction({ host });
-    if (this.#featureFlag?.read().requested === true) return this.resumePendingSelection({ host });
+    if (preview && this.#featureFlag) {
+      if (this.#featureFlag.read().requested !== true) this.#featureFlag.requestEnable();
+      return this.resumePendingSelection({ host });
+    }
     this.#fail(new Error('TMRW Phone startup prerequisites are unavailable'));
     return this.status;
   }
