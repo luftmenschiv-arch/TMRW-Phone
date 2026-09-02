@@ -122,6 +122,7 @@ const REQUIRED_ORDER = [
   'calendar-app-service',
   'commerce-app-service',
   'beta-settings',
+  'smart-contact-discovery',
   'call-coordinator',
   'handoff-coordinator',
   'phone-context-injector',

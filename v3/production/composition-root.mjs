@@ -39,6 +39,7 @@ import { StoryChronologyService } from '../domain/time/chronology-service.mjs';
 import { PhoneStateService } from '../domain/phone/phone-state.mjs';
 import { PlayerAccessOverrideRepository } from '../domain/phone/player-access-override.mjs';
 import { ContactService } from '../domain/contacts/contact-service.mjs';
+import { SmartContactDiscoveryCoordinator } from '../application/smart-contact-discovery.mjs';
 import { MessageService } from '../domain/messaging/message-service.mjs';
 import { CallService } from '../domain/calls/call-service.mjs';
 import { SocialService } from '../domain/social/social-service.mjs';
@@ -513,6 +514,14 @@ async function buildRuntime(options, entry) {
     await activation.mark('commerce-app-service');
     const settings = new BetaSettingsService({ database: normalDatabase });
     await activation.mark('beta-settings');
+    const smartContactDiscovery = new SmartContactDiscoveryCoordinator({
+      database: normalDatabase,
+      contactService: contacts,
+      settingsService: settings,
+      resolvePlayerIdentity: input => identityResolver.resolvePlayerIdentity(input),
+      now,
+    });
+    await activation.mark('smart-contact-discovery');
 
     const undo = new UndoCanonService({ database: normalDatabase, eventEngine });
     const director = Object.freeze({
@@ -556,6 +565,7 @@ async function buildRuntime(options, entry) {
       handoffCoordinator: handoff,
       phoneContextBuilder: phoneContext,
       callStoryIntegration,
+      smartContactDiscovery,
       discardPartialAssistant,
       authoringEnabled: () => gate.allows(AUTHORING_CAPABILITY.NORMAL),
     });
@@ -588,7 +598,7 @@ async function buildRuntime(options, entry) {
     gate.close('s08-awaiting-s09-mount-launcher');
     await activation.mark('s08-ready-without-mount', finalHealth);
 
-    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, viewModels, phoneController });
+    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, viewModels, phoneController });
     const composition = Object.freeze({ normalDatabase, identityKernel, contextAdapter, identityResolver, eventEngine, runtimeIntegration, listenerOwner, generationOwner, heartbeat, authoringGate: gate, runtimeGuard, productionHealth });
 
     const root = Object.freeze({

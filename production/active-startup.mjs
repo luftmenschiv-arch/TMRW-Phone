@@ -245,6 +245,7 @@ export class ProductionActiveStartupSession {
         if (!scopeHealth.ready) throw new Error(`Active production scope transition health blocked: ${scopeHealth.blockers.join(', ')}`);
         const gateResult = await this.runtime.composition.authoringGate.open(scopeHealth.checks);
         if (!gateResult.opened) throw new Error(`Active production scope transition Authoring Gate failed to reopen: ${gateResult.reason}`);
+        this.smartContactReconciliation = await this.runtime.composition.runtimeIntegration.reconcileSmartContactDiscovery?.() || null;
 
         this.identity = nextIdentity;
         this.finalHealth = scopeHealth;
@@ -325,6 +326,7 @@ export class ProductionActiveStartupSession {
         productionHealthReady: this.finalHealth.ready === true,
       });
       if (committed.activationCommitted !== true) throw new Error(`Runtime Arbiter refused V3 authoring: ${(committed.blockers || []).join(', ')}`);
+      this.smartContactReconciliation = await this.runtime.composition.runtimeIntegration.reconcileSmartContactDiscovery?.() || null;
 
       this.shutdownController = new ProductionShutdownController({
         productionRuntime: this.runtime,
