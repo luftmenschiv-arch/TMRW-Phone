@@ -77,6 +77,7 @@ export class ProductionLauncherOwner {
       mounted: Boolean(this.#button),
       eligible: this.#eligible(),
       launcherId: this.#button ? V3_LAUNCHER_ID : null,
+      visible: Boolean(this.#button && this.#button.hidden !== true),
       opens: this.#opens,
       disposed: this.#disposed,
       blocked: this.#blocked,
@@ -107,7 +108,7 @@ export class ProductionLauncherOwner {
     if ('id' in button) button.id = V3_LAUNCHER_ID;
     button.type = 'button';
     button.tabIndex = -1;
-    button.setAttribute?.('aria-label', 'เปิด TMRW-Phone');
+    button.setAttribute?.('aria-label', 'เปิด TMRW Phone');
     button.append(createPreviewIcon({ document: this.#document, name: 'phone', size: 24 }));
     const sparkle = this.#document.createElement('span');
     sparkle.className = 'tmrw-phone-launcher-spark';
@@ -126,6 +127,7 @@ export class ProductionLauncherOwner {
     this.#hostParent.append(button);
     this.#applyPreviewDefaultPosition(button);
     this.#button = button;
+    button.hidden = this.#mountManager.status.visible === true;
     LAUNCHER_OWNERS.set(this.#hostParent, this);
     this.#lastError = null;
     return true;
@@ -257,7 +259,11 @@ export class ProductionLauncherOwner {
 
   reconcile() {
     if (this.#disposed) return false;
-    if (this.#eligible()) return this.#button ? true : this.mount();
+    if (this.#eligible()) {
+      if (!this.#button && !this.mount()) return false;
+      if (this.#button) this.#button.hidden = this.#mountManager.status.visible === true;
+      return true;
+    }
     if (this.#button) this.#removeButton();
     return false;
   }

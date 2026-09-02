@@ -279,6 +279,8 @@ export class ProductionActiveStartupSession {
         runtimeArbiter: this.arbiter,
         document,
         hostParent: document.body,
+        playerDisplayNameResolver: () => String(getContext()?.name1 || '').trim() || null,
+        onVisibilityChange: () => this.launcherOwner?.reconcile?.(),
       });
       await this.mountManager.mount(this.identity);
       if (!this.mountManager.status.healthy) throw new Error('Active production startup shell mount health is unproven');

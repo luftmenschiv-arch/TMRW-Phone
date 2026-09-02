@@ -69,6 +69,8 @@ export class ProductionMountManager {
   #document;
   #hostParent;
   #shellFactory;
+  #playerDisplayNameResolver;
+  #onVisibilityChange;
   #host = null;
   #shell = null;
   #identity = null;
@@ -79,18 +81,22 @@ export class ProductionMountManager {
   #requiresAuthoringRevalidation = false;
   #blocked = false;
 
-  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options) }) {
+  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options), playerDisplayNameResolver = null, onVisibilityChange = null }) {
     if (!productionRuntime || productionRuntime.role !== 'owner' || !productionRuntime.services || !productionRuntime.composition || typeof productionRuntime.resolveCurrentIdentity !== 'function') {
       throw new TypeError('ProductionMountManager requires the S08 owner composition root');
     }
     if (!runtimeArbiter || typeof runtimeArbiter.inspect !== 'function') throw new TypeError('ProductionMountManager requires ProductionRuntimeArbiter');
     if (!document?.createElement || !hostParent?.append) throw new TypeError('ProductionMountManager requires a DOM document and host parent');
     if (typeof shellFactory !== 'function') throw new TypeError('shellFactory must be a function');
+    if (playerDisplayNameResolver != null && typeof playerDisplayNameResolver !== 'function') throw new TypeError('playerDisplayNameResolver must be a function when provided');
+    if (onVisibilityChange != null && typeof onVisibilityChange !== 'function') throw new TypeError('onVisibilityChange must be a function when provided');
     this.#runtime = productionRuntime;
     this.#runtimeArbiter = runtimeArbiter;
     this.#document = document;
     this.#hostParent = hostParent;
     this.#shellFactory = shellFactory;
+    this.#playerDisplayNameResolver = playerDisplayNameResolver;
+    this.#onVisibilityChange = onVisibilityChange;
   }
 
   get status() {
@@ -116,6 +122,10 @@ export class ProductionMountManager {
 
   #closeGate(reason) {
     this.#runtime.composition.authoringGate?.close?.(reason);
+  }
+
+  #notifyVisibility() {
+    try { this.#onVisibilityChange?.(Boolean(this.#host && this.#host.hidden !== true)); } catch {}
   }
 
   #assertEligible() {
@@ -176,6 +186,7 @@ export class ProductionMountManager {
         scope: identity.scope,
         playerActorId: identity.player.actorId,
         playerInstanceId: identity.player.instanceId,
+        playerDisplayName: this.#playerDisplayNameResolver?.() || null,
         selectedDeviceId: identity.player.deviceId,
         onClose: () => this.hide(),
       });
@@ -254,6 +265,7 @@ export class ProductionMountManager {
       if (!this.#healthy || !this.#host || !this.#shell?.root) return false;
       this.#shell.open?.();
       this.#host.hidden = false;
+      this.#notifyVisibility();
       return true;
     } catch (error) {
       this.#lastError = String(error?.message || error);
@@ -265,6 +277,7 @@ export class ProductionMountManager {
   hide() {
     if (!this.#host) return false;
     this.#host.hidden = true;
+    this.#notifyVisibility();
     return true;
   }
 
@@ -272,6 +285,7 @@ export class ProductionMountManager {
     this.#blocked = true;
     this.#closeGate(reason);
     if (this.#host) this.#host.hidden = true;
+    this.#notifyVisibility();
     return this.status;
   }
 
@@ -297,6 +311,7 @@ export class ProductionMountManager {
     this.#host = null;
     this.#identity = null;
     try { host?.remove?.(); } finally { this.#releaseRoot(); }
+    this.#notifyVisibility();
     return this.status;
   }
 
@@ -312,6 +327,7 @@ export class ProductionMountManager {
         if (releaseOwnership) this.#releaseRoot();
       }
     }
+    this.#notifyVisibility();
   }
 
   async unmount({ reason = 'production-phone-unmounted' } = {}) {

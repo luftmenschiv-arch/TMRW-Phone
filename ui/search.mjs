@@ -14,7 +14,7 @@ export function renderSearch({ document, history = [], sources = [], authorizati
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
   if (error) { const alert = el(document, 'p', 'Search ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
 
-  const form = el(document, 'label'); form.className = 'tmrw-v3-search-form tmrw-phone-personal-search tmrw-phone-soft-search'; form.append(icon(document, 'search', 20)); const input = el(document, 'input'); input.type = 'search'; input.value = query; input.placeholder = 'Search in TMRW—Phone'; input.setAttribute('aria-label', 'Search this phone'); form.append(input); root.append(form);
+  const form = el(document, 'label'); form.className = 'tmrw-v3-search-form tmrw-phone-personal-search tmrw-phone-soft-search'; form.append(icon(document, 'search', 20)); const input = el(document, 'input'); input.type = 'search'; input.value = query; input.placeholder = 'Search in TMRW Phone'; input.setAttribute('aria-label', 'Search this phone'); form.append(input); root.append(form);
 
   const chips = el(document, 'div'); chips.className = 'tmrw-phone-filter-chips tmrw-phone-soft-chips'; const filters = [['all','Latest'],['Contact','Contacts'],['Chat','Chats'],['Note','Notes']]; let activeFilter = 'all'; const resultRows = [];
   const paintFilter = () => { for (const entry of resultRows) entry.node.hidden = activeFilter !== 'all' && entry.kind !== activeFilter; };

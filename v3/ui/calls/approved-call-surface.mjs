@@ -133,7 +133,7 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
   menu.append(menuButton('โปรไฟล์', 'profile', false), menuButton('ประวัติการโทร', 'history'), menuButton('คำบรรยาย', 'captions'), menuButton('การตั้งค่า', 'settings')); root.append(menu);
   more.addEventListener('click', () => { menu.hidden = !menu.hidden; });
 
-  const mini = el(document, 'div', 'tmrw-call-authority-mini-layer'); mini.hidden = true; mini.append(el(document, 'div', 'tmrw-call-authority-mini-title', 'TMRW—Phone'), el(document, 'div', 'tmrw-call-authority-mini-sub', 'สายยังคงเชื่อมต่ออยู่'));
+  const mini = el(document, 'div', 'tmrw-call-authority-mini-layer'); mini.hidden = true; mini.append(el(document, 'div', 'tmrw-call-authority-mini-title', 'TMRW Phone'), el(document, 'div', 'tmrw-call-authority-mini-sub', 'สายยังคงเชื่อมต่ออยู่'));
   const card = el(document, 'button', 'tmrw-call-authority-mini-card'); card.type = 'button'; card.dataset.callAction = 'restore'; card.append(el(document, 'span', 'tmrw-call-authority-mini-avatar', initials(island.counterpartLabel)), el(document, 'span', 'tmrw-call-authority-mini-info', island.counterpartLabel || 'Call participant'), el(document, 'i', 'tmrw-call-authority-mini-live-dot')); mini.append(card); root.append(mini);
   minimize.addEventListener('click', () => { root.classList?.add?.('is-minimized'); mini.hidden = false; }); card.addEventListener('click', () => { root.classList?.remove?.('is-minimized'); mini.hidden = true; });
 

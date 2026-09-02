@@ -9,6 +9,15 @@ import { GuideStateService } from './guide.mjs';
 
 const emptyCallUi = () => Object.freeze({ sessions: Object.freeze([]), history: Object.freeze([]), transcript: Object.freeze([]), selectedCallSessionId: null, island: Object.freeze({ kind: 'empty', title: 'No calls yet', callSessionId: null, actions: Object.freeze([]) }), dialTargets: Object.freeze([]), owner: Object.freeze({ available: false, canAct: false, inspectionOnly: true, reason: 'unavailable' }), metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: 0, transcriptLoaded: 0, timers: 0, pollers: 0 }) });
 
+function presentationDisplayName(...candidates) {
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (!value || /\{\{[^{}]+\}\}/.test(value)) continue;
+    return value;
+  }
+  return 'เจ้าของเครื่อง';
+}
+
 export class PhoneShellViewModels {
   #unitOfWork; #phones; #contacts; #settings; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability;
   constructor({ database, phoneStateService, contactService, settingsService, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null }) {
@@ -50,11 +59,16 @@ export class PhoneShellViewModels {
   clearSearchEntry(input) { if (!this.#phoneWorldUtilities) throw new Error('Search service is unavailable'); return this.#phoneWorldUtilities.clearSearchEntry(input); }
   setLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.setLocation(input); }
   endLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.endLocation(input); }
-  async deviceRoster(scopeInput) {
+  async deviceRoster(scopeInput, { playerActorId = null, playerDisplayName = null } = {}) {
     const scope = requireEventScope(scopeInput);
     return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors'], scope }, async repositories => {
       const states = await repositories.phoneStates.list(); const roster = [];
-      for (const state of states) { const instance = await repositories.instances.get(state.deviceOwnerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId); if (!instance || !actor) continue; roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label: actor.displayName, kind: isPlayerControlled(actor) ? 'my-phone' : 'their-phone', lockState: state.lockState })); }
+      for (const state of states) {
+        const instance = await repositories.instances.get(state.deviceOwnerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId); if (!instance || !actor) continue;
+        const playerOwned = isPlayerControlled(actor);
+        const label = presentationDisplayName(instance.displayNameOverride, playerOwned && actor.id === playerActorId ? playerDisplayName : null, actor.displayName, playerOwned ? 'เจ้าของเครื่อง' : 'ไม่ทราบชื่อ');
+        roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label, kind: playerOwned ? 'my-phone' : 'their-phone', lockState: state.lockState }));
+      }
       return Object.freeze(roster.sort((left, right) => (left.kind === 'my-phone' ? -1 : right.kind === 'my-phone' ? 1 : left.label.localeCompare(right.label) || left.deviceId.localeCompare(right.deviceId))));
     });
   }
@@ -88,15 +102,17 @@ export class PhoneShellViewModels {
     }
     if (this.#calendar) { try { calendar = await this.#calendar.list({ scope, deviceId: selectedDeviceId }); } catch {} }
 
-    const recentNotification = phoneWorld.recent?.[0] || null;
-    const firstThread = threads[0] || null;
-    const firstCall = callUi.history?.[0] || null;
-    const firstCalendar = calendar.items?.[0] || null;
-    const lockNotifications = Object.freeze([
-      Object.freeze({ icon: 'message', app: 'INSUNGRAM', time: recentNotification?.createdAt || 'ล่าสุด', title: recentNotification?.title || (firstThread ? 'มีข้อความในโทรศัพท์' : 'ยังไม่มีข้อความใหม่'), body: recentNotification?.preview || (firstThread ? (firstThread.kind === 'dm' ? 'ข้อความส่วนตัว' : 'ข้อความกลุ่ม') : 'กล่องข้อความว่าง'), target: 'messages' }),
-      Object.freeze({ icon: 'phone', app: 'ประวัติการโทร', time: firstCall?.timeLabel || 'ล่าสุด', title: firstCall?.displayLabel || 'ยังไม่มีสายล่าสุด', body: firstCall?.statusLabel || 'ประวัติการโทรว่าง', target: 'calls' }),
-      Object.freeze({ icon: 'calendar', app: 'ปฏิทิน', time: firstCalendar?.due?.localTime || 'เร็ว ๆ นี้', title: firstCalendar?.title || 'ยังไม่มีนัดหมาย', body: firstCalendar ? (firstCalendar.itemKind === 'invitation' ? 'คำเชิญในปฏิทิน' : 'รายการในปฏิทิน') : 'ปฏิทินว่าง', target: 'calendar' }),
-    ]);
+    const notificationLabels = Object.freeze({ messages: 'INSUNGRAM', calls: 'Calls', feed: 'Insungram', live: 'Live' });
+    const notificationIcons = Object.freeze({ messages: 'message', calls: 'phone', feed: 'heart', live: 'live' });
+    const notificationTargets = Object.freeze({ messages: 'messages', calls: 'calls', feed: 'feed', live: 'live' });
+    const lockNotifications = Object.freeze((phoneWorld.recent || []).slice(0, 3).map(item => Object.freeze({
+      icon: notificationIcons[item.appId] || 'notifications',
+      app: notificationLabels[item.appId] || 'TMRW Phone',
+      time: item.storyTimeRef || 'ล่าสุด',
+      title: item.display?.title || 'การแจ้งเตือน',
+      body: item.display?.preview || '',
+      target: notificationTargets[item.appId] || 'notifications',
+    })));
     const note = notes.find(row => row.pinned) || notes[0] || null;
     const step = health.find(row => row.metric === 'steps') || null;
     return Object.freeze({ opened, themeId: settings.themeId, status: Number(phoneWorld.unreadTotal || 0) > 0 ? `${phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน', badges: phoneWorld.badges || Object.freeze({}), unreadTotal: Number(phoneWorld.unreadTotal || 0), noteText: note ? (note.title || note.text || null) : null, steps: step ? Number(step.value) : null, lockNotifications });

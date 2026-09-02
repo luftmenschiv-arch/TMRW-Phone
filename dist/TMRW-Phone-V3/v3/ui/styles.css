@@ -26,6 +26,7 @@
 #tmrw-v3-phone-launcher:active,
 #tmrw-v3-phone-launcher.is-dragging { transform: scale(.94); cursor: grabbing; }
 #tmrw-v3-phone-launcher:disabled { opacity: .48; cursor: default; }
+#tmrw-v3-phone-launcher[hidden] { display: none !important; }
 
 /* Narrow Production renderer integration. No alternate visual system. */
 #tmrw-phone-root [hidden] { display: none !important; }
@@ -38,6 +39,45 @@
 #tmrw-phone-root .tmrw-v3-calendar-form input { width: 100%; margin-top: 8px; border: 1px solid var(--tmrw-line); border-radius: 12px; background: var(--tmrw-card); color: var(--tmrw-ink); padding: 10px 12px; }
 #tmrw-phone-root .tmrw-v3-calendar-form-controls { display: flex; gap: 8px; margin-top: 12px; }
 #tmrw-phone-root .tmrw-v3-calendar-form-controls > button { flex: 1 1 0; }
+
+/* Product Owner visual corrections retain Preview geometry while preventing content collapse. */
+#tmrw-phone-root .tmrw-phone-lock-notification--empty { grid-template-columns: 34px minmax(0, 1fr) 18px; width: 100%; min-width: 0; }
+#tmrw-phone-root .tmrw-phone-lock-notification--empty > span { min-width: 0; }
+#tmrw-phone-root .tmrw-phone-lock-notification--empty strong { white-space: normal; line-height: 1.25; }
+#tmrw-phone-root .tmrw-phone-lifestyle-title { min-width: 0; display: flex; align-items: center; justify-content: center; color: var(--tmrw-ink, #20242b); font-size: 14px; }
+
+/* Voice settings are a Preview-native Settings surface; runtime capability remains truthful. */
+#tmrw-phone-root .tmrw-v3-voice-settings { display: grid; gap: 12px; padding: 2px 0 18px; color: var(--tmrw-ink, #17191e); }
+#tmrw-phone-root .tmrw-v3-voice-card { min-width: 0; padding: 14px; border: 1px solid var(--tmrw-line, #e1e8ee); border-radius: 20px; background: rgba(255,255,255,.92); box-shadow: 0 8px 24px rgba(31,35,43,.045); }
+#tmrw-phone-root .tmrw-v3-voice-card > h4 { margin: 0 0 10px; font-size: 13px; font-weight: 780; }
+#tmrw-phone-root .tmrw-v3-voice-card > p { margin: 6px 0 0; color: var(--tmrw-muted, #737b86); font-size: 11px; line-height: 1.45; }
+#tmrw-phone-root .tmrw-v3-voice-status { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 12px; align-items: center; }
+#tmrw-phone-root .tmrw-v3-voice-status-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #202328; color: #fff; }
+#tmrw-phone-root .tmrw-v3-voice-status small { color: #8a8f98; font-size: 8px; font-weight: 800; letter-spacing: .14em; }
+#tmrw-phone-root .tmrw-v3-voice-status h3 { margin: 2px 0 3px; font-size: 17px; }
+#tmrw-phone-root .tmrw-v3-voice-status p { margin: 0; color: var(--tmrw-muted, #737b86); font-size: 10px; line-height: 1.4; }
+#tmrw-phone-root .tmrw-v3-voice-row { width: 100%; min-height: 50px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 9px 0; border: 0; border-top: 1px solid var(--tmrw-line, #e1e8ee); border-radius: 0; background: transparent; color: inherit; text-align: left; }
+#tmrw-phone-root .tmrw-v3-voice-card > .tmrw-v3-voice-row:first-of-type { border-top: 0; }
+#tmrw-phone-root .tmrw-v3-voice-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#tmrw-phone-root .tmrw-v3-voice-copy strong { font-size: 12px; font-weight: 720; }
+#tmrw-phone-root .tmrw-v3-voice-copy small { color: var(--tmrw-muted, #737b86); font-size: 9px; line-height: 1.35; }
+#tmrw-phone-root .tmrw-v3-voice-switch { width: 38px; height: 22px; display: flex; align-items: center; padding: 2px; border-radius: 999px; background: #d9dde2; transition: background 140ms ease; }
+#tmrw-phone-root .tmrw-v3-voice-switch i { width: 18px; height: 18px; display: block; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.18); transition: transform 140ms ease; }
+#tmrw-phone-root .tmrw-v3-voice-toggle[aria-pressed=true] .tmrw-v3-voice-switch { background: #25282d; }
+#tmrw-phone-root .tmrw-v3-voice-toggle[aria-pressed=true] .tmrw-v3-voice-switch i { transform: translateX(16px); }
+#tmrw-phone-root .tmrw-v3-voice-row:disabled, #tmrw-phone-root .tmrw-v3-voice-choice button:disabled, #tmrw-phone-root .tmrw-v3-voice-field :disabled, #tmrw-phone-root .tmrw-v3-voice-test-card > button:disabled { opacity: .48; cursor: default; }
+#tmrw-phone-root .tmrw-v3-voice-choice { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--tmrw-line, #e1e8ee); }
+#tmrw-phone-root .tmrw-v3-voice-choice-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 3px; border-radius: 13px; background: #f1f3f5; }
+#tmrw-phone-root .tmrw-v3-voice-choice-buttons > button { min-width: 0; min-height: 31px; padding: 5px 7px; border: 0; border-radius: 10px; background: transparent; color: #676d76; font-size: 9px; font-weight: 700; }
+#tmrw-phone-root .tmrw-v3-voice-choice-buttons > button[aria-pressed=true] { background: #fff; color: #202328; box-shadow: 0 1px 5px rgba(0,0,0,.1); }
+#tmrw-phone-root .tmrw-v3-voice-actors { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
+#tmrw-phone-root .tmrw-v3-voice-actors > button { flex: 0 0 auto; min-height: 32px; padding: 6px 11px; border: 1px solid var(--tmrw-line, #e1e8ee); border-radius: 999px; background: #fff; color: #555b64; font-size: 9px; }
+#tmrw-phone-root .tmrw-v3-voice-actors > button[aria-pressed=true] { border-color: #25282d; background: #25282d; color: #fff; }
+#tmrw-phone-root .tmrw-v3-voice-profile-card { margin-top: 10px; padding: 12px; border-radius: 16px; background: #f6f7f8; }
+#tmrw-phone-root .tmrw-v3-voice-field { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; margin-top: 9px; }
+#tmrw-phone-root .tmrw-v3-voice-field input { min-width: 0; height: 36px; padding: 8px 10px; border: 1px solid #dfe2e6; border-radius: 11px; background: #fff; color: inherit; }
+#tmrw-phone-root .tmrw-v3-voice-field button, #tmrw-phone-root .tmrw-v3-voice-test-card > button { min-height: 36px; padding: 8px 12px; border: 0; border-radius: 11px; background: #25282d; color: #fff; font-size: 10px; font-weight: 720; }
+#tmrw-phone-root .tmrw-v3-voice-test-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; }
 
 /* Production Theme preference applies only through Preview37's existing surface tokens. */
 #tmrw-phone-root[data-theme="light-blue"] { --tmrw-paper:#f8fbfd; --tmrw-card:#ffffff; --tmrw-ink:#17191e; --tmrw-muted:#737b86; --tmrw-line:#e1e8ee; }

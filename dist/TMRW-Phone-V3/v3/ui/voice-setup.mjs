@@ -1,75 +1,61 @@
+import { createPreviewIcon } from './app-icons.mjs';
+
 const node = (document, tag, text = '') => { const value = document.createElement(tag); if (text) value.textContent = text; return value; };
 const languageLabel = value => value === 'en' ? 'English' : value === 'ja' ? 'Japanese' : 'Auto';
 const deliveryLabel = value => value === 'soft' ? 'Soft' : value === 'expressive' ? 'Expressive' : 'Natural';
 
-function toggleButton(document, { label, pressed, setting, onClick, disabled = false }) {
-  const button = node(document, 'button', `${label}: ${pressed ? 'On' : 'Off'}`);
-  button.type = 'button'; button.dataset.setting = setting; button.setAttribute('aria-pressed', String(Boolean(pressed))); button.disabled = Boolean(disabled);
-  if (!button.disabled) button.addEventListener('click', () => onClick?.(!pressed));
-  return button;
+function copyBlock(document, title, detail = '') {
+  const copy = node(document, 'span'); copy.className = 'tmrw-v3-voice-copy'; copy.append(node(document, 'strong', title)); if (detail) copy.append(node(document, 'small', detail)); return copy;
 }
 
-function choiceGroup(document, { title, values, selected, datasetKey, onSelect, disabled = false }) {
-  const section = node(document, 'div'); section.className = 'tmrw-v3-voice-choice'; section.append(node(document, 'strong', title));
+function toggleRow(document, { label, detail = '', pressed, setting, onClick, disabled = false }) {
+  const button = node(document, 'button'); button.type = 'button'; button.className = 'tmrw-v3-voice-row tmrw-v3-voice-toggle'; button.dataset.setting = setting; button.setAttribute('aria-pressed', String(Boolean(pressed))); button.disabled = Boolean(disabled);
+  const control = node(document, 'span'); control.className = 'tmrw-v3-voice-switch'; control.append(node(document, 'i')); button.append(copyBlock(document, label, detail), control);
+  if (!button.disabled) button.addEventListener('click', () => onClick?.(!pressed)); return button;
+}
+
+function choiceGroup(document, { title, detail = '', values, selected, datasetKey, onSelect, disabled = false }) {
+  const section = node(document, 'section'); section.className = 'tmrw-v3-voice-choice'; section.append(copyBlock(document, title, detail));
   const buttons = node(document, 'div'); buttons.className = 'tmrw-v3-voice-choice-buttons';
-  for (const value of values) {
-    const label = datasetKey.toLowerCase().includes('delivery') ? deliveryLabel(value) : languageLabel(value);
-    const button = node(document, 'button', label); button.type = 'button'; button.dataset[datasetKey] = value; button.setAttribute('aria-pressed', String(value === selected)); button.disabled = Boolean(disabled);
-    if (!button.disabled) button.addEventListener('click', () => onSelect?.(value));
-    buttons.append(button);
-  }
+  for (const value of values) { const label = datasetKey.toLowerCase().includes('delivery') ? deliveryLabel(value) : languageLabel(value); const button = node(document, 'button', label); button.type = 'button'; button.dataset[datasetKey] = value; button.setAttribute('aria-pressed', String(value === selected)); button.disabled = Boolean(disabled); if (!button.disabled) button.addEventListener('click', () => onSelect?.(value)); buttons.append(button); }
   section.append(buttons); return section;
 }
 
+function textField(document, { value = '', placeholder, actionLabel, action, disabled }) {
+  const row = node(document, 'div'); row.className = 'tmrw-v3-voice-field'; const input = node(document, 'input'); input.type = 'text'; input.value = value; input.placeholder = placeholder; input.disabled = Boolean(disabled); const save = node(document, 'button', actionLabel); save.type = 'button'; save.disabled = Boolean(disabled); if (!save.disabled) save.addEventListener('click', () => action?.(input.value)); row.append(input, save); return row;
+}
+
 export function renderVoiceSetup({ document, settings, capability, roster = [], selectedActorId = null, selectedIdentity = null, baseProfile = null, instanceOverride = null, resolvedProfile = null, onToggleVoiceCalls, onToggleBotVoice, onSetDefaultLanguage, onSetDefaultDelivery, onSelectActor, onSaveBaseName, onSetBaseLanguage, onToggleBaseLock, onToggleOverride, onSaveOverrideName, onSetOverrideLanguage }) {
-  const root = node(document, 'section'); root.className = 'tmrw-v3-voice-settings'; root.dataset.phase = '19';
-  root.append(node(document, 'h3', 'Calls → Voice'));
-  root.append(node(document, 'p', 'Voice is optional presentation. Text Calls and Call canon stay independent.'));
+  const runtimeReady = capability?.runtimeAvailable === true && capability?.runtimeStatus === 'available';
+  const root = node(document, 'section'); root.className = 'tmrw-v3-voice-settings'; root.dataset.phase = '19'; root.dataset.voiceReady = String(runtimeReady);
 
-  const capabilityBox = node(document, 'div'); capabilityBox.className = 'tmrw-v3-voice-capability'; capabilityBox.dataset.runtimeStatus = capability.runtimeStatus;
-  capabilityBox.append(node(document, 'strong', 'Capability status'), node(document, 'p', 'Text Calls ready'), node(document, 'p', capability.unavailableReason), node(document, 'p', 'English capability · Japanese capability'));
-  root.append(capabilityBox);
+  const status = node(document, 'section'); status.className = 'tmrw-v3-voice-card tmrw-v3-voice-status'; const mark = node(document, 'span'); mark.className = 'tmrw-v3-voice-status-icon'; mark.append(createPreviewIcon({ document, name: 'voice', size: 23 })); const statusCopy = node(document, 'div'); statusCopy.append(node(document, 'small', 'VOICE'), node(document, 'h3', runtimeReady ? 'พร้อมใช้งาน' : 'ยังไม่พร้อมใช้งาน'), node(document, 'p', runtimeReady ? 'ตั้งค่าเสียงสำหรับการโทรของ TMRW Phone' : 'Calls แบบข้อความยังใช้งานได้ตามปกติ และจะเปิดเสียงเมื่อระบบพร้อม')); status.append(mark, statusCopy); root.append(status);
 
-  root.append(toggleButton(document, { label: 'Voice Calls', pressed: settings.voiceCallsEnabled, setting: 'voice-calls', onClick: onToggleVoiceCalls }));
-  root.append(toggleButton(document, { label: 'Bot calls with voice', pressed: settings.botCallsWithVoice, setting: 'bot-calls-with-voice', onClick: onToggleBotVoice }));
-  root.append(node(document, 'p', 'Voice preferences are saved now, but no audio will be attempted until a qualified runtime is integrated in a later phase.'));
-  root.append(choiceGroup(document, { title: 'Default spoken language', values: ['auto', 'en', 'ja'], selected: settings.voiceLanguagePreference, datasetKey: 'voiceLanguage', onSelect: onSetDefaultLanguage }));
-  root.append(choiceGroup(document, { title: 'Default delivery', values: ['natural', 'soft', 'expressive'], selected: settings.voiceDefaultDelivery, datasetKey: 'voiceDelivery', onSelect: onSetDefaultDelivery }));
+  const general = node(document, 'section'); general.className = 'tmrw-v3-voice-card'; general.append(node(document, 'h4', 'การโทรด้วยเสียง'));
+  general.append(toggleRow(document, { label: 'Voice Calls', detail: runtimeReady ? 'เล่นเสียงพร้อมข้อความในการโทร' : 'ยังใช้ไม่ได้ในขณะนี้', pressed: settings.voiceCallsEnabled, setting: 'voice-calls', onClick: onToggleVoiceCalls, disabled: !runtimeReady }));
+  general.append(toggleRow(document, { label: 'เสียงของตัวละคร', detail: runtimeReady ? 'ใช้เสียงเมื่อตัวละครโทรหา' : 'ยังใช้ไม่ได้ในขณะนี้', pressed: settings.botCallsWithVoice, setting: 'bot-calls-with-voice', onClick: onToggleBotVoice, disabled: !runtimeReady }));
+  general.append(choiceGroup(document, { title: 'ภาษาเริ่มต้น', values: ['auto', 'en', 'ja'], selected: settings.voiceLanguagePreference, datasetKey: 'voiceLanguage', onSelect: onSetDefaultLanguage, disabled: !runtimeReady }));
+  general.append(choiceGroup(document, { title: 'น้ำเสียงเริ่มต้น', values: ['natural', 'soft', 'expressive'], selected: settings.voiceDefaultDelivery, datasetKey: 'voiceDelivery', onSelect: onSetDefaultDelivery, disabled: !runtimeReady })); root.append(general);
 
-  const profiles = node(document, 'section'); profiles.className = 'tmrw-v3-voice-profiles'; profiles.append(node(document, 'h4', 'Voice Profiles'));
-  if (roster.length === 0) profiles.append(node(document, 'p', 'No character Actor is available in this Story.'));
-  else {
-    const actors = node(document, 'div'); actors.className = 'tmrw-v3-voice-actors';
-    for (const item of roster) { const button = node(document, 'button', item.label); button.type = 'button'; button.dataset.voiceActorId = item.actorId; button.dataset.voiceInstanceId = item.instanceId; button.setAttribute('aria-pressed', String(item.actorId === selectedActorId)); button.addEventListener('click', () => onSelectActor?.(item)); actors.append(button); }
-    profiles.append(actors);
-  }
+  const profiles = node(document, 'section'); profiles.className = 'tmrw-v3-voice-card tmrw-v3-voice-profiles'; profiles.append(node(document, 'h4', 'เสียงของตัวละคร'));
+  if (roster.length === 0) profiles.append(node(document, 'p', 'ยังไม่มีตัวละครสำหรับตั้งค่าเสียงในเรื่องนี้'));
+  else { const actors = node(document, 'div'); actors.className = 'tmrw-v3-voice-actors'; for (const item of roster) { const button = node(document, 'button', item.label); button.type = 'button'; button.dataset.voiceActorId = item.actorId; button.setAttribute('aria-pressed', String(item.actorId === selectedActorId)); button.addEventListener('click', () => onSelectActor?.(item)); actors.append(button); } profiles.append(actors); }
 
   if (selectedIdentity) {
-    const base = node(document, 'section'); base.className = 'tmrw-v3-voice-base'; base.dataset.voiceProfileKind = 'actor-base'; base.append(node(document, 'h5', `Base Voice Profile · ${selectedIdentity.label}`));
-    const baseName = node(document, 'input'); baseName.type = 'text'; baseName.value = baseProfile?.profileName || ''; baseName.placeholder = 'Profile label'; baseName.setAttribute('aria-label', 'Base Voice Profile name');
-    const saveBase = node(document, 'button', 'Save base profile'); saveBase.type = 'button'; saveBase.dataset.voiceAction = 'save-base-profile'; saveBase.addEventListener('click', () => onSaveBaseName?.(baseName.value));
-    base.append(baseName, saveBase);
-    base.append(choiceGroup(document, { title: 'Base profile language', values: ['auto', 'en', 'ja'], selected: baseProfile?.language || 'auto', datasetKey: 'baseVoiceLanguage', onSelect: onSetBaseLanguage }));
-    base.append(toggleButton(document, { label: 'Lock base profile', pressed: Boolean(baseProfile?.lockedByUser), setting: 'voice-base-lock', onClick: onToggleBaseLock }));
-    profiles.append(base);
+    const base = node(document, 'section'); base.className = 'tmrw-v3-voice-profile-card'; base.dataset.voiceProfileKind = 'actor-base'; base.append(copyBlock(document, selectedIdentity.label, 'ค่าเสียงหลักของตัวละคร'));
+    base.append(textField(document, { value: baseProfile?.profileName || '', placeholder: 'ชื่อโปรไฟล์เสียง', actionLabel: 'บันทึก', action: onSaveBaseName, disabled: !runtimeReady }));
+    base.append(choiceGroup(document, { title: 'ภาษา', values: ['auto', 'en', 'ja'], selected: baseProfile?.language || 'auto', datasetKey: 'baseVoiceLanguage', onSelect: onSetBaseLanguage, disabled: !runtimeReady }));
+    base.append(toggleRow(document, { label: 'ล็อกการตั้งค่านี้', pressed: Boolean(baseProfile?.lockedByUser), setting: 'voice-base-lock', onClick: onToggleBaseLock, disabled: !runtimeReady })); profiles.append(base);
 
-    const override = node(document, 'section'); override.className = 'tmrw-v3-voice-override'; override.dataset.voiceProfileKind = 'instance-override'; override.append(node(document, 'h5', 'Character Instance Override'));
-    override.append(node(document, 'p', `Instance ${selectedIdentity.instanceId}. Changes here do not mutate other instances of this Actor.`));
-    override.append(toggleButton(document, { label: 'Use instance override', pressed: Boolean(instanceOverride?.enabled), setting: 'voice-instance-override', onClick: onToggleOverride }));
-    if (instanceOverride?.enabled) {
-      const overrideName = node(document, 'input'); overrideName.type = 'text'; overrideName.value = instanceOverride.fields?.profileName || ''; overrideName.placeholder = 'Instance profile label'; overrideName.setAttribute('aria-label', 'Character Instance Voice Profile name');
-      const saveOverride = node(document, 'button', 'Save instance override'); saveOverride.type = 'button'; saveOverride.dataset.voiceAction = 'save-instance-override'; saveOverride.addEventListener('click', () => onSaveOverrideName?.(overrideName.value)); override.append(overrideName, saveOverride);
-      override.append(choiceGroup(document, { title: 'Instance language override', values: ['auto', 'en', 'ja'], selected: instanceOverride.fields?.language || resolvedProfile?.language || 'auto', datasetKey: 'overrideVoiceLanguage', onSelect: onSetOverrideLanguage }));
-    }
-    profiles.append(override);
+    const specific = node(document, 'section'); specific.className = 'tmrw-v3-voice-profile-card'; specific.dataset.voiceProfileKind = 'instance-override'; specific.append(copyBlock(document, 'เฉพาะตัวละครนี้', 'ใช้ค่าต่างจากค่าเสียงหลักในเรื่องนี้'));
+    specific.append(toggleRow(document, { label: 'ใช้ค่าปรับเฉพาะ', pressed: Boolean(instanceOverride?.enabled), setting: 'voice-instance-override', onClick: onToggleOverride, disabled: !runtimeReady }));
+    if (instanceOverride?.enabled) { specific.append(textField(document, { value: instanceOverride.fields?.profileName || '', placeholder: 'ชื่อโปรไฟล์เสียง', actionLabel: 'บันทึก', action: onSaveOverrideName, disabled: !runtimeReady })); specific.append(choiceGroup(document, { title: 'ภาษา', values: ['auto', 'en', 'ja'], selected: instanceOverride.fields?.language || resolvedProfile?.language || 'auto', datasetKey: 'overrideVoiceLanguage', onSelect: onSetOverrideLanguage, disabled: !runtimeReady })); }
+    profiles.append(specific);
   }
   root.append(profiles);
 
-  const test = node(document, 'button', 'Test Voice'); test.type = 'button'; test.dataset.voiceAction = 'test-voice'; test.disabled = true; test.setAttribute('aria-disabled', 'true'); test.title = capability.unavailableReason;
-  root.append(test, node(document, 'p', 'Test Voice is disabled because no Voice runtime is configured. No fake preview or success state is produced.'));
+  const testCard = node(document, 'section'); testCard.className = 'tmrw-v3-voice-card tmrw-v3-voice-test-card'; const test = node(document, 'button', 'ทดลองเสียง'); test.type = 'button'; test.dataset.voiceAction = 'test-voice'; test.disabled = !runtimeReady || capability?.testVoiceEnabled !== true; test.setAttribute('aria-disabled', String(test.disabled)); testCard.append(copyBlock(document, 'ตัวอย่างเสียง', test.disabled ? 'จะเปิดใช้งานเมื่อ Voice พร้อม' : 'ฟังเสียงก่อนใช้งาน'), test); root.append(testCard);
 
-  const history = node(document, 'section'); history.className = 'tmrw-v3-voice-audio-history'; history.append(node(document, 'h4', 'Call audio history'));
-  history.append(node(document, 'p', 'No recordings — Voice runtime unavailable. Future audio is a derived Call History artifact; it will not be inserted into Gallery or Files automatically.'));
-  root.append(history);
+  const history = node(document, 'section'); history.className = 'tmrw-v3-voice-card tmrw-v3-voice-audio-history'; history.append(node(document, 'h4', 'เสียงจากประวัติการโทร'), node(document, 'p', 'ยังไม่มีไฟล์เสียงจากการโทร')); root.append(history);
   return root;
 }
