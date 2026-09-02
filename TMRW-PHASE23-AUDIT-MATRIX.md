@@ -268,3 +268,58 @@ Post-port functional-presentation triage and correction:
 - Voice runtime/model: untouched.
 - Return to Preview37: retained.
 - Phase24: NOT STARTED.
+
+
+### Phase23 final current-contract qualification reconciliation — 2026-09-02
+
+Status: FINAL QUALIFICATION PASS / MAIN PROMOTION + REAL-ANDROID CONFIRMATION PENDING.
+
+Product-owner presentation decision:
+
+- UI: ACCEPTABLE BASELINE.
+- visual polish: DEFERRED / non-blocking.
+- single user-facing product: TMRW Phone.
+- Preview37 remains presentation/design authority and migration evidence only; it is not a user-facing alternate runtime.
+- recovered Call presentation remains governed by `v3/design/call-ui-authority/` with Production Call canon underneath.
+
+Current-contract regression evidence:
+
+- curated Phase23 current regression: 341/341 PASS (serial final run), covering canonical CRUD/actions, communication controls, Call lifecycle, privacy/audience, owner/device switching, true-Preview navigation, personal/commerce/lifestyle/social apps, Settings/Diagnostics, launcher lifecycle, startup + CHAT_CHANGED, migration/schema integrity, Voice profile integrity, autonomous Social/Live disabled behavior and 390x844 containment.
+- Production activation retained: 12/12 PASS.
+- Production composition retained: 163/164 PASS before stale selector conversion; the one failure was the removed pre-true-Preview shell selector. Current replacement layout contract: PASS.
+- P23-D current shell: 21/21 PASS.
+- P23-E privacy/loading after qualification fix: 4/4 PASS.
+- Calendar current gate: 6/6 PASS.
+- Theme current gate: 3/3 PASS.
+- Phase17 notification/schema meaningful historical gate after conversion: 21/21 PASS.
+- Phase18 recovered/current Call UI historical gate after conversion: 6/6 PASS; canonical CallCoordinator backend remains PASS.
+- Phase19 current schema/Voice-UI/text-Call historical gate after conversion: 3/3 PASS; Voice profile/domain integrity retained 7/7 PASS.
+
+Historical stale-suite reconciliation:
+
+- Theme: retired direct old launcher/route timing assumptions; replacement invariant navigates through `openPreviewRoute()` and proves bounded three-theme persistence/application with zero canonical Story Events.
+- Production layout: retired `#tmrw-v3-phone-root > .tmrw-v3-shell` / old overflow contract; replacement invariant asserts current full-viewport Production owner root, retained Preview37 device containment, singleton 58px floating launcher and Phone-open launcher suppression.
+- Phase17 Notification UI: retired old `dataset.route` and `<ol>` assumptions; replacement invariant opens Insungram Activity through current Preview navigation and proves the exact projection notification ID with no whole-shell replacement/event-history scan.
+- Phase17/19 schema tests: retired schema-19 hardcode; current accepted schema is 21 while the original 16→17 and 17→18 foundation migrations remain explicitly verified.
+- Phase18 Call UI: retired old route buttons and rejected English/generic Call presentation assumptions; replacement invariant reaches Calls/Activity through current Preview navigation and preserves Accept/Decline/Cancel/End, transcript, history, inspection-only holder behavior and `v3/design/call-ui-authority/`.
+- Phase19 Voice UI: retired the raw editable developer-style Voice form and instance-ID/capability prose expectations; replacement invariant proves Preview-native truthful unavailable presentation while normal Text Calls remain canonical and perform no Voice runtime work.
+- superseded renderer-only English copy and `.tmrw-v3-*` presentation selectors are not release requirements and are excluded from the curated current-contract set when they carry no remaining functional/privacy/state invariant.
+
+Genuine defects found during final qualification and retained corrections:
+
+1. Privacy hydration presentation leak — corrected narrowly in `v3/ui/shell.mjs`: `selectDevice()` synchronously clears the current app screen before asynchronous new-device roster/hydration. No canonical write, schema/migration mutation or authorization bypass. P23-E 4/4 PASS after correction.
+2. Outgoing Call synchronous double-tap race — corrected narrowly in `v3/ui/shell.mjs`: one in-flight outgoing start per shell prevents two canonical Call sessions from being created before the first projection settles. Affected Call/communication gate: 10/10 PASS; final curated gate 341/341 PASS.
+
+Static/package candidate evidence before main promotion:
+
+- changed runtime syntax: PASS (`v3/ui/shell.mjs`, `v3/production/entry.mjs`).
+- Production package verifier: 233 files / 705 import edges / passiveImport=true / protectedPaths=false / previewFilesCopied=false / displayName=`TMRW Phone`.
+- source→dist→publication bounded correspondence: PASS across 1978 hashes after allowing only the retained `v3/ui/preview37-authority.css` and `v3/ui/preview37-surface.mjs` presentation-authority files.
+- actual Preview-extension/mock/demo/fixture runtime imports: 0.
+- secret scan: 811 files / 0 sensitive filename hits / 0 secret signatures.
+- `auto_update:false`: PASS.
+- migration/schema/Voice source drift relative to accepted visual-review lineage: 0.
+- accepted schema SHA256 retained: `c744c46309a3753b592b1436f73b28f8698dd50eae6eff6d1c484b98540cfc0b`.
+- Phase24: NOT STARTED.
+
+Closure remains pending only normal main promotion plus bounded exact-main real-Android confirmation. This section supersedes historical user-facing Preview/Production-switch assumptions in earlier audit entries without rewriting their historical evidence.

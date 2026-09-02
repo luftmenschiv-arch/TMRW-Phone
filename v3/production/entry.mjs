@@ -107,7 +107,7 @@ function ensureProductionUserControl() {
 function scheduleProductionUserControl() {
   Promise.resolve()
     .then(() => ensureProductionUserControl().handleExtensionHook())
-    .catch(error => console.error('[TMRW Phone V3] User control initialization failed safely:', error));
+    .catch(error => console.error('[TMRW Phone] startup control initialization failed safely:', error));
 }
 
 // Passive load still has exactly one evaluation side effect: install/adopt the
@@ -146,7 +146,7 @@ export function getProductionEntryStatus() {
 }
 
 export function getProductionUserControlStatus() {
-  return userControl?.status || Object.freeze({ mounted: false, busy: false, lastError: null, requested: false, productionActive: false, userStatus: 'Preview' });
+  return userControl?.status || Object.freeze({ mounted: false, busy: false, lastError: null, requested: false, productionActive: false, userStatus: 'TMRW Phone' });
 }
 
 export async function configureProductionPreflight(options = {}) {
