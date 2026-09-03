@@ -59,6 +59,19 @@ test('Smart + insufficient evidence does not fabricate a Contact or infer owners
   assert.deepEqual(await c.contacts.listContacts({ scope: c.scope, ownerAccountId: c.user.accountId }), []);
 });
 
+test('Smart recognizes explicit phone-relationship evidence without fabricating an unavailable number value', async () => {
+  const c = await setup();
+  const writesBefore = c.database.diagnostics.writeCount;
+  const result = await c.smart.evaluate({ scope: c.scope, source: source(c.alice, 'ถ้าตื่นมาแล้วกล้าลบเบอร์ฉันทิ้งอีกรอบ เราคุยกันยาวแน่', 'chat:relationship-without-value') });
+  assert.equal(result.evaluated, true);
+  assert.equal(result.eligible, true);
+  assert.equal(result.discovered, false);
+  assert.equal(result.reason, 'eligible-number-value-unavailable');
+  assert.equal(result.evidence.number, null);
+  assert.equal(c.database.diagnostics.writeCount, writesBefore);
+  assert.deepEqual(await c.contacts.listContacts({ scope: c.scope, ownerAccountId: c.user.accountId }), []);
+});
+
 test('canonical Character/Account existence alone is never sufficient Smart discovery evidence', async () => {
   const c = await setup();
   assert.ok(c.alice.actorId && c.alice.instanceId && c.alice.accountId && c.alice.deviceId);
@@ -120,8 +133,10 @@ test('Smart does not reinterpret On/Off modes as unconditional automatic Charact
   }
 });
 
-test('Smart evidence parser fails closed for ambiguous multiple numbers and non-assistant sources', () => {
-  assert.equal(extractSmartPhoneEvidence(source({ actorId: 'a', instanceId: 'i' }, 'My number is 5550100 or 5550101.', 'chat:ambiguous')), null);
+test('Smart evidence parser preserves relationship evidence but withholds ambiguous number values and non-assistant sources', () => {
+  const ambiguous = extractSmartPhoneEvidence(source({ actorId: 'a', instanceId: 'i' }, 'My number is 5550100 or 5550101.', 'chat:ambiguous'));
+  assert.equal(ambiguous.relationshipEvidence, true);
+  assert.equal(ambiguous.number, null);
   assert.equal(extractSmartPhoneEvidence({ ...source({ actorId: 'a', instanceId: 'i' }, 'My number is 5550100.', 'chat:user'), role: 'user' }), null);
 });
 
@@ -155,6 +170,7 @@ test('bounded current-chat reconciliation discovers pre-existing evidence idempo
   const c = await setup();
   const chat = [
     { is_user: false, mes: 'Nothing relevant here.' },
+    { is_user: false, mes: 'โทรหาฉันได้ถ้ามีปัญหา' },
     { is_user: false, mes: 'เบอร์ของฉันคือ 089 111 2233' },
     { is_user: true, mes: 'โอเค' },
   ];
@@ -164,7 +180,8 @@ test('bounded current-chat reconciliation discovers pre-existing evidence idempo
     handoffCoordinator: { processSource: async () => Object.freeze({}), retractSource: async () => Object.freeze([]) }, phoneContextBuilder: null, smartContactDiscovery: c.smart, authoringEnabled: () => true,
   });
   const first = await runtime.reconcileSmartContactDiscovery({ maxMessages: 100 });
-  assert.equal(first.candidates, 1);
+  assert.equal(first.candidates, 2);
+  assert.equal(first.eligibleWithoutValue, 1);
   assert.equal(first.discovered, 1);
   const writes = c.database.diagnostics.writeCount;
   const second = await runtime.reconcileSmartContactDiscovery({ maxMessages: 100 });

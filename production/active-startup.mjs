@@ -92,6 +92,7 @@ function freezeStatus(session) {
     migrationCommitted: runtime?.migration?.committed === true,
     voiceRuntimeAvailable: runtime?.voiceCapability?.runtimeAvailable ?? false,
     voiceProviderModelCalls: 0,
+    smartContactReconciliation: session.smartContactReconciliation ? structuredClone(session.smartContactReconciliation) : null,
     finalHealthReady: session.finalHealth?.ready === true,
   });
 }
@@ -110,6 +111,7 @@ export class ProductionActiveStartupSession {
     this.finalHealth = null;
     this.selection = null;
     this.migrationPlan = null;
+    this.smartContactReconciliation = null;
     this.started = false;
     this.disposed = false;
     this.lastError = null;

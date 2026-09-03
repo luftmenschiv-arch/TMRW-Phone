@@ -24,20 +24,21 @@ function explicitSelfNumber(text) {
 }
 
 export function couldContainSmartPhoneEvidence(text) {
-  const value = String(text || '');
-  return SELF_CUE.test(value) && /(?<!\d)(?:\+?\d[\d\s().-]{1,24}\d)(?!\d)/.test(value);
+  return SELF_CUE.test(String(text || ''));
 }
 
 export function extractSmartPhoneEvidence(source) {
   if (!source || source.origin !== 'main-rp' || source.mode !== 'normal' || source.role !== 'assistant') return null;
   if (!source.actorBinding?.actorId || !source.actorBinding?.instanceId) return null;
-  const number = explicitSelfNumber(source.text);
-  if (!number) return null;
+  const text = String(source.text || '');
+  if (!SELF_CUE.test(text)) return null;
+  const number = explicitSelfNumber(text);
   return Object.freeze({
     number,
     targetActorId: source.actorBinding.actorId,
     targetInstanceId: source.actorBinding.instanceId,
     sourceRecordId: String(source.sourceMessageId || ''),
+    relationshipEvidence: true,
   });
 }
 
@@ -65,8 +66,9 @@ export class SmartContactDiscoveryCoordinator {
     const settings = await this.#settings.get({ scope, playerInstanceId: player.instanceId });
     if (settings.phoneNumberDiscovery !== PHONE_NUMBER_DISCOVERY.SMART) return Object.freeze({ evaluated: false, discovered: false, reason: `mode-${settings.phoneNumberDiscovery}` });
     const evidence = extractSmartPhoneEvidence(source);
-    if (!evidence) return Object.freeze({ evaluated: true, discovered: false, reason: 'insufficient-explicit-evidence' });
-    if (evidence.targetInstanceId === player.instanceId || evidence.targetActorId === player.actorId) return Object.freeze({ evaluated: true, discovered: false, reason: 'player-self-number-not-contact' });
+    if (!evidence) return Object.freeze({ evaluated: true, discovered: false, eligible: false, reason: 'insufficient-explicit-evidence' });
+    if (evidence.targetInstanceId === player.instanceId || evidence.targetActorId === player.actorId) return Object.freeze({ evaluated: true, discovered: false, eligible: false, reason: 'player-self-number-not-contact' });
+    if (!evidence.number) return Object.freeze({ evaluated: true, discovered: false, eligible: true, reason: 'eligible-number-value-unavailable', evidence });
 
     const existing = await this.#contacts.listContacts({ scope, ownerAccountId: player.accountId });
     const byNumber = existing.find(row => normalizePhoneNumber(row.number) === evidence.number) || null;

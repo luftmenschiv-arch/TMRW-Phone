@@ -139,12 +139,12 @@ export class SillyTavernV3RuntimeIntegration {
   }
 
   async reconcileSmartContactDiscovery({ maxMessages = 1000 } = {}) {
-    if (!this.#smartContactDiscovery) return Object.freeze({ available: false, evaluated: 0, discovered: 0, replayed: 0, errors: 0, candidates: 0, scanned: 0 });
-    if (!this.#authoringEnabled()) return Object.freeze({ available: true, skipped: 'authoring-disabled', evaluated: 0, discovered: 0, replayed: 0, errors: 0, candidates: 0, scanned: 0 });
+    if (!this.#smartContactDiscovery) return Object.freeze({ available: false, evaluated: 0, discovered: 0, replayed: 0, eligibleWithoutValue: 0, errors: 0, candidates: 0, scanned: 0 });
+    if (!this.#authoringEnabled()) return Object.freeze({ available: true, skipped: 'authoring-disabled', evaluated: 0, discovered: 0, replayed: 0, eligibleWithoutValue: 0, errors: 0, candidates: 0, scanned: 0 });
     const limit = Math.max(1, Math.min(5000, Number(maxMessages) || 1000));
     const chat = this.#getContext()?.chat || [];
     const start = Math.max(0, chat.length - limit);
-    let evaluated = 0; let discovered = 0; let replayed = 0; let errors = 0; let candidates = 0;
+    let evaluated = 0; let discovered = 0; let replayed = 0; let eligibleWithoutValue = 0; let errors = 0; let candidates = 0;
     for (let index = start; index < chat.length; index += 1) {
       const message = chat[index];
       if (!message || !this.#smartContactDiscovery.couldContainEvidence(message.mes)) continue;
@@ -156,6 +156,7 @@ export class SillyTavernV3RuntimeIntegration {
         if (result?.evaluated) evaluated += 1;
         if (result?.discovered) discovered += 1;
         if (result?.replayed) replayed += 1;
+        if (result?.reason === 'eligible-number-value-unavailable') eligibleWithoutValue += 1;
         if (result?.reason === 'evaluation-error') errors += 1;
       } catch (error) {
         errors += 1;
@@ -163,7 +164,7 @@ export class SillyTavernV3RuntimeIntegration {
         this.#metrics.lastSmartContactError = String(error?.message || error || 'smart-contact-reconciliation-error');
       }
     }
-    return Object.freeze({ available: true, evaluated, discovered, replayed, errors, candidates, scanned: chat.length - start, truncated: start > 0 });
+    return Object.freeze({ available: true, evaluated, discovered, replayed, eligibleWithoutValue, errors, candidates, scanned: chat.length - start, truncated: start > 0 });
   }
 
   async #processIndex(index, options) {
