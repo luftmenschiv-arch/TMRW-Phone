@@ -42,6 +42,28 @@ function fakeTimers() {
   };
 }
 
+function mutableClock(start = 1_000) {
+  let value = start;
+  return {
+    now: () => value,
+    advance(delta) { value += delta; return value; },
+  };
+}
+
+function controlledLeaseWait() {
+  let enteredResolve;
+  let releaseWait = null;
+  const entered = new Promise(resolve => { enteredResolve = resolve; });
+  return {
+    entered,
+    waitFn(ms, conflict) {
+      enteredResolve({ ms, conflict });
+      return new Promise(resolve => { releaseWait = resolve; });
+    },
+    release() { releaseWait?.(); },
+  };
+}
+
 function nodesById(root, id) {
   const rows = [];
   const walk = node => {
@@ -182,7 +204,22 @@ async function storedLease(registry) {
   return row;
 }
 
-async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, previewInstalled = true, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
+async function seedRuntimeLease(registry, { ownerId, leaseId, acquiredAt, expiresAt }) {
+  const db = new MemoryV3Database({ registry });
+  await db.open();
+  await db.transaction(['metadata'], 'readwrite', tx => tx.store('metadata').put({
+    key: V3_RUNTIME_LEASE_KEY,
+    ownerId,
+    leaseId,
+    acquiredAt,
+    renewedAt: acquiredAt,
+    expiresAt,
+    phase: 1,
+  }));
+  db.close();
+}
+
+async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, ownerId = null, restoreFails = false, previewInstalled = true, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry(), clock = undefined, leaseDurationMs = undefined, heartbeatIntervalMs = 10_000, leaseRecoveryWaitFn = undefined } = {}) {
   const source = previewSource ? structuredClone(previewSource) : preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
   if (preseedProductionScope) await seedProductionScope(registry, suffix, 2);
   const rawDatabases = [];
@@ -206,7 +243,7 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
   new V3BetaFeatureFlag({ storage: featureFlagStorage, now: () => '2026-08-29T00:00:00.000Z' }).requestEnable();
   const readSource = previewReadSource || (async () => ({ available: true, sourceVersion: source.schemaVersion, sourceLocation: `s13-${suffix}`, record: structuredClone(source) }));
   const options = {
-    ownerId: `s13-owner-${suffix}`,
+    ownerId: ownerId || `s13-owner-${suffix}`,
     officialExtensionApi: api,
     previewReadSource: readSource,
     featureFlagStorage,
@@ -220,7 +257,10 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
     databaseFactory: () => { const db = new MemoryV3Database({ registry }); rawDatabases.push(db); return db; },
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
-    heartbeatIntervalMs: 10_000,
+    heartbeatIntervalMs,
+    clock,
+    leaseDurationMs,
+    leaseRecoveryWaitFn,
     now: () => '2026-08-29T00:00:00.000Z',
     stageObserver,
   };
@@ -228,6 +268,27 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
   if (runtimeFactory !== undefined) options.runtimeFactory = runtimeFactory;
   const session = new ProductionActiveStartupSession(options);
   return { session, api, featureFlagStorage, registry, rawDatabases, document, body, timers, source, options, eventSource };
+}
+
+async function phase24FreshHarness({ suffix, ownerId, registry, clock, leaseDurationMs = 100, heartbeatIntervalMs = 25, leaseRecoveryWaitFn = undefined }) {
+  const sourceIdentity = Object.freeze({
+    characterCardSourceId: `character:${suffix}.png`,
+    storySourceId: `story:chat-${suffix}`,
+    routeSourceId: 'branch:main',
+  });
+  return harness({
+    suffix,
+    ownerId,
+    registry,
+    previewInstalled: false,
+    preseedProductionScope: false,
+    previewReadSource: async () => ({ available: false, reason: 'preview-project-database-missing' }),
+    sourceIdentityResolver: async () => sourceIdentity,
+    clock: clock?.now,
+    leaseDurationMs,
+    heartbeatIntervalMs,
+    leaseRecoveryWaitFn,
+  });
 }
 
 const exclusionProof = Object.freeze({ launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true });
@@ -419,6 +480,149 @@ test('Phase24 fresh user with no Preview package or data bootstraps native Produ
   assert.equal(h.api.disableCalls, 0);
   await h.session.shutdown('phase24-fresh-user-test');
   assert.equal(await storedLease(h.registry), undefined);
+});
+
+test('Phase24 lease recovery waits behind a valid owner without stealing and resumes after early release', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const clock = mutableClock(10_000);
+  const first = await phase24FreshHarness({ suffix: 'phase24-valid-owner', ownerId: 'phase24-owner-old', registry, clock });
+  const firstStarted = await first.session.start({ exclusionProof, gateFReport });
+  assert.equal(firstStarted.runtimeState, 'V3_AUTHORING');
+  const firstLease = await storedLease(registry);
+  assert.equal(firstLease.ownerId, 'phase24-owner-old');
+
+  const waiter = controlledLeaseWait();
+  const second = await phase24FreshHarness({
+    suffix: 'phase24-valid-owner',
+    ownerId: 'phase24-owner-new',
+    registry,
+    clock,
+    leaseRecoveryWaitFn: waiter.waitFn,
+  });
+  const startPromise = second.session.start({ exclusionProof, gateFReport });
+  const wait = await waiter.entered;
+  assert.equal(wait.ms, 25);
+  assert.equal(wait.conflict.reason, 'foreign-owner');
+  assert.equal(second.session.status.runtimeState, 'V3_STARTING');
+  assert.equal(second.session.status.role, 'standby');
+  assert.equal(second.session.status.ownsLease, false);
+  assert.equal(nodesById(second.body, V3_ROOT_ID).length, 0);
+  assert.equal(nodesById(second.body, V3_LAUNCHER_ID).length, 0);
+  assert.deepEqual(await storedLease(registry), firstLease);
+
+  await first.session.shutdown('phase24-old-owner-released-early');
+  assert.equal(await storedLease(registry), undefined);
+  waiter.release();
+  const recovered = await startPromise;
+  assert.equal(recovered.runtimeState, 'V3_AUTHORING');
+  assert.equal(recovered.authoringAuthority, true);
+  assert.equal(recovered.ownsLease, true);
+  assert.equal(recovered.databaseOpen, true);
+  assert.equal(recovered.finalHealthReady, true);
+  assert.equal(recovered.lastError, null);
+  assert.equal((await storedLease(registry)).ownerId, 'phase24-owner-new');
+  await second.session.shutdown('phase24-early-release-recovered');
+});
+
+test('Phase24 lease recovery remains bounded and never steals from a continuously valid owner', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const clock = mutableClock(15_000);
+  await seedRuntimeLease(registry, { ownerId: 'phase24-renewing-old', leaseId: 'phase24-renewing-generation', acquiredAt: 15_000, expiresAt: 15_100 });
+  const current = await phase24FreshHarness({
+    suffix: 'phase24-renewing-owner',
+    ownerId: 'phase24-renewing-new',
+    registry,
+    clock,
+    leaseRecoveryWaitFn: async ms => {
+      clock.advance(ms);
+      await seedRuntimeLease(registry, {
+        ownerId: 'phase24-renewing-old',
+        leaseId: 'phase24-renewing-generation',
+        acquiredAt: 15_000,
+        expiresAt: clock.now() + 100,
+      });
+    },
+  });
+  await assert.rejects(() => current.session.start({ exclusionProof, gateFReport }), /lease recovery timed out while blocked by foreign-owner/);
+  const lease = await storedLease(registry);
+  assert.equal(lease.ownerId, 'phase24-renewing-old');
+  assert.equal(lease.leaseId, 'phase24-renewing-generation');
+  assert.equal(current.session.status.ownsLease, false);
+  assert.equal(current.session.status.runtimeState, 'FAILED_SAFE');
+  assert.equal(nodesById(current.body, V3_ROOT_ID).length, 0);
+  assert.equal(nodesById(current.body, V3_LAUNCHER_ID).length, 0);
+});
+
+test('Phase24 lease recovery automatically reacquires when a blocking persisted lease expires', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const clock = mutableClock(20_000);
+  await seedRuntimeLease(registry, { ownerId: 'phase24-expired-old', leaseId: 'phase24-expired-generation', acquiredAt: 20_000, expiresAt: 20_100 });
+  const waits = [];
+  const current = await phase24FreshHarness({
+    suffix: 'phase24-expiry-recovery',
+    ownerId: 'phase24-expiry-new',
+    registry,
+    clock,
+    leaseRecoveryWaitFn: async (ms, conflict) => {
+      waits.push({ ms, reason: conflict.reason, ownerId: conflict.ownerId, expiresAt: conflict.expiresAt });
+      clock.advance(ms);
+    },
+  });
+  const recovered = await current.session.start({ exclusionProof, gateFReport });
+  assert.deepEqual(waits.map(row => row.ms), [25, 25, 25, 25]);
+  assert.ok(waits.every(row => row.reason === 'foreign-owner' && row.ownerId === 'phase24-expired-old'));
+  assert.equal(recovered.runtimeState, 'V3_AUTHORING');
+  assert.equal(recovered.authoringAuthority, true);
+  assert.equal(recovered.ownsLease, true);
+  assert.equal(recovered.databaseOpen, true);
+  assert.equal(recovered.finalHealthReady, true);
+  assert.equal(recovered.lastError, null);
+  const lease = await storedLease(registry);
+  assert.equal(lease.ownerId, 'phase24-expiry-new');
+  assert.notEqual(lease.leaseId, 'phase24-expired-generation');
+  await current.session.shutdown('phase24-expiry-recovered');
+});
+
+test('Phase24 reload regression automatically recovers one new document after the prior document lease expires with no split brain', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const clock = mutableClock(30_000);
+  const previous = await phase24FreshHarness({ suffix: 'phase24-reload-regression', ownerId: 'phase24-reload-old', registry, clock });
+  const previousStarted = await previous.session.start({ exclusionProof, gateFReport });
+  assert.equal(previousStarted.runtimeState, 'V3_AUTHORING');
+  assert.equal(previousStarted.ownsLease, true);
+  const previousLease = await storedLease(registry);
+
+  const waits = [];
+  const current = await phase24FreshHarness({
+    suffix: 'phase24-reload-regression',
+    ownerId: 'phase24-reload-new',
+    registry,
+    clock,
+    leaseRecoveryWaitFn: async ms => { waits.push(ms); clock.advance(ms); },
+  });
+  const recovered = await current.session.start({ exclusionProof, gateFReport });
+  assert.ok(waits.length > 0);
+  assert.equal(recovered.runtimeState, 'V3_AUTHORING');
+  assert.equal(recovered.authoringAuthority, true);
+  assert.equal(recovered.role, 'owner');
+  assert.equal(recovered.ownsLease, true);
+  assert.equal(recovered.databaseOpen, true);
+  assert.equal(recovered.finalHealthReady, true);
+  assert.equal(recovered.lastError, null);
+  assert.equal(nodesById(current.body, V3_ROOT_ID).length, 1);
+  assert.equal(nodesById(current.body, V3_LAUNCHER_ID).length, 1);
+
+  const currentLease = await storedLease(registry);
+  assert.equal(currentLease.ownerId, 'phase24-reload-new');
+  assert.notEqual(currentLease.leaseId, previousLease.leaseId);
+  const previousValidation = await previous.session.runtime.composition.runtimeGuard.validateLease();
+  assert.equal(previousValidation.valid, false);
+  assert.equal(previous.session.runtime.composition.runtimeGuard.ownsLease, false);
+  assert.equal(current.session.runtime.composition.runtimeGuard.ownsLease, true);
+  assert.equal((await storedLease(registry)).ownerId, 'phase24-reload-new');
+
+  await current.session.shutdown('phase24-reload-current-complete');
+  await previous.session.shutdown('phase24-reload-old-cleanup');
 });
 
 test('S13 first active startup can resolve the migrated production scope from an empty V3 database', async () => {

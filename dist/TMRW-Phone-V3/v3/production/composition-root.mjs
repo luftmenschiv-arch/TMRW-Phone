@@ -461,6 +461,13 @@ async function buildRuntime(options, entry) {
         launcherAvailable: false,
         voiceCapability: createPhase19VoiceCapabilityState(),
         startupHealth,
+        leaseAcquisition: Object.freeze({
+          acquired: false,
+          ownerId: lease?.ownerId ?? null,
+          leaseId: lease?.leaseId ?? null,
+          expiresAt: lease?.expiresAt ?? null,
+          reason: lease?.reason ?? 'unavailable',
+        }),
         get status() { return Object.freeze({ role: 'standby', gateState: 'absent', databaseOpen: rawDatabase.isOpen, ownsLease: false, disposed: activation.status.disposed, constructionOrder: activation.status.constructionOrder, disposalOrder: activation.status.disposalOrder }); },
         dispose: reason => activation.dispose(reason || 'standby-disposed'),
       });

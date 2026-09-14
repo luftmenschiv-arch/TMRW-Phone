@@ -18,6 +18,29 @@ function requireGateFPass(gateFReport) {
   return gateFReport;
 }
 
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
+
+function leaseRecoveryNow(clock) {
+  const value = (typeof clock === 'function' ? clock : Date.now)();
+  if (!Number.isFinite(value)) throw new Error('Lease recovery clock is not a finite epoch millisecond value');
+  return value;
+}
+
+function defaultLeaseRecoveryWait(ms) {
+  if (typeof globalThis.setTimeout !== 'function') throw new Error('Lease recovery requires setTimeout');
+  return new Promise(resolve => globalThis.setTimeout(resolve, Math.max(0, ms)));
+}
+
+function recoverableLeaseConflict(runtime) {
+  if (!runtime || runtime.role !== 'standby') return null;
+  const lease = runtime.leaseAcquisition;
+  if (!lease || lease.acquired === true) return null;
+  if (lease.reason !== 'foreign-owner' && lease.reason !== 'generation-mismatch') return null;
+  const expiresAt = Number(lease.expiresAt);
+  if (!Number.isFinite(expiresAt)) return null;
+  return Object.freeze({ reason: lease.reason, ownerId: lease.ownerId ?? null, leaseId: lease.leaseId ?? null, expiresAt });
+}
+
 function previewRecordContainsSourceIdentity(record, sourceIdentity) {
   if (!record || typeof record !== 'object' || !sourceIdentity) return false;
   return Boolean(record.cards?.[sourceIdentity.characterCardSourceId]
@@ -196,6 +219,37 @@ export class ProductionActiveStartupSession {
 
   get status() { return freezeStatus(this); }
 
+  async #createOwnerRuntimeWithRecovery({ runtimeFactory, runtimeOptions, clock, heartbeatIntervalMs, leaseRecoveryWaitFn }) {
+    const waitFn = leaseRecoveryWaitFn === undefined ? defaultLeaseRecoveryWait : requireFunction(leaseRecoveryWaitFn, 'leaseRecoveryWaitFn');
+    const retryIntervalMs = Number.isFinite(heartbeatIntervalMs) && heartbeatIntervalMs > 0
+      ? heartbeatIntervalMs
+      : DEFAULT_HEARTBEAT_INTERVAL_MS;
+    let recoveryDeadline = null;
+
+    while (true) {
+      if (this.disposed) throw new Error('Production active startup session was disposed during lease recovery');
+      const runtime = await runtimeFactory(runtimeOptions);
+      this.runtime = runtime;
+      if (runtime?.role === 'owner') return runtime;
+
+      const conflict = recoverableLeaseConflict(runtime);
+      if (!conflict) throw new Error('Active production startup could not acquire the single owner runtime');
+
+      const nowMs = leaseRecoveryNow(clock);
+      if (recoveryDeadline === null) recoveryDeadline = Math.max(nowMs, conflict.expiresAt) + retryIntervalMs;
+      if (nowMs >= recoveryDeadline) {
+        await runtime.dispose?.('s13-lease-recovery-timeout');
+        throw new Error(`Active production startup lease recovery timed out while blocked by ${conflict.reason}`);
+      }
+
+      const untilExpiry = Math.max(0, conflict.expiresAt - nowMs);
+      const remaining = Math.max(0, recoveryDeadline - nowMs);
+      const waitMs = Math.min(retryIntervalMs, remaining, untilExpiry > 0 ? untilExpiry : retryIntervalMs);
+      await runtime.dispose?.('s13-lease-recovery-wait');
+      await waitFn(waitMs, conflict);
+    }
+  }
+
   async start({ exclusionProof, gateFReport } = {}) {
     if (this.disposed) throw new Error('Production active startup session is disposed');
     if (this.startPromise) return this.startPromise;
@@ -252,6 +306,7 @@ export class ProductionActiveStartupSession {
       clock,
       leaseDurationMs,
       heartbeatIntervalMs,
+      leaseRecoveryWaitFn,
       setIntervalFn,
       clearIntervalFn,
       now,
@@ -401,8 +456,7 @@ export class ProductionActiveStartupSession {
     }
 
     try {
-      this.runtime = await runtimeFactory(runtimeOptions);
-      if (!this.runtime || this.runtime.role !== 'owner') throw new Error('Active production startup could not acquire the single owner runtime');
+      this.runtime = await this.#createOwnerRuntimeWithRecovery({ runtimeFactory, runtimeOptions, clock, heartbeatIntervalMs, leaseRecoveryWaitFn });
       this.identity = await this.runtime.resolveCurrentIdentity();
 
       this.mountManager = new ProductionMountManager({
