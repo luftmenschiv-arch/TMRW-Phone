@@ -323,3 +323,57 @@ Static/package candidate evidence before main promotion:
 - Phase24: NOT STARTED.
 
 Closure remains pending only normal main promotion plus bounded exact-main real-Android confirmation. This section supersedes historical user-facing Preview/Production-switch assumptions in earlier audit entries without rewriting their historical evidence.
+
+### Phase23 final closure — 2026-09-14
+
+Status: PASS / CLOSED.
+
+Final qualified runtime/source main before evidence-only closure publication:
+
+- `b530ee8502e353f8c19b3bbf80d706b969040e0d`.
+- Android installed the exact same runtime/source commit with a clean extension worktree.
+- SillyTavern process and `127.0.0.1:8000` host/package HTTP were healthy on the exact installed runtime.
+
+Retained qualification evidence:
+
+- curated Phase23 current-contract regression: 341/341 PASS.
+- Smart Contact discovery affected gate: 34/34 PASS.
+- publication Smart gate: 12/12 PASS.
+- Production package verifier after Smart integration: PASS — 234 files / 710 import edges / passive import true / protected paths false / Preview runtime files not copied.
+- schema/migration/Voice runtime/model: unchanged by Smart integration.
+- privacy hydration correction: RETAINED / QUALIFIED.
+- outgoing Call one-in-flight race guard: RETAINED / QUALIFIED; no CallCoordinator/canonical-model change.
+
+Real Android Smart evidence — current Kaelan Story/context:
+
+- current SillyTavern Character: `character:Kaelan Vance❤️Alt. Medical Student.png`.
+- canonical Character Card / Story / Branch / Actor / Character Instance / primary phone Account / Device: PRESENT.
+- phone/relationship Story evidence: PRESENT.
+- actual numeric Kaelan phone-number value: ABSENT from the real Story/context and retained Preview37 phone/contact source.
+- Smart reconciliation result: equivalent to `eligible-number-value-unavailable` / `eligibleWithoutValue`.
+- My Phone → Phone → Saved Names on the real Android device: truthful empty state; Kaelan Contact withheld.
+- fabricated phone number: 0.
+- fabricated Contact: 0.
+- fabricated Calls target: 0.
+- existing explicit/manual discovery + ContactService link path remains authoritative when a legitimate numeric value exists.
+- absence of a Kaelan Calls target in this Story is therefore the correct evidence-based Smart result, not a waived Calls defect.
+
+Bounded real-device closure evidence retained from the accepted exact-main lineage plus final Product Owner confirmation:
+
+- V3_AUTHORING/startup, owner lease, database-open, migration-committed, final-health-ready and real-chat scope lifecycle were already accepted in the final Phase23 lineage and were not reopened by the narrowly qualified Smart integration.
+- single user-facing TMRW Phone contract retained; Preview/Production mode-switch UI absent.
+- launcher/Phone open-hide-close lifecycle and accepted true-Preview presentation baseline retained.
+- privacy hydration behavior retained.
+- Product Owner UI classification: ACCEPTABLE BASELINE.
+- visual polish: DEFERRED / non-blocking.
+- outgoing real Kaelan Call was not fabricated because the current Story has no discoverable numeric phone-number value; the double-tap one-canonical-Call invariant remains covered by qualified regression evidence.
+
+Final disposition:
+
+- SMART PHONE-NUMBER DISCOVERY: IMPLEMENTED / QUALIFIED.
+- CURRENT KAELAN RESULT: RELATION EVIDENCE PRESENT / NUMERIC VALUE ABSENT / CONTACT WITHHELD / NO FABRICATION.
+- PHASE23: PASS / CLOSED.
+- UI: ACCEPTABLE BASELINE.
+- VISUAL POLISH: DEFERRED.
+- Phase24: NOT STARTED.
+- Voice integration: NOT STARTED in this closure run.
