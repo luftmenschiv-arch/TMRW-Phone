@@ -109,7 +109,7 @@ function previewRecordWithMembership(value) {
   return record;
 }
 
-function harness({ failStart = false, exerciseIdentityPin = false, failPreflightError = null, previewRecordFactory = previewRecord } = {}) {
+function harness({ failStart = false, exerciseIdentityPin = false, failPreflightError = null, previewRecordFactory = previewRecord, previewInstalled = true, previewDataAvailable = true } = {}) {
   const document = new FakeDocument();
   const storage = new MemoryKeyValueStorage();
   const sessionStorage = new MemoryKeyValueStorage();
@@ -123,7 +123,7 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
   let contextCalls = 0;
   const host = {
     officialExtensionApi: {
-      findExtension: () => ({ name: 'third-party/TMRW-Phone-Preview', enabled: previewEnabled }),
+      findExtension: () => previewInstalled ? ({ name: 'third-party/TMRW-Phone-Preview', enabled: previewEnabled }) : null,
       disableExtension: async () => { previewEnabled = false; },
       enableExtension: async () => { previewEnabled = true; },
       extensionSettings: { disabledExtensions: [] },
@@ -195,6 +195,7 @@ function harness({ failStart = false, exerciseIdentityPin = false, failPreflight
     featureFlagStorage: storage,
     previewReadSourceFactory: () => async () => {
       previewReadCalls += 1;
+      if (!previewDataAvailable) return { available: false, reason: 'preview-project-database-missing' };
       return { available: true, sourceVersion: 2, sourceLocation: 'fixture', record: previewRecordFactory() };
     },
   });
@@ -253,6 +254,18 @@ test('stale disabled Preview state with requested=false resumes the single TMRW 
   assert.equal(h.control.status.userStatus, 'TMRW Phone');
 });
 
+test('retired Preview package resumes the single TMRW Phone without reinstalling or enabling Preview', async () => {
+  const h = harness({ previewInstalled: false });
+  h.control.mount();
+  await h.control.handleExtensionHook();
+  assert.equal(h.flag.read().requested, true);
+  assert.equal(h.active, true);
+  assert.deepEqual(h.calls, ['configure-preflight', 'check-post-reload', 'configure-active', 'start-active', 'dispose-preflight']);
+  assert.equal(h.calls.includes('return-preview'), false);
+  assert.equal(h.control.status.userStatus, 'TMRW Phone');
+  assert.equal(h.document.querySelector(`#${PRODUCTION_USER_RETRY_BUTTON_ID}`).hidden, true);
+});
+
 test('Retry repairs stale disabled Preview state by persisting TMRW Phone intent and reopening authoring', async () => {
   const h = harness();
   h.previewEnabled = false;
@@ -287,10 +300,9 @@ test('post-reload TMRW Phone intent reuses selection/startup contracts exactly o
   assert.equal(h.entryApi.getProductionEntryStatus().voiceProviderModelCalls, 0);
 });
 
-test('post-reload startup pins the first exact source identity only until startup completes', async () => {
-  const h = harness({ exerciseIdentityPin: true });
+test('post-reload startup pins the first exact source identity only until startup completes, then follows SillyTavern scope without Preview data', async () => {
+  const h = harness({ exerciseIdentityPin: true, previewInstalled: false, previewDataAvailable: false });
   h.flag.requestEnable();
-  h.previewEnabled = false;
   h.control.mount();
   await h.control.handleExtensionHook();
   assert.deepEqual(h.identityDuringStart?.first, {
@@ -300,7 +312,13 @@ test('post-reload startup pins the first exact source identity only until startu
   });
   assert.deepEqual(h.identityDuringStart?.second, h.identityDuringStart?.first);
   const resolver = h.configuredActiveOptions[0].sourceIdentityResolver;
-  await assert.rejects(() => resolver({ ...context(), chatId: 'drifted-after-startup' }), /exact migration scope/);
+  assert.deepEqual(await resolver({ ...context(), chatId: 'drifted-after-startup' }), {
+    characterCardSourceId: 'character:alice.png',
+    storySourceId: 'story:drifted-after-startup',
+    routeSourceId: 'branch:main',
+  });
+  assert.equal(h.previewReadCalls, 0);
+  assert.equal(h.active, true);
 });
 
 test('authority failure stays closed, preserves TMRW Phone retry intent, and never falls back to Preview', async () => {

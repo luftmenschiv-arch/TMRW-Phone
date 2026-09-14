@@ -73,15 +73,22 @@ export class SillyTavernExtensionControl {
 
   verifyPreview37Excluded({ launcherAbsent = false, rootAbsent = false, runtimeGlobalAbsent = false } = {}) {
     const found = this.findPreview37();
-    const disabled = this.isPreview37Disabled();
+    const installed = Boolean(found);
+    const persistedDisabled = installed ? this.isPreview37Disabled() : false;
     const checks = Object.freeze({
-      previewResolved: Boolean(found),
-      previewPersistedDisabled: disabled,
+      previewRuntimeExcluded: installed ? persistedDisabled : true,
       launcherAbsent: launcherAbsent === true,
       rootAbsent: rootAbsent === true,
       runtimeGlobalAbsent: runtimeGlobalAbsent === true,
     });
     const blockers = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
-    return Object.freeze({ excluded: blockers.length === 0, blockers: Object.freeze(blockers), checks });
+    return Object.freeze({
+      excluded: blockers.length === 0,
+      blockers: Object.freeze(blockers),
+      previewInstalled: installed,
+      previewAbsent: !installed,
+      previewPersistedDisabled: persistedDisabled,
+      checks,
+    });
   }
 }

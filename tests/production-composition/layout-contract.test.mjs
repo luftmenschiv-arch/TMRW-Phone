@@ -2,42 +2,53 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import test from 'node:test';
 
-const styleUrl = new URL('../../production/package/style.css', import.meta.url);
+const packageStyleUrl = new URL('../../production/package/style.css', import.meta.url);
+const uiStyleUrl = new URL('../../ui/styles.css', import.meta.url);
+const authorityStyleUrl = new URL('../../ui/preview37-authority.css', import.meta.url);
 
 function rule(source, selector) {
-  const normalized = source.replace(/\r/g, '');
-  const block = normalized.split(/\n\s*\n/).find(candidate => candidate.trimStart().startsWith(`${selector} {`));
-  assert.ok(block, `missing CSS rule for ${selector}`);
-  return block.slice(block.indexOf('{') + 1, block.lastIndexOf('}'));
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = source.replace(/\r/g, '').match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  assert.ok(match, `missing CSS rule for ${selector}`);
+  return match[1];
 }
 
-test('Production Phone host owns an explicit viewport overlay without masking shell overflow', async () => {
-  const source = await fs.readFile(styleUrl, 'utf8');
-  const root = rule(source, '#tmrw-v3-phone-root');
-  const hidden = rule(source, '#tmrw-v3-phone-root[hidden]');
-  const shell = rule(source, '#tmrw-v3-phone-root > .tmrw-v3-shell');
-  const launcher = rule(source, '#tmrw-v3-phone-launcher');
+test('Production Phone host owns the true-Preview viewport and launcher visibility lifecycle', async () => {
+  const [packageCss, uiCss, authorityCss] = await Promise.all([
+    fs.readFile(packageStyleUrl, 'utf8'),
+    fs.readFile(uiStyleUrl, 'utf8'),
+    fs.readFile(authorityStyleUrl, 'utf8'),
+  ]);
+
+  const root = rule(packageCss, '#tmrw-v3-phone-root');
+  const hidden = rule(packageCss, '#tmrw-v3-phone-root[hidden]');
+  const openLauncher = rule(packageCss, '#tmrw-v3-phone-root:not([hidden]) ~ #tmrw-v3-phone-launcher');
+  const launcher = rule(uiCss, '#tmrw-v3-phone-launcher');
+  const launcherHidden = rule(uiCss, '#tmrw-v3-phone-launcher[hidden]');
 
   assert.match(root, /position:\s*fixed/);
   assert.match(root, /inset:\s*0/);
+  assert.match(root, /width:\s*100vw/);
   assert.match(root, /height:\s*100dvh/);
-  assert.match(root, /display:\s*grid/);
-  assert.match(root, /place-items:\s*center/);
-  assert.match(root, /overflow:\s*auto/);
-  assert.doesNotMatch(root, /overflow:\s*hidden/);
+  assert.match(root, /overflow:\s*hidden/);
   assert.match(hidden, /display:\s*none/);
-
-  assert.match(shell, /max-height:\s*calc\(100dvh/);
-  assert.match(shell, /min-height:\s*min\(620px,\s*calc\(100dvh/);
-  assert.match(shell, /overflow:\s*auto/);
-  assert.doesNotMatch(shell, /overflow:\s*hidden/);
+  assert.match(openLauncher, /display:\s*none/);
 
   assert.match(launcher, /position:\s*fixed/);
-  assert.match(launcher, /right:\s*max\(/);
-  assert.match(launcher, /top:\s*calc\(100dvh\s*-\s*max\(/);
-  assert.match(launcher, /bottom:\s*auto/);
-  assert.match(launcher, /transform:\s*translateY\(-100%\)/);
-  assert.match(launcher, /z-index:/);
+  assert.match(launcher, /width:\s*58px/);
+  assert.match(launcher, /height:\s*58px/);
+  assert.match(launcher, /border-radius:\s*50%/);
+  assert.match(launcher, /touch-action:\s*none/);
+  assert.match(launcherHidden, /display:\s*none\s*!important/);
 
-  assert.doesNotMatch(source, /#tmrw-phone-root|#tmrw-phone-launcher/);
+  assert.match(authorityCss, /\.tmrw-phone-device\s*\{[\s\S]*?width:\s*min\(430px, calc\(100vw - 18px\)\);[\s\S]*?height:\s*min\(900px, calc\(100dvh - 18px\)\);/);
+  const viewportWidth = 390;
+  const viewportHeight = 844;
+  const contentWidth = Math.min(430, viewportWidth - 18);
+  const contentHeight = Math.min(900, viewportHeight - 18);
+  assert.ok(contentWidth + 16 <= viewportWidth);
+  assert.ok(contentHeight + 16 <= viewportHeight);
+
+  assert.match(packageCss, /#tmrw-phone-launcher\s*\{[\s\S]*?display:\s*none\s*!important/);
+  assert.match(packageCss, /body:has\(#tmrw-phone-launcher\) #tmrw-phone-root\s*\{[\s\S]*?display:\s*none\s*!important/);
 });

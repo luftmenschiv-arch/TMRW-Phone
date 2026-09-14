@@ -139,8 +139,9 @@ async function createHarness({ castSize = 2, state = PRODUCTION_RUNTIME_STATE.V3
     heartbeatIntervalMs: 5_000,
   });
   const arbiter = new MutableArbiter(state);
-  const mountManager = new ProductionMountManager({ productionRuntime: runtime, runtimeArbiter: arbiter, document, hostParent: document.body, ...(shellFactory ? { shellFactory } : {}) });
-  const launcher = new ProductionLauncherOwner({ productionRuntime: runtime, runtimeArbiter: arbiter, mountManager, document, hostParent: document.body });
+  let launcher = null;
+  const mountManager = new ProductionMountManager({ productionRuntime: runtime, runtimeArbiter: arbiter, document, hostParent: document.body, onVisibilityChange: () => launcher?.reconcile?.(), ...(shellFactory ? { shellFactory } : {}) });
+  launcher = new ProductionLauncherOwner({ productionRuntime: runtime, runtimeArbiter: arbiter, mountManager, document, hostParent: document.body });
   return { ...seeded, document, context, eventSource, timers, rawDatabases, runtimeScope, runtime, arbiter, mountManager, launcher };
 }
 
@@ -161,8 +162,16 @@ test('real S08 graph mounts one frozen TmrwPhoneShell root and one launcher with
     assert.equal(h.launcher.mount(), true);
     assert.equal(nodesById(h.document.body, V3_LAUNCHER_ID).length, 1);
     assert.equal(h.mountManager.status.visible, false);
+    assert.equal(h.launcher.status.visible, true);
     assert.equal(h.launcher.open(), true);
     assert.equal(h.mountManager.status.visible, true);
+    assert.equal(h.launcher.status.visible, false);
+    const phoneRoot = nodesById(h.document.body, V3_ROOT_ID)[0];
+    const close = allNodes(phoneRoot).find(node => node.dataset?.action === 'close-phone');
+    assert.ok(close); close.click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.mountManager.status.visible, false);
+    assert.equal(h.launcher.status.visible, true);
     assert.equal(h.runtime.status.gateState, 'closed');
     assert.equal(await writes(h.registry), before);
   } finally { await cleanup(h); }
@@ -201,10 +210,12 @@ test('My Phone and Their Phones remain dynamic for cast sizes 1, 2, and 12 throu
     try {
       await h.mountManager.mount();
       const shell = nodesById(h.document.body, V3_ROOT_ID)[0].children[0];
-      const switcher = shell.children[1];
+      const ownerButton = allNodes(shell).find(node => node.dataset?.action === 'owner-sheet');
+      assert.ok(ownerButton); ownerButton.click(); await new Promise(resolve => setImmediate(resolve));
+      const sheetLayer = allNodes(shell).find(node => node.id === 'tmrw-phone-sheet-layer');
       const identity = await h.runtime.resolveCurrentIdentity();
       const roster = await h.runtime.services.viewModels.deviceRoster(identity.scope);
-      const deviceButtons = allNodes(switcher).filter(node => node.dataset.kind === 'my-phone' || node.dataset.kind === 'their-phone');
+      const deviceButtons = allNodes(sheetLayer).filter(node => node.dataset.kind === 'my-phone' || node.dataset.kind === 'their-phone');
       assert.equal(deviceButtons.length, castSize + 1);
       assert.equal(roster.filter(row => row.kind === 'my-phone').length, 1);
       assert.equal(roster.filter(row => row.kind === 'their-phone').length, castSize);
@@ -235,7 +246,8 @@ test('same Story new Branch disposes the old shell/root and mounts one exact rep
     assert.notEqual(h.mountManager.status.branchId, oldBranch);
     assert.equal(h.mountManager.status.branchId, h.branch.branchId);
     assert.equal(nodesById(h.document.body, V3_ROOT_ID).length, 1);
-    assert.equal(nodesById(h.document.body, V3_LAUNCHER_ID).length, 1);
+    assert.equal(nodesById(h.document.body, V3_LAUNCHER_ID).length, 0);
+    assert.equal(h.launcher.status.mounted, false);
     assert.equal(h.runtime.status.gateState, 'closed');
     assert.equal(h.mountManager.status.requiresAuthoringRevalidation, true);
   } finally { await cleanup(h); }
@@ -359,8 +371,9 @@ test('S09 reuses the S08 graph, performs no passive canonical write, exposes Tex
     const after = await writes(h.registry);
     assert.equal(after, before);
     const shell = nodesById(h.document.body, V3_ROOT_ID)[0].children[0];
-    const nav = shell.children[2];
-    assert.ok(allNodes(nav).some(node => node.dataset?.route === 'calls'));
+    const unlock = allNodes(shell).find(node => node.dataset?.action === 'unlock');
+    if (unlock) { unlock.click(); await new Promise(resolve => setImmediate(resolve)); }
+    assert.ok(allNodes(shell).some(node => node.dataset?.app === 'calls'));
     assert.equal(h.runtime.voiceCapability.runtimeAvailable, false);
     assert.equal(h.runtime.services.viewModels.voiceCapability.runtimeAvailable, false);
     assert.equal(h.runtime.composition.normalDatabase.capability, 'normal');

@@ -338,7 +338,7 @@ export class ProductionUserControl {
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
     if (preview?.enabled === true) return this.useProduction({ host });
-    if (preview && this.#featureFlag) {
+    if (this.#featureFlag) {
       if (this.#featureFlag.read().requested !== true) this.#featureFlag.requestEnable();
       return this.resumePendingSelection({ host });
     }
@@ -390,7 +390,7 @@ export class ProductionUserControl {
     try { host = await this.#hostApiLoader(); } catch (error) { this.#fail(error); return this.status; }
     const preview = host.officialExtensionApi.findExtension('TMRW-Phone-Preview');
     if (preview?.enabled === true) return this.useProduction({ host });
-    if (preview && this.#featureFlag) {
+    if (this.#featureFlag) {
       if (this.#featureFlag.read().requested !== true) this.#featureFlag.requestEnable();
       return this.resumePendingSelection({ host });
     }
@@ -417,13 +417,8 @@ export class ProductionUserControl {
       let pinStartupSourceIdentity = true;
       const sourceIdentityResolver = async context => {
         if (pinStartupSourceIdentity && startupSourceIdentity) return startupSourceIdentity;
-        this.#setStage('PREVIEW_DB_READ');
-        const preview = await previewReadSource();
-        if (!preview.available || !preview.record) {
-          throw new Error(`Preview project data is unavailable for Production startup (${preview?.reason || 'unknown'})`);
-        }
-        this.#setStage('PREVIEW_SCOPE');
-        const resolved = resolveCurrentPreview37SourceIdentity({ context, record: preview.record });
+        this.#setStage('SILLYTAVERN_SCOPE');
+        const resolved = exactPreviewScope(context);
         if (pinStartupSourceIdentity) startupSourceIdentity = resolved;
         this.#setStage('ACTIVE_STARTUP');
         return resolved;

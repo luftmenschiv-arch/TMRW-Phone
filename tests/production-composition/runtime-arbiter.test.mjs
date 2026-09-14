@@ -8,7 +8,7 @@ import { ProductionRuntimeArbiter, PRODUCTION_RUNTIME_STATE } from '../../produc
 
 const PREVIEW_NAME = 'third-party/TMRW-Phone-Preview';
 
-function officialPreviewApi({ enabled = true, failDisable = null, failEnable = false, order = null } = {}) {
+function officialPreviewApi({ enabled = true, installed = true, failDisable = null, failEnable = false, order = null } = {}) {
   const extensionSettings = { disabledExtensions: enabled ? [] : [PREVIEW_NAME] };
   const calls = [];
   const isDisabled = () => extensionSettings.disabledExtensions.includes(PREVIEW_NAME);
@@ -17,7 +17,7 @@ function officialPreviewApi({ enabled = true, failDisable = null, failEnable = f
     calls,
     findExtension(query) {
       calls.push(['find', query]);
-      return { name: PREVIEW_NAME, enabled: !isDisabled() };
+      return installed ? { name: PREVIEW_NAME, enabled: !isDisabled() } : null;
     },
     async disableExtension(name, reload) {
       calls.push(['disable', name, reload]);
@@ -97,6 +97,27 @@ test('Preview exclusion fails closed unless persisted disable plus launcher/root
     { launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: false },
   ]) assert.equal(control.verifyPreview37Excluded(proof).excluded, false);
   assert.equal(control.verifyPreview37Excluded({ launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true }).excluded, true);
+});
+
+test('retired Preview package counts as excluded only when no legacy runtime footprint is present', () => {
+  const { control } = createControl({ installed: false });
+  const clean = control.verifyPreview37Excluded({ launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true });
+  assert.equal(clean.excluded, true);
+  assert.equal(clean.previewInstalled, false);
+  assert.equal(clean.previewAbsent, true);
+  assert.equal(clean.previewPersistedDisabled, false);
+  assert.equal(clean.checks.previewRuntimeExcluded, true);
+  assert.equal(control.verifyPreview37Excluded({ launcherAbsent: false, rootAbsent: true, runtimeGlobalAbsent: true }).excluded, false);
+});
+
+test('retired Preview package can enter V3_STARTING with retained intent and clean exclusion proof', async () => {
+  const { arbiter, flag } = createArbiter({ controlOptions: { installed: false } });
+  flag.requestEnable();
+  const selected = await arbiter.startSelectedRuntime({ exclusionProof: { launcherAbsent: true, rootAbsent: true, runtimeGlobalAbsent: true } });
+  assert.equal(selected.state, PRODUCTION_RUNTIME_STATE.V3_STARTING);
+  assert.equal(selected.activationRequired, true);
+  assert.equal(selected.preview, null);
+  assert.equal(selected.exclusion.previewAbsent, true);
 });
 
 test('extension control never mutates disabledExtensions directly when the official disable API fails before persistence', async () => {
@@ -203,6 +224,17 @@ test('startup fail-safe does not call the Preview enable path even when that pat
   assert.equal(result.state, PRODUCTION_RUNTIME_STATE.FAILED_SAFE);
   assert.equal(flag.read().requested, true);
   assert.equal(result.authoringAuthority, false);
+  assert.equal(api.calls.some(call => call[0] === 'enable'), false);
+});
+
+test('internal development Preview recovery fails safe when the retired package is absent without becoming a shipping fallback', async () => {
+  const { arbiter, flag, api } = createArbiter({ controlOptions: { installed: false } });
+  flag.requestEnable();
+  const result = await arbiter.returnToPreview37();
+  assert.equal(result.state, PRODUCTION_RUNTIME_STATE.FAILED_SAFE);
+  assert.equal(result.recoveryRequired, 'internal-development-preview-recovery');
+  assert.match(result.lastError, /internal legacy Preview development recovery/i);
+  assert.equal(flag.read().requested, false);
   assert.equal(api.calls.some(call => call[0] === 'enable'), false);
 });
 

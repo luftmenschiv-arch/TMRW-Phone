@@ -18,6 +18,13 @@ function requireGateFPass(gateFReport) {
   return gateFReport;
 }
 
+function previewRecordContainsSourceIdentity(record, sourceIdentity) {
+  if (!record || typeof record !== 'object' || !sourceIdentity) return false;
+  return Boolean(record.cards?.[sourceIdentity.characterCardSourceId]
+    ?.stories?.[sourceIdentity.storySourceId]
+    ?.branches?.[sourceIdentity.routeSourceId]);
+}
+
 function sourceMappingFromPlan(plan) {
   const item = plan?.items?.find(row => row?.state === 'ready' && row?.mapping?.state === 'ready');
   const mapping = item?.mapping;
@@ -59,6 +66,73 @@ function defaultMessageIdentityResolver(mapping) {
   };
 }
 
+function freshCastFromContext(context, sourceIdentity) {
+  const characters = Array.isArray(context?.characters) ? context.characters : [];
+  if (!context?.groupId) {
+    const character = characters[context?.characterId] || null;
+    const displayName = String(character?.name || 'Character').trim() || 'Character';
+    return Object.freeze([Object.freeze({ sourceActorId: String(sourceIdentity.characterCardSourceId), displayName })]);
+  }
+  const group = Array.isArray(context?.groups) ? context.groups.find(row => String(row?.id) === String(context.groupId)) : null;
+  const members = Array.isArray(group?.members) ? group.members : [];
+  const rows = [];
+  const seen = new Set();
+  for (const member of members) {
+    const token = typeof member === 'object' && member !== null ? (member.avatar ?? member.name ?? member.id) : member;
+    const character = characters.find(row => String(row?.avatar ?? '') === String(token)
+      || String(row?.name ?? '') === String(token)
+      || String(row?.id ?? '') === String(token));
+    const sourceActorId = `character:${String(character?.avatar ?? token ?? '').trim()}`;
+    if (sourceActorId === 'character:' || seen.has(sourceActorId)) continue;
+    seen.add(sourceActorId);
+    rows.push(Object.freeze({ sourceActorId, displayName: String(character?.name ?? token ?? 'Character').trim() || 'Character' }));
+  }
+  if (rows.length === 0) throw new Error('Fresh Production group bootstrap requires stable SillyTavern group members');
+  return Object.freeze(rows);
+}
+
+function freshIdentitySeedFromContext(context, sourceIdentity) {
+  if (!context || typeof context !== 'object') throw new Error('Fresh Production bootstrap requires current SillyTavern context');
+  if (!sourceIdentity?.characterCardSourceId || !sourceIdentity?.storySourceId || !sourceIdentity?.routeSourceId) {
+    throw new Error('Fresh Production bootstrap requires stable Character/Story/Branch source identity');
+  }
+  const characters = Array.isArray(context.characters) ? context.characters : [];
+  const group = context.groupId && Array.isArray(context.groups) ? context.groups.find(row => String(row?.id) === String(context.groupId)) : null;
+  const character = !context.groupId ? characters[context.characterId] : null;
+  const cardName = String(group?.name || character?.name || 'Character card').trim() || 'Character card';
+  const userDisplayName = String(context.name1 || '{{user}}').trim() || '{{user}}';
+  const manifestId = `production-fresh:v1:${JSON.stringify([sourceIdentity.characterCardSourceId, sourceIdentity.storySourceId, sourceIdentity.routeSourceId])}`;
+  return Object.freeze({
+    manifestId,
+    sourceAuthority: 'sillytavern',
+    card: Object.freeze({ sourceCardId: String(sourceIdentity.characterCardSourceId), displayName: cardName }),
+    story: Object.freeze({ sourceStoryId: String(sourceIdentity.storySourceId), title: String(context.chatId || context.chatMetadata?.chat_id || cardName) }),
+    branch: Object.freeze({ sourceRouteId: String(sourceIdentity.routeSourceId), label: String(context.chatMetadata?.branch_id || context.chatMetadata?.branchId || context.chatMetadata?.main_chat || 'main') }),
+    user: Object.freeze({ displayName: userDisplayName }),
+    cast: freshCastFromContext(context, sourceIdentity),
+  });
+}
+
+function freshMessageIdentityResolver(sourceIdentityResolver) {
+  return async input => {
+    const role = String(input?.role || '').toLowerCase();
+    if (role === 'user') return Object.freeze({ actor: Object.freeze({ player: true }), mentionLabels: Object.freeze([]), explicitPhoneActions: Object.freeze([]) });
+    const sourceIdentity = await sourceIdentityResolver(input?.context);
+    const seed = freshIdentitySeedFromContext(input?.context, sourceIdentity);
+    let actor = seed.cast[0] || null;
+    if (seed.cast.length > 1) {
+      const label = String(input?.message?.name || input?.message?.extra?.name || '').trim();
+      actor = label ? seed.cast.find(row => row.displayName === label) || null : null;
+    }
+    if (!actor) return null;
+    return Object.freeze({
+      actor: Object.freeze({ player: false, sourceAuthority: 'sillytavern', sourceType: 'actor', sourceActorId: actor.sourceActorId }),
+      mentionLabels: Object.freeze([]),
+      explicitPhoneActions: Object.freeze([]),
+    });
+  };
+}
+
 function freezeStatus(session) {
   const runtime = session.runtime;
   const runtimeStatus = runtime?.status || null;
@@ -90,6 +164,7 @@ function freezeStatus(session) {
     playerDeviceId: session.identity?.player?.deviceId || null,
     canonicalWritesDuringMigration: Number(runtime?.migration?.metrics?.canonicalOperations ?? 0),
     migrationCommitted: runtime?.migration?.committed === true,
+    productionBootstrapCommitted: runtime?.bootstrap?.committed === true,
     voiceRuntimeAvailable: runtime?.voiceCapability?.runtimeAvailable ?? false,
     voiceProviderModelCalls: 0,
     smartContactReconciliation: session.smartContactReconciliation ? structuredClone(session.smartContactReconciliation) : null,
@@ -124,11 +199,36 @@ export class ProductionActiveStartupSession {
   async start({ exclusionProof, gateFReport } = {}) {
     if (this.disposed) throw new Error('Production active startup session is disposed');
     if (this.startPromise) return this.startPromise;
-    this.startPromise = this.#start({ exclusionProof, gateFReport }).catch(error => {
+    if (this.lastError) {
+      // A failed attempt has already completed its fail-safe rollback. Clear only
+      // the disposed attempt handles so Retry can create a fresh runtime/lease
+      // generation without weakening the underlying single-owner guard.
+      this.runtime = null;
+      this.arbiter = null;
+      this.mountManager = null;
+      this.launcherOwner = null;
+      this.shutdownController = null;
+      this.identity = null;
+      this.finalHealth = null;
+      this.selection = null;
+      this.migrationPlan = null;
+      this.smartContactReconciliation = null;
+      this.rollbackPromise = null;
+      this.lastError = null;
+    }
+    const attempt = this.#start({ exclusionProof, gateFReport }).catch(error => {
       this.lastError = String(error?.message || error);
       throw error;
     });
-    return this.startPromise;
+    this.startPromise = attempt;
+    try {
+      return await attempt;
+    } finally {
+      // Successful startup remains singleton/idempotent. Only a completed failed
+      // attempt releases the cached promise so an explicit Retry can re-evaluate
+      // current lease state and fail closed again if the conflict is still real.
+      if (!this.started && this.startPromise === attempt) this.startPromise = null;
+    }
   }
 
   async #start({ exclusionProof, gateFReport } = {}) {
@@ -183,28 +283,51 @@ export class ProductionActiveStartupSession {
     }
 
     try {
-      const planner = await createProductionPackagePreflightSession({
-      officialExtensionApi,
-      previewReadSource,
-      featureFlagStorage,
-      now,
-    });
-    try {
-      const inspection = await planner.inspectMigrationPlan();
-      this.migrationPlan = inspection.migrationPlan;
-    } finally {
-      await planner.dispose();
-    }
-    if (!this.migrationPlan || this.migrationPlan.fatal === true) throw new Error('Active production startup migration plan is unavailable or fatal');
-    const mapping = sourceMappingFromPlan(this.migrationPlan);
-    const resolvedSourceIdentity = sourceIdentityResolver || (async () => Object.freeze({
-      characterCardSourceId: mapping.characterCardSourceId,
-      storySourceId: mapping.storySourceId,
-      routeSourceId: mapping.routeSourceId,
-    }));
-    const resolvedMessageIdentity = messageIdentityResolver || defaultMessageIdentityResolver(mapping);
-    const productionSourceIdentity = await resolvedSourceIdentity(getContext());
-    if (!productionSourceIdentity || typeof productionSourceIdentity !== 'object') throw new Error('Active production startup requires exact SillyTavern source identity');
+      const previewSnapshot = await previewReadSource();
+      const currentContext = getContext();
+      let resolvedSourceIdentity = sourceIdentityResolver || null;
+      let resolvedMessageIdentity = messageIdentityResolver || null;
+      let productionSourceIdentity = resolvedSourceIdentity ? await resolvedSourceIdentity(currentContext) : null;
+      let freshIdentitySeed = null;
+      const sourceIdentityComplete = Boolean(
+        String(productionSourceIdentity?.characterCardSourceId || '').trim()
+        && String(productionSourceIdentity?.storySourceId || '').trim()
+        && String(productionSourceIdentity?.routeSourceId || '').trim(),
+      );
+      const legacyPreviewScopeAvailable = previewSnapshot?.available === true
+        && Boolean(previewSnapshot?.record)
+        && (!productionSourceIdentity || !sourceIdentityComplete || previewRecordContainsSourceIdentity(previewSnapshot.record, productionSourceIdentity));
+
+      if (legacyPreviewScopeAvailable) {
+        const planner = await createProductionPackagePreflightSession({
+          officialExtensionApi,
+          previewReadSource,
+          featureFlagStorage,
+          now,
+        });
+        try {
+          const inspection = await planner.inspectMigrationPlan();
+          this.migrationPlan = inspection.migrationPlan;
+        } finally {
+          await planner.dispose();
+        }
+        if (!this.migrationPlan || this.migrationPlan.fatal === true) throw new Error('Active production startup migration plan is unavailable or fatal');
+        const mapping = sourceMappingFromPlan(this.migrationPlan);
+        resolvedSourceIdentity = resolvedSourceIdentity || (async () => Object.freeze({
+          characterCardSourceId: mapping.characterCardSourceId,
+          storySourceId: mapping.storySourceId,
+          routeSourceId: mapping.routeSourceId,
+        }));
+        resolvedMessageIdentity = resolvedMessageIdentity || defaultMessageIdentityResolver(mapping);
+        productionSourceIdentity = productionSourceIdentity || await resolvedSourceIdentity(currentContext);
+      } else {
+        if (!resolvedSourceIdentity) throw new Error('Fresh Production startup requires stable SillyTavern source identity without Preview data');
+        this.migrationPlan = null;
+        productionSourceIdentity = productionSourceIdentity || await resolvedSourceIdentity(currentContext);
+        freshIdentitySeed = freshIdentitySeedFromContext(currentContext, productionSourceIdentity);
+        resolvedMessageIdentity = resolvedMessageIdentity || freshMessageIdentityResolver(resolvedSourceIdentity);
+      }
+      if (!productionSourceIdentity || typeof productionSourceIdentity !== 'object') throw new Error('Active production startup requires exact SillyTavern source identity');
 
     const startupEvidence = Object.freeze({
       requested: true,
@@ -253,7 +376,12 @@ export class ProductionActiveStartupSession {
         this.finalHealth = scopeHealth;
         this.launcherOwner?.reconcile?.();
       },
-      migration: Object.freeze({
+      globalObject,
+      eventTarget,
+      runtimeScope: globalObject,
+    };
+    if (this.migrationPlan) {
+      runtimeOptions.migration = Object.freeze({
         previewQuiesced: true,
         previewReadSource,
         plan: this.migrationPlan,
@@ -263,11 +391,11 @@ export class ProductionActiveStartupSession {
           routeSourceId: String(productionSourceIdentity.routeSourceId || ''),
         }),
         userDisplayName: String(getContext()?.name1 || '{{user}}'),
-      }),
-      globalObject,
-      eventTarget,
-      runtimeScope: globalObject,
-    };
+      });
+    } else {
+      runtimeOptions.freshIdentitySeed = freshIdentitySeed;
+      runtimeOptions.freshIdentitySeedResolver = async sourceIdentity => freshIdentitySeedFromContext(getContext(), sourceIdentity);
+    }
     for (const [key, value] of Object.entries({ databaseFactory, runtimeGuardFactory, heartbeatFactory, clock, leaseDurationMs, heartbeatIntervalMs, setIntervalFn, clearIntervalFn, now, stageObserver, imageProviderConfig })) {
       if (value !== undefined) runtimeOptions[key] = value;
     }

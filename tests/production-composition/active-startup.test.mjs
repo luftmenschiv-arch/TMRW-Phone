@@ -54,7 +54,7 @@ function nodesById(root, id) {
   return rows;
 }
 
-function officialPreviewApi({ restoreFails = false } = {}) {
+function officialPreviewApi({ restoreFails = false, installed = true } = {}) {
   const name = 'third-party/TMRW-Phone-Preview';
   const extensionSettings = { disabledExtensions: [name] };
   let enabled = false;
@@ -62,7 +62,7 @@ function officialPreviewApi({ restoreFails = false } = {}) {
   let disableCalls = 0;
   return {
     extensionSettings,
-    findExtension() { return { name, enabled }; },
+    findExtension() { return installed ? { name, enabled } : null; },
     async disableExtension() { disableCalls += 1; enabled = false; if (!extensionSettings.disabledExtensions.includes(name)) extensionSettings.disabledExtensions.push(name); },
     async enableExtension() {
       enableCalls += 1;
@@ -182,7 +182,7 @@ async function storedLease(registry) {
   return row;
 }
 
-async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
+async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, restoreFails = false, previewInstalled = true, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry() } = {}) {
   const source = previewSource ? structuredClone(previewSource) : preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
   if (preseedProductionScope) await seedProductionScope(registry, suffix, 2);
   const rawDatabases = [];
@@ -201,7 +201,7 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
   const globalObject = { document };
   const timers = fakeTimers();
   const eventSource = new FakeEventSource();
-  const api = officialPreviewApi({ restoreFails });
+  const api = officialPreviewApi({ restoreFails, installed: previewInstalled });
   const featureFlagStorage = new MemoryKeyValueStorage();
   new V3BetaFeatureFlag({ storage: featureFlagStorage, now: () => '2026-08-29T00:00:00.000Z' }).requestEnable();
   const readSource = previewReadSource || (async () => ({ available: true, sourceVersion: source.schemaVersion, sourceLocation: `s13-${suffix}`, record: structuredClone(source) }));
@@ -372,6 +372,53 @@ test('S13 isolated happy path reaches one V3_AUTHORING graph/root/launcher with 
   assert.equal(await storedLease(h.registry), undefined);
   assert.equal(h.api.previewEnabled, true);
   assert.equal(h.session.arbiter.inspect().authoringAuthority, false);
+});
+
+test('Phase24 retired Preview package reaches V3_AUTHORING from retained Preview data without a live Preview runtime', async () => {
+  const h = await harness({ suffix: 'phase24-retired-preview', previewInstalled: false, preseedProductionScope: false });
+  const started = await h.session.start({ exclusionProof, gateFReport });
+  assert.equal(started.runtimeState, 'V3_AUTHORING');
+  assert.equal(started.authoringAuthority, true);
+  assert.equal(started.ownsLease, true);
+  assert.equal(started.databaseOpen, true);
+  assert.equal(started.launcherMounted, true);
+  assert.equal(h.session.arbiter.inspect().preview, null);
+  assert.equal(h.api.enableCalls, 0);
+  assert.equal(h.api.disableCalls, 0);
+  await h.session.shutdown('phase24-retired-preview-test');
+  assert.equal(await storedLease(h.registry), undefined);
+});
+
+test('Phase24 fresh user with no Preview package or data bootstraps native Production identity and reaches V3_AUTHORING', async () => {
+  const suffix = 'phase24-fresh-user';
+  const sourceIdentity = Object.freeze({
+    characterCardSourceId: 'character:fresh-user.png',
+    storySourceId: `story:chat-${suffix}`,
+    routeSourceId: 'branch:main',
+  });
+  const h = await harness({
+    suffix,
+    previewInstalled: false,
+    preseedProductionScope: false,
+    previewReadSource: async () => ({ available: false, reason: 'preview-project-database-missing' }),
+    sourceIdentityResolver: async () => sourceIdentity,
+  });
+  const started = await h.session.start({ exclusionProof, gateFReport });
+  assert.equal(started.runtimeState, 'V3_AUTHORING');
+  assert.equal(started.authoringAuthority, true);
+  assert.equal(started.ownsLease, true);
+  assert.equal(started.databaseOpen, true);
+  assert.equal(started.launcherMounted, true);
+  assert.equal(started.migrationCommitted, false);
+  assert.equal(started.productionBootstrapCommitted, true);
+  assert.equal(started.canonicalWritesDuringMigration, 0);
+  assert.ok(started.storyId);
+  assert.ok(started.branchId);
+  assert.equal(h.session.arbiter.inspect().preview, null);
+  assert.equal(h.api.enableCalls, 0);
+  assert.equal(h.api.disableCalls, 0);
+  await h.session.shutdown('phase24-fresh-user-test');
+  assert.equal(await storedLease(h.registry), undefined);
 });
 
 test('S13 first active startup can resolve the migrated production scope from an empty V3 database', async () => {

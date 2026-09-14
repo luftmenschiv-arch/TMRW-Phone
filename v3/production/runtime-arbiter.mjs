@@ -125,6 +125,12 @@ export class ProductionRuntimeArbiter {
     if (this.#quiesceV3) await this.#quiesceV3();
     this.#featureFlag.requestDisable();
     try {
+      const preview = this.#extensionControl.findPreview37();
+      if (!preview) {
+        this.#state = PRODUCTION_RUNTIME_STATE.FAILED_SAFE;
+        this.#lastError = 'Internal legacy Preview development recovery is unavailable because the archived package is not installed';
+        return Object.freeze({ ...this.inspect(), reloadRequired: false, recoveryRequired: 'internal-development-preview-recovery' });
+      }
       if (!this.#extensionControl.isPreview37Disabled()) {
         this.#state = PRODUCTION_RUNTIME_STATE.PREVIEW_DEFAULT;
         return Object.freeze({ ...this.inspect(), reloadRequired: false });

@@ -341,6 +341,26 @@ async function runTransitionMigration({ rawDatabase, runtimeGuard, gate, migrati
   }
 }
 
+async function seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now, activation = null }) {
+  if (!seed) return Object.freeze({ attempted: false, committed: false, mode: 'none', result: null });
+  gate.close('fresh-production-bootstrap-start');
+  const transitionFence = gate.createFence();
+  const transitionDatabase = new FencedV3Database({ database: rawDatabase, runtimeGuard, authoringFence: transitionFence, capability: AUTHORING_CAPABILITY.TRANSITION });
+  if (activation) await activation.mark('fresh-production-transition-database');
+  const identityKernel = new V3IdentityKernel({ database: transitionDatabase, now });
+  const transitionCore = createTransitionMigrationCore(transitionDatabase, now);
+  const entered = await gate.enterTransition({ previewQuiesced: true });
+  if (!entered.opened) throw new Error(`Fresh Production identity bootstrap authority failed to open: ${entered.reason}`);
+  try {
+    const result = await identityKernel.seedIdentityGraph(seed);
+    await transitionCore.phones.initializeScope({ storyId: result.storyId, branchId: result.branchId });
+    if (activation) await activation.mark('fresh-production-identity-bootstrap');
+    return Object.freeze({ attempted: true, committed: true, mode: 'fresh-sillytavern', manifestId: seed.manifestId, result });
+  } finally {
+    gate.close('fresh-production-bootstrap-complete');
+  }
+}
+
 async function provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now }) {
   if (!migrationResult?.committed || !migrationResult?.plan) throw new Error('Production scope alias provisioning requires one committed Preview migration plan');
   gate.close('production-scope-alias-transition-start');
@@ -368,6 +388,8 @@ async function buildRuntime(options, entry) {
     sourceIdentityResolver,
     messageIdentityResolver,
     migration = null,
+    freshIdentitySeed = null,
+    freshIdentitySeedResolver = null,
     onScopeChange = null,
     discardPartialAssistant = null,
     databaseFactory = () => new V3Database(),
@@ -391,6 +413,8 @@ async function buildRuntime(options, entry) {
   requireFunction(Generate, 'Generate');
   requireFunction(sourceIdentityResolver, 'sourceIdentityResolver');
   requireFunction(messageIdentityResolver, 'messageIdentityResolver');
+  if (migration && freshIdentitySeed) throw new Error('Production runtime cannot combine Preview migration and fresh identity bootstrap');
+  if (freshIdentitySeed && typeof freshIdentitySeedResolver !== 'function') throw new TypeError('Fresh Production identity bootstrap requires freshIdentitySeedResolver');
   if (!eventSource?.on || !eventSource?.removeListener) throw new TypeError('Production runtime requires SillyTavern eventSource');
   if (!sillyTavernEventTypes || typeof sillyTavernEventTypes !== 'object') throw new TypeError('Production runtime requires SillyTavern event types');
 
@@ -455,6 +479,7 @@ async function buildRuntime(options, entry) {
     activation.addResource('heartbeat-stop', () => heartbeat.stop());
     await activation.mark('heartbeat-started', heartbeatStatus);
 
+    const bootstrapResult = await seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed: freshIdentitySeed, now, activation });
     const migrationResult = await runTransitionMigration({ rawDatabase, runtimeGuard, gate, migration, now, activation });
     gate.close('s08-normal-graph-construction');
 
@@ -610,6 +635,7 @@ async function buildRuntime(options, entry) {
       voiceCapability,
       imageCapability: imageAssets.capability(),
       migration: migrationResult,
+      bootstrap: bootstrapResult,
       startupHealth,
       finalHealth,
       authoringAvailable: false,
@@ -617,7 +643,12 @@ async function buildRuntime(options, entry) {
       launcherAvailable: false,
       get status() { return Object.freeze({ role: 'owner', gateState: gate.state, ownsLease: runtimeGuard.ownsLease, databaseOpen: rawDatabase.isOpen, heartbeatRunning: heartbeat.status.running, listenerRegistered: listenerOwner.status.registered, interceptorDelegateActive: generationOwner.status.delegateActive, voiceRuntimeAvailable: voiceCapability.runtimeAvailable, phoneMounted: false, launcherMounted: false, disposed: activation.status.disposed, constructionOrder: activation.status.constructionOrder, disposalOrder: activation.status.disposalOrder }); },
       async provisionProductionScopeAliases(sourceIdentity) {
-        return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
+        if (migrationResult?.committed) return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
+        if (bootstrapResult?.committed && typeof freshIdentitySeedResolver === 'function') {
+          const seed = await freshIdentitySeedResolver(sourceIdentity);
+          return seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now });
+        }
+        throw new Error('Production scope provisioning has no migration or fresh-bootstrap authority');
       },
       async resolveCurrentIdentity() {
         const scope = await contextAdapter.resolveScope();
