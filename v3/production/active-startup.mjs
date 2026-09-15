@@ -465,6 +465,12 @@ export class ProductionActiveStartupSession {
         document,
         hostParent: document.body,
         playerDisplayNameResolver: () => String(getContext()?.name1 || '').trim() || null,
+        activeCharacterDisplayNameResolver: () => {
+          const context = getContext();
+          if (context?.groupId) return null;
+          const characters = Array.isArray(context?.characters) ? context.characters : [];
+          return String(characters[context?.characterId]?.name || '').trim() || null;
+        },
         onVisibilityChange: () => this.launcherOwner?.reconcile?.(),
       });
       await this.mountManager.mount(this.identity);

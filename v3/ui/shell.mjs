@@ -22,21 +22,22 @@ import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY } from './experience-presets.
 import { createPreviewRootChrome, createPreviewLockScreen, createPreviewHome, createPreviewOwnerSheet, createPreviewStatusBar, createPreviewAvatar, createPreviewCommerceNav, createPreviewLifestyleNav, wrapPreviewApp } from './preview37-surface.mjs';
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
+const firstDescendant = (node, predicate) => { if (!node) return null; if (predicate(node)) return node; for (const child of node.children || []) { const found = firstDescendant(child, predicate); if (found) return found; } return null; };
 const APP_TITLES = Object.freeze({ contacts: 'Phone', messages: 'Messages', calls: 'Phone', feed: 'Insungram', insungram: 'Insungram', live: 'Live', notifications: 'กิจกรรม', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
 const appKind = route => ['feed','insungram','live','messages','notifications'].includes(route) ? 'social' : ['wallet','shop'].includes(route) ? 'commerce' : ['maps','calendar','weather','health'].includes(route) ? 'lifestyle' : ['notes','search','calls','contacts'].includes(route) ? 'personal' : 'utility';
 const addIcon = (document, node, name, size) => { node.append(createPreviewIcon({ document, name, size })); return node; };
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #callSequence = 0; #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
 
-  constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, playerDisplayName = null, selectedDeviceId, onClose = null }) {
+  constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, callBotReply = null, callVoicePresenter = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, playerDisplayName = null, activeCharacterDisplayName = null, selectedDeviceId, onClose = null }) {
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
-    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#playerDisplayName = playerDisplayName; this.#selectedDeviceId = selectedDeviceId; this.#onClose = typeof onClose === 'function' ? onClose : null;
+    this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#callBotReply = callBotReply; this.#callVoicePresenter = callVoicePresenter; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#playerDisplayName = playerDisplayName; this.#activeCharacterDisplayName = activeCharacterDisplayName; this.#selectedDeviceId = selectedDeviceId; this.#onClose = typeof onClose === 'function' ? onClose : null;
     this.#router = new PhoneRouter({ onChange: () => { this.#lastUtilityError = null; this.#lastCalendarError = null; this.#calendarFormMode = null; this.#lastCommerceError = null; this.#selectedWalletRecordId = null; this.#selectedShopRecordId = null; this.#checkoutConfirmationRecordId = null; this.#checkoutResult = null; this.#shopStaleRecordId = null; this.#checkoutBusy = false; this.#selectedNoteRecordId = null; this.#noteFormMode = null; this.#pendingNoteDeleteId = null; this.#searchQuery = ''; this.#submittedSearchQuery = ''; this.#searchClearBusy = false; this.#lastPersonalError = null; this.#lastGuideError = null; this.#lastSettingsError = null; this.#settingsChoice = null; this.#lastSocialActionError = null; this.#pendingRemoval = null; this.#closeSheet(); void this.renderActive(); } });
   }
   get metrics() { return Object.freeze({ ...this.#metrics, router: this.#router.route, presentation: this.#presentationView }); }
   get root() { return this.#root; }
-  #deviceRoster() { return this.#models.deviceRoster(this.#scope, { playerActorId: this.#player.actorId, playerDisplayName: this.#playerDisplayName }); }
+  #deviceRoster() { return this.#models.deviceRoster(this.#scope, { playerActorId: this.#player.actorId, playerDisplayName: this.#playerDisplayName, activeCharacterDisplayName: this.#activeCharacterDisplayName }); }
 
   async mount(target) {
     if (this.#root) return this.#root;
@@ -81,7 +82,7 @@ export class TmrwPhoneShell {
 
     screen.replaceChildren(this.#loadingScreen(route));
     let view;
-    try { view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId, selectedLiveSessionId: this.#selectedLiveSessionId }); }
+    try { view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId, selectedLiveSessionId: this.#selectedLiveSessionId, activeCharacterDisplayName: this.#activeCharacterDisplayName }); }
     catch (error) { if (!isCurrent()) return null; screen.replaceChildren(this.#errorScreen(route, error)); this.#metrics.appRegionUpdates += 1; return null; }
     if (!isCurrent()) return null;
     root.dataset.theme = view.settings?.themeId || 'light-blue';
@@ -140,7 +141,22 @@ export class TmrwPhoneShell {
       copy.append(element(this.#document, 'small', thread.preview)); row.append(copy);
       row.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); list.append(row); rows.push({ row, thread });
     }
-    if (!rows.length) list.append(element(this.#document, 'p', 'ยังไม่มี DM หรือกรุ๊ปแชท'));
+    if (!rows.length && (view.communicationTargets || []).length) {
+      const intro = element(this.#document, 'div'); intro.className = 'tmrw-phone-connect-intro';
+      intro.append(element(this.#document, 'strong', 'เริ่มคุยได้ทันที'), element(this.#document, 'p', 'Instant mode เชื่อมตัวละครในเรื่องโดยไม่ต้องสร้างเบอร์โทรปลอม'));
+      list.append(intro);
+      for (const target of view.communicationTargets) {
+        const row = element(this.#document, 'button'); row.type = 'button'; row.className = 'tmrw-phone-thread tmrw-phone-instant-target'; row.dataset.instantTargetAccountId = target.accountId;
+        row.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'lg' }));
+        const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', target.label), element(this.#document, 'small', 'แตะเพื่อเริ่ม DM • ไม่ต้องใช้เบอร์')); row.append(copy, createPreviewIcon({ document: this.#document, name: 'send', size: 19 }));
+        row.addEventListener('click', () => void this.#startDirectThread(view, target)); list.append(row); rows.push({ row, thread: { label: target.label, secondary: '', preview: 'Instant contact' } });
+      }
+    } else if (!rows.length) {
+      const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-empty-state tmrw-phone-connect-empty';
+      const storyMode = view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.SMART;
+      empty.append(element(this.#document, 'strong', 'ยังไม่มี DM หรือกรุ๊ปแชท'), element(this.#document, 'p', !view.instantEligible ? 'โทรศัพท์ของตัวละครเปิดดูอย่างเดียวจากมุมมองนี้' : storyMode ? 'Story mode กำลังรอให้ค้นพบเบอร์ของตัวละครในเนื้อเรื่อง' : 'การเชื่อมต่อตัวละครอัตโนมัติปิดอยู่'));
+      if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } list.append(empty);
+    }
     input.addEventListener('input', () => { const query = String(input.value || '').trim().toLocaleLowerCase(); for (const { row, thread } of rows) row.hidden = Boolean(query) && !`${thread.label} ${thread.secondary || ''} ${thread.preview}`.toLocaleLowerCase().includes(query); });
     body.append(list); return this.#socialShell('messages', this.#selectedPerspectiveLabel, body);
   }
@@ -210,6 +226,62 @@ export class TmrwPhoneShell {
   #lifestyleNav(route) { const calendar=route==='calendar'; const tabs=calendar?[['today','วันนี้','calendar'],['calendar','ปฏิทิน','grid'],['tasks','งาน','tasks'],['agenda','กำหนดการ','agenda']]:[['summary','สรุป','health'],['activity','กิจกรรม','runner'],['sleep','การนอน','moon'],['vitals','สัญญาณชีพ','pulse']]; const active=calendar?this.#calendarViewTab:this.#healthViewTab; return createPreviewLifestyleNav({ document:this.#document, app:route, tabs, active, onTab:id=>{ if(calendar)this.#calendarViewTab=id; else this.#healthViewTab=id; void this.renderActive(); } }); }
   #utilityWrap(route, body, title=APP_TITLES[route]) { const bottom=['wallet','shop'].includes(route)?this.#commerceNav(route):['calendar','health'].includes(route)?this.#lifestyleNav(route):null; const subtitles={notes:'บันทึกทุกไอเดีย สำคัญทุกวัน',search:'สิ่งที่เคยค้น เปิด และกลับไปดู',wallet:'เงินและรายการของเครื่องนี้',shop:'สินค้าและคำสั่งซื้อของเครื่องนี้',gallery:'อัลบั้มและภาพที่บันทึกไว้',files:'ไฟล์และเอกสาร',theme:'ธีมโทรศัพท์',guide:'คู่มือการใช้งาน',settings:'ตั้งค่าโทรศัพท์',diagnostics:'ข้อมูลระบบแบบอ่านอย่างเดียว'}; return wrapPreviewApp({document:this.#document,kind:appKind(route),app:route,title,subtitle:subtitles[route]||'',body,onBack:()=>this.#goHome(),bottom,ownerLabel:this.#selectedPerspectiveLabel}); }
 
+  #renderContactsWithConnectivity(view) {
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-personal-app tmrw-phone-phone-app';
+    const tabs = element(this.#document, 'div'); tabs.className = 'tmrw-phone-phone-tabs';
+    const history = element(this.#document, 'button', 'Call History'); history.addEventListener('click', () => this.#router.navigate('calls'));
+    const saved = element(this.#document, 'button', 'Saved Names'); saved.className = 'is-active'; tabs.append(history, saved); body.append(tabs);
+    const search = element(this.#document, 'label'); search.className = 'tmrw-phone-personal-search tmrw-phone-soft-search'; addIcon(this.#document, search, 'search', 20);
+    const input = element(this.#document, 'input'); input.placeholder = 'ค้นหาชื่อหรือตัวละคร'; input.disabled = !(view.contacts.length || view.communicationTargets.length); search.append(input); body.append(search);
+    const list = element(this.#document, 'div'); list.className = 'tmrw-phone-saved-list'; const searchable = [];
+    for (const contact of contactsViewModel(view.contacts)) {
+      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row'; row.dataset.contactPointId = contact.id; row.append(createPreviewAvatar({ document: this.#document, label: contact.primary, size: 'md' }));
+      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', contact.primary), element(this.#document, 'small', contact.secondary)); row.append(copy); const icon = element(this.#document, 'b'); addIcon(this.#document, icon, 'phone', 18); row.append(icon); list.append(row); searchable.push({ row, text: `${contact.primary} ${contact.secondary}` });
+    }
+    const savedInstances = new Set((view.contacts || []).map(contact => contact.targetInstanceId).filter(Boolean));
+    for (const target of view.communicationTargets || []) {
+      if (savedInstances.has(target.instanceId)) continue;
+      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row tmrw-phone-instant-contact'; row.dataset.instantContactAccountId = target.accountId; row.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'md' }));
+      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', target.label), element(this.#document, 'small', 'พร้อมติดต่อทันที • ไม่ต้องใช้เบอร์')); row.append(copy);
+      const actions = element(this.#document, 'span'); actions.className = 'tmrw-phone-contact-actions'; const message = element(this.#document, 'button'); message.type = 'button'; message.setAttribute('aria-label', `เริ่มแชทกับ ${target.label}`); addIcon(this.#document, message, 'comment', 17); message.addEventListener('click', () => { this.#selectedThreadId = null; void this.#startDirectThread(view, target); }); const call = element(this.#document, 'button'); call.type = 'button'; call.setAttribute('aria-label', `โทรหา ${target.label}`); addIcon(this.#document, call, 'phone', 17); call.addEventListener('click', () => void this.#startDirectCall(view, target)); actions.append(message, call); row.append(actions); list.append(row); searchable.push({ row, text: target.label });
+    }
+    if (!list.children.length) {
+      const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-empty-state tmrw-phone-connect-empty'; const storyMode = view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.SMART;
+      empty.append(element(this.#document, 'strong', 'ยังไม่มี Saved Names'), element(this.#document, 'p', !view.instantEligible ? 'โทรศัพท์ของตัวละครเปิดดูอย่างเดียวจากมุมมองนี้' : storyMode ? 'Story mode กำลังรอให้ตัวละครบอกเบอร์ของตัวเองในเนื้อเรื่อง' : 'การเชื่อมต่อตัวละครอัตโนมัติปิดอยู่'));
+      if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } list.append(empty);
+    }
+    input.addEventListener('input', () => { const query = String(input.value || '').trim().toLocaleLowerCase(); for (const item of searchable) item.row.hidden = Boolean(query) && !item.text.toLocaleLowerCase().includes(query); });
+    body.append(list); return wrapPreviewApp({ document: this.#document, kind: 'personal', app: 'contacts', title: 'Phone', subtitle: view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.ON ? 'Instant contacts ของเครื่องนี้' : 'Saved Names ของเครื่องนี้', body, onBack: () => this.#goHome() });
+  }
+
+  #renderCallsWithConnectivity(view) {
+    const island = view.callUi.island;
+    if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
+      const call = view.calls.find(row => row.callSessionId === island.callSessionId);
+      return renderApprovedCallSurface({
+        document: this.#document,
+        island,
+        inspectionOnly: view.callUi.owner.inspectionOnly,
+        onAction: action => call ? this.#transitionCall(view, call, action) : null,
+        onSend: input => call ? this.#sendCallText(view, call, input) : null,
+        onClose: () => { this.#closedCallSurfaceId = island.callSessionId; return this.renderActive(); },
+        onContinueOnce: island.kind === 'ended' && this.#callStoryIntegration && this.#storyContinuation ? () => this.#continueAfterEnded(island.callSessionId) : null,
+        onNavigate: target => { if (target === 'settings') this.#router.navigate('settings'); else if (target === 'history') { this.#closedCallSurfaceId = island.callSessionId; void this.renderActive(); } },
+      });
+    }
+    const base = this.#renderCallsBase(view); const main = firstDescendant(base, node => String(node.tagName || '').toLowerCase() === 'main'); if (!main) return base;
+    if (view.callUi.dialTargets.length) {
+      const dial = element(this.#document, 'div'); dial.className = 'tmrw-phone-call-favorites';
+      for (const target of view.callUi.dialTargets) { const button = element(this.#document, 'button'); button.dataset.callTargetAccountId = target.accountId; button.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'lg' }), element(this.#document, 'strong', target.label), element(this.#document, 'small', 'โทรได้ทันที')); button.disabled = !view.callUi.owner.canAct; button.addEventListener('click', () => { this.#closedCallSurfaceId = null; void this.#startOutgoing(view, target); }); dial.append(button); }
+      main.append(dial);
+    } else if (!view.callUi.history.length) {
+      const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-empty-state tmrw-phone-connect-empty'; const storyMode = view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.SMART;
+      empty.append(element(this.#document, 'strong', 'ยังไม่มีคนที่โทรได้'), element(this.#document, 'p', !view.instantEligible ? 'โทรศัพท์ของตัวละครเปิดดูอย่างเดียวจากมุมมองนี้' : storyMode ? 'Story mode กำลังรอให้ค้นพบเบอร์ของตัวละครในเนื้อเรื่อง' : 'การเชื่อมต่อตัวละครอัตโนมัติปิดอยู่'));
+      if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } main.append(empty);
+    }
+    return base;
+  }
+
   async #renderContent(view) {
     const route=this.#router.route;
     if(route==='feed') return this.#renderFeed(view);
@@ -217,12 +289,8 @@ export class TmrwPhoneShell {
     if(route==='live') return this.#renderLive(view);
     if(route==='notifications') return this.#renderActivity(view);
     if(route==='insungram') return this.#renderProfile(view);
-    if(route==='contacts') return this.#renderContacts(view);
-    if(route==='calls') {
-      const island=view.callUi.island;
-      if(island.kind!=='empty'&&island.callSessionId!==this.#closedCallSurfaceId){const call=view.calls.find(row=>row.callSessionId===island.callSessionId);return renderApprovedCallSurface({document:this.#document,island,inspectionOnly:view.callUi.owner.inspectionOnly,onAction:action=>call?this.#transitionCall(view,call,action):null,onSend:input=>call?this.#sendCallText(view,call,input):null,onClose:()=>{this.#closedCallSurfaceId=island.callSessionId;return this.renderActive();},onContinueOnce:island.kind==='ended'&&this.#callStoryIntegration&&this.#storyContinuation?()=>this.#continueAfterEnded(island.callSessionId):null,onNavigate:target=>{if(target==='settings')this.#router.navigate('settings');else if(target==='history'){this.#closedCallSurfaceId=island.callSessionId;void this.renderActive();}}});}
-      const base=this.#renderCallsBase(view);if(view.callUi.dialTargets.length){const dial=element(this.#document,'div');dial.className='tmrw-phone-call-favorites';for(const target of view.callUi.dialTargets){const b=element(this.#document,'button');b.dataset.callTargetAccountId=target.accountId;b.append(createPreviewAvatar({document:this.#document,label:target.label,size:'lg'}),element(this.#document,'strong',target.label),element(this.#document,'small','Call'));b.disabled=!view.callUi.owner.canAct;b.addEventListener('click',()=>{this.#closedCallSurfaceId=null;void this.#startOutgoing(view,target);});dial.prepend?.(b)||dial.append(b);}base.querySelector?.('main')?.append?.(dial);}return base;
-    }
+    if(route==='contacts') return this.#renderContactsWithConnectivity(view);
+    if(route==='calls') return this.#renderCallsWithConnectivity(view);
     if(route==='gallery') return this.#utilityWrap(route,renderGallery({document:this.#document,items:view.galleryItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedGalleryRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='gallery'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedGalleryRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'gallery',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeGalleryItem(view,item)}));
     if(route==='files') return this.#utilityWrap(route,renderFiles({document:this.#document,items:view.fileItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedFileRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='file'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedFileRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'file',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeFileItem(view,item)}));
     if(route==='maps') return this.#utilityWrap(route,renderMaps({document:this.#document,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,items:view.locationItems,audiences:view.locationAudienceChoices,selectedAudienceIds:[...this.#selectedLocationAudienceIds],draftLabel:this.#locationDraftLabel,viewerAccountId:view.opened.perspective.accountId,viewerDeviceId:view.opened.perspective.deviceId,onDraft:value=>{this.#locationDraftLabel=value;void this.renderActive();},onToggleAudience:accountId=>{if(this.#selectedLocationAudienceIds.has(accountId))this.#selectedLocationAudienceIds.delete(accountId);else this.#selectedLocationAudienceIds.add(accountId);void this.renderActive();},onCheckIn:()=>this.#createLocation(view,'check-in'),onShare:()=>this.#createLocation(view,'shared'),onStartLive:()=>this.#createLocation(view,'live'),onEndLive:item=>this.#endLiveLocation(view,item)}));
@@ -258,13 +326,13 @@ export class TmrwPhoneShell {
     const row=(title,detail,value,action)=>{const b=element(this.#document,'button');const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',title),element(this.#document,'small',detail));b.append(copy);if(value!=null)b.append(element(this.#document,'b',String(value)));else b.append(createPreviewIcon({document:this.#document,name:'chevron',size:18}));if(action&&!this.#settingsBusy)b.addEventListener('click',action);else b.disabled=true;return b;};
     if(this.#lastSettingsError){const alert=element(this.#document,'p',`บันทึกการตั้งค่าไม่สำเร็จ: ${this.#lastSettingsError}`);alert.setAttribute('role','alert');body.append(alert);}
     body.append(row('เจ้าของโทรศัพท์',this.#selectedPerspectiveLabel,null,()=>{ void this.#deviceRoster().then(devices=>this.#showOwnerSheet(devices)); }));
-    body.append(row('Experience',view.settings.preset||'story',view.settings.preset,()=>{this.#settingsChoice=this.#settingsChoice==='experience'?null:'experience';void this.renderActive();}));
+    body.append(row('Experience','เลือกวิธีเชื่อมตัวละครและการเข้าถึงโทรศัพท์',view.settings.preset,()=>{this.#settingsChoice=this.#settingsChoice==='experience'?null:'experience';void this.renderActive();}));
     if(this.#settingsChoice==='experience'){
-      for(const [preset,label] of [[EXPERIENCE_PRESET.SIMPLE,'Simple'],[EXPERIENCE_PRESET.STORY,'Story'],[EXPERIENCE_PRESET.IMMERSIVE,'Immersive']]){const selected=view.settings.preset===preset;body.append(row(label,selected?'ใช้อยู่':'เลือก Experience preset',selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setExperiencePreset(preset);}));}
+      for(const [preset,label,detail] of [[EXPERIENCE_PRESET.SIMPLE,'Instant','เห็นตัวละครและเริ่มแชทหรือโทรได้ทันที'],[EXPERIENCE_PRESET.STORY,'Story','รอค้นพบเบอร์จากสิ่งที่เกิดขึ้นในเรื่อง'],[EXPERIENCE_PRESET.IMMERSIVE,'Immersive','เชื่อมตัวละครทันที แต่คงข้อจำกัดการเข้าถึงโทรศัพท์']]){const selected=view.settings.preset===preset;body.append(row(label,selected?`${detail} • ใช้อยู่`:detail,selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setExperiencePreset(preset);}));}
     }
-    body.append(row('Phone number discovery','การค้นพบเบอร์โทร',view.settings.phoneNumberDiscovery,()=>{this.#settingsChoice=this.#settingsChoice==='discovery'?null:'discovery';void this.renderActive();}));
+    body.append(row('การเชื่อมต่อตัวละคร',view.settings.phoneNumberDiscovery===PHONE_NUMBER_DISCOVERY.ON?'Instant — ติดต่อได้โดยไม่ต้องมีเบอร์':view.settings.phoneNumberDiscovery===PHONE_NUMBER_DISCOVERY.SMART?'Story — รอเบอร์จากเนื้อเรื่อง':'ปิดการเชื่อมต่ออัตโนมัติ',view.settings.phoneNumberDiscovery,()=>{this.#settingsChoice=this.#settingsChoice==='discovery'?null:'discovery';void this.renderActive();}));
     if(this.#settingsChoice==='discovery'){
-      for(const [value,label] of [[PHONE_NUMBER_DISCOVERY.SMART,'Smart'],[PHONE_NUMBER_DISCOVERY.ON,'On'],[PHONE_NUMBER_DISCOVERY.OFF,'Off']]){const selected=view.settings.phoneNumberDiscovery===value;body.append(row(label,selected?'ใช้อยู่':'เลือกการค้นพบเบอร์โทร',selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setPhoneNumberDiscovery(value);}));}
+      for(const [value,label,detail] of [[PHONE_NUMBER_DISCOVERY.ON,'Instant','เชื่อมตัวละครทันทีโดยไม่สร้างเบอร์ปลอม'],[PHONE_NUMBER_DISCOVERY.SMART,'Story','ต้องค้นพบเบอร์จากเนื้อเรื่องก่อน'],[PHONE_NUMBER_DISCOVERY.OFF,'Off','ไม่เชื่อมตัวละครอัตโนมัติ']]){const selected=view.settings.phoneNumberDiscovery===value;body.append(row(label,selected?`${detail} • ใช้อยู่`:detail,selected?'✓':null,selected?null:()=>{this.#settingsChoice=null;void this.#setPhoneNumberDiscovery(value);}));}
     }
     body.append(row('Continue story after calls','หลังสายจบ',view.settings.continueStoryAfterCalls?'เปิด':'ปิด',()=>void this.#setContinueStoryAfterCalls(!view.settings.continueStoryAfterCalls)));
     body.append(row('Diagnostics','Advanced',view.settings.developerDiagnosticsEnabled?'เปิด':'ปิด',()=>void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled)));
@@ -273,6 +341,38 @@ export class TmrwPhoneShell {
     const voiceRoster=(await this.#deviceRoster()).filter(r=>r.kind==='their-phone');if(!voiceRoster.some(r=>r.actorId===this.#selectedVoiceActorId))this.#selectedVoiceActorId=voiceRoster[0]?.actorId||null;const selectedIdentity=voiceRoster.find(r=>r.actorId===this.#selectedVoiceActorId)||null;let baseProfile=null,instanceOverride=null,resolvedProfile=null;if(selectedIdentity){baseProfile=await this.#models.voiceProfiles.getActorBase({actorId:selectedIdentity.actorId});instanceOverride=await this.#models.voiceProfiles.getInstanceOverride({scope:this.#scope,instanceId:selectedIdentity.instanceId});resolvedProfile=await this.#models.voiceProfiles.resolve({scope:this.#scope,actorId:selectedIdentity.actorId,instanceId:selectedIdentity.instanceId});}const voice=renderVoiceSetup({document:this.#document,settings:view.settings,capability:this.#models.voiceCapability,roster:voiceRoster,selectedActorId:this.#selectedVoiceActorId,selectedIdentity,baseProfile,instanceOverride,resolvedProfile,onToggleVoiceCalls:enabled=>void this.#setVoiceCalls(enabled),onToggleBotVoice:enabled=>void this.#setBotCallsWithVoice(enabled),onSetDefaultLanguage:language=>void this.#setVoiceLanguagePreference(language),onSetDefaultDelivery:delivery=>void this.#setVoiceDefaultDelivery(delivery),onSelectActor:identity=>{this.#selectedVoiceActorId=identity.actorId;void this.renderActive();},onSaveBaseName:profileName=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{profileName});},onSetBaseLanguage:language=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{language});},onToggleBaseLock:lockedByUser=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{lockedByUser});},onToggleOverride:enabled=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{enabled});},onSaveOverrideName:profileName=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{profileName});},onSetOverrideLanguage:language=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{language});}});body.append(voice);return this.#utilityWrap('settings',body,'Settings'); }
   #renderDiagnostics(view) { const body=element(this.#document,'div');body.className='tmrw-phone-utility-list';if(!view.settings.developerDiagnosticsEnabled)body.append(element(this.#document,'p','Diagnostics ปิดอยู่'));else if(!view.opened.authorization.granted)body.append(element(this.#document,'p','โทรศัพท์เครื่องนี้ยังล็อกอยู่'));else{const d=developerDiagnostics({enabled:true,scope:this.#scope,perspective:view.opened.perspective,lifecycle:view.opened.lifecycle,renderMetrics:view.renderMetrics});const pre=element(this.#document,'pre',JSON.stringify(d,null,2));pre.className='tmrw-v3-diagnostics-output';body.append(pre);}return this.#utilityWrap('diagnostics',body,'Diagnostics'); }
 
+  async #startDirectCall(view, target) {
+    const started = await this.#startOutgoing(view, target);
+    if (started) this.#router.navigate('calls');
+    return started;
+  }
+  async #startDirectThread(view, target) {
+    const perspective = view?.opened?.perspective;
+    if (this.#directThreadBusy || !this.#messaging || !perspective?.accountId || !target?.accountId || target.accountId === perspective.accountId) return false;
+    this.#directThreadBusy = true;
+    const participantAccountIds = [perspective.accountId, target.accountId];
+    const identityKey = [...participantAccountIds].sort().join(':');
+    try {
+      this.#lastMessageError = null;
+      const result = await this.#messaging.createThread({
+        scope: this.#scope,
+        kind: 'dm',
+        participantAccountIds,
+        sourceMode: 'live',
+        source: { authority: 'tmrw-v3-ui', kind: 'instant-connect', recordId: `instant-dm:${identityKey}`, version: '1' },
+        producer: 'tmrw-instant-connect',
+        idempotencyKey: `instant-dm:${identityKey}`,
+      });
+      this.#selectedThreadId = result.thread.threadId;
+      if (this.#router.route !== 'messages') this.#router.navigate('messages');
+      else await this.renderActive();
+      return true;
+    } catch (error) {
+      this.#lastMessageError = error instanceof Error ? error.message : String(error);
+      await this.renderActive();
+      return false;
+    } finally { this.#directThreadBusy = false; }
+  }
   async #sendMessage(view, input) {
     const text = String(input.value || '').trim(); if (!text || !this.#messaging || !view.activeThreadId || !view.opened.perspective.accountId) return false;
     const perspective = view.opened.perspective; const actualAuthorActorId = perspective.actualAuthorActorId || perspective.accountOwnerActorId; const actualAuthorInstanceId = perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId;
@@ -309,7 +409,7 @@ export class TmrwPhoneShell {
     return true;
   }
   async #transitionCall(view, call, action) {
-    if (!call) return; const perspective = view.opened.perspective; const sequence = ++this.#callSequence;
+    if (!call) return; const perspective = view.opened.perspective; const sequence = ++this.#callSequence; let canonicalEndCommitted = false;
     try {
       this.#lastCallError = null;
       if (action === 'end' && this.#callStoryIntegration) {
@@ -323,22 +423,37 @@ export class TmrwPhoneShell {
           consequences: [],
           latestVisibleRole: this.#storyContinuation?.latestVisibleRole?.() || null,
           continuationDriver: this.#storyContinuation,
+          releaseEphemeral: () => { try { this.#callVoicePresenter?.cancelCall?.(call.callSessionId); } catch {} },
           source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'phase18-closure-call-end:' + perspective.deviceId + ':' + sequence, version: '1' },
           idempotencyKey: 'phase18-closure-call-end:' + perspective.deviceId + ':' + sequence,
         });
-      } else if (this.#callCoordinator) await this.#callCoordinator.transition({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, action, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'phase18-call-transition:' + perspective.deviceId + ':' + sequence, version: '1' }, idempotencyKey: 'phase18-call-transition:' + perspective.deviceId + ':' + sequence });
-      else if (this.#calls && perspective.accountId) await this.#calls.transition({ scope: this.#scope, callSessionId: call.callSessionId, action, actualActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'call-transition:' + perspective.deviceId + ':' + sequence, version: '1' }, producer: 'phase9-shell', idempotencyKey: 'call-transition:' + perspective.deviceId + ':' + sequence });
+        canonicalEndCommitted = true;
+      } else if (this.#callCoordinator) {
+        await this.#callCoordinator.transition({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, action, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'phase18-call-transition:' + perspective.deviceId + ':' + sequence, version: '1' }, idempotencyKey: 'phase18-call-transition:' + perspective.deviceId + ':' + sequence });
+        canonicalEndCommitted = action === 'end';
+      } else if (this.#calls && perspective.accountId) {
+        await this.#calls.transition({ scope: this.#scope, callSessionId: call.callSessionId, action, actualActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'call-transition:' + perspective.deviceId + ':' + sequence, version: '1' }, producer: 'phase9-shell', idempotencyKey: 'call-transition:' + perspective.deviceId + ':' + sequence });
+        canonicalEndCommitted = action === 'end';
+      }
+      if (canonicalEndCommitted && !this.#callStoryIntegration) { try { this.#callVoicePresenter?.cancelCall?.(call.callSessionId); } catch {} }
     } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); }
     await this.renderActive();
   }
   async #sendCallText(view, call, input) {
-    const text = String(input.value || '').trim(); if (!text || !call) return; const perspective = view.opened.perspective; const sequence = ++this.#callSequence;
+    const text = String(input.value || '').trim(); if (!text || !call) return; const perspective = view.opened.perspective; const sequence = ++this.#callSequence; let userCommit = null;
     try {
       this.#lastCallError = null;
-      if (this.#callCoordinator) await this.#callCoordinator.sendText({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'phase18-call-text:' + perspective.deviceId + ':' + sequence, version: '1' }, idempotencyKey: 'phase18-call-text:' + perspective.deviceId + ':' + sequence });
-      else if (this.#calls && perspective.accountId) await this.#calls.addTranscript({ scope: this.#scope, callSessionId: call.callSessionId, speakerAccountId: perspective.accountId, actualAuthorActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualAuthorInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'call-text:' + perspective.deviceId + ':' + sequence, version: '1' }, producer: 'phase9-shell', idempotencyKey: 'call-text:' + perspective.deviceId + ':' + sequence });
-    } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); }
-    await this.renderActive();
+      if (this.#callCoordinator) userCommit = await this.#callCoordinator.sendText({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'phase18-call-text:' + perspective.deviceId + ':' + sequence, version: '1' }, idempotencyKey: 'phase18-call-text:' + perspective.deviceId + ':' + sequence });
+      else if (this.#calls && perspective.accountId) userCommit = await this.#calls.addTranscript({ scope: this.#scope, callSessionId: call.callSessionId, speakerAccountId: perspective.accountId, actualAuthorActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualAuthorInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: 'call-text:' + perspective.deviceId + ':' + sequence, version: '1' }, producer: 'phase9-shell', idempotencyKey: 'call-text:' + perspective.deviceId + ':' + sequence });
+      await this.renderActive();
+      if (userCommit && this.#callBotReply) {
+        const botCommit = await this.#callBotReply.replyToCommittedUserTranscript({ scope: this.#scope, playerInstanceId: this.#player.instanceId, commit: userCommit });
+        if (botCommit?.committed) {
+          await this.renderActive();
+          if (this.#callVoicePresenter) void Promise.resolve(this.#callVoicePresenter.presentCommittedBotTranscript({ scope: this.#scope, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, commit: botCommit })).catch(() => {});
+        }
+      }
+    } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); await this.renderActive(); }
   }
   async #runGuideMutation(mutation) {
     if (this.#guideBusy) return false; this.#guideBusy = true; this.#lastGuideError = null;
@@ -556,5 +671,5 @@ export class TmrwPhoneShell {
       return false;
     }
   }
-  dispose() { if (!this.#root) return; if (this.#homePagerTimer != null) { clearTimeout(this.#homePagerTimer); this.#homePagerTimer = null; } this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
+  dispose() { try { this.#callVoicePresenter?.dispose?.(); } catch {} if (!this.#root) return; if (this.#homePagerTimer != null) { clearTimeout(this.#homePagerTimer); this.#homePagerTimer = null; } this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
 }

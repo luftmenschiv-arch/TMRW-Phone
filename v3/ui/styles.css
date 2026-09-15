@@ -32,6 +32,19 @@
 #tmrw-phone-root [hidden] { display: none !important; }
 #tmrw-phone-root input,
 #tmrw-phone-root textarea { box-sizing: border-box; font: inherit; }
+#tmrw-phone-root .tmrw-phone-connect-intro { margin: 10px 14px 6px; padding: 12px 14px; border: 1px solid rgba(84,132,171,.15); border-radius: 16px; background: #eef7fd; }
+#tmrw-phone-root .tmrw-phone-connect-intro strong { display: block; color: #2b536f; font-size: 12px; }
+#tmrw-phone-root .tmrw-phone-connect-intro p { margin: 4px 0 0; color: #718795; font-size: 9px; line-height: 1.45; }
+#tmrw-phone-root .tmrw-phone-connect-empty { margin: 12px; padding: 18px 14px; }
+#tmrw-phone-root .tmrw-phone-connect-empty > button { min-height: 38px; margin-top: 12px; padding: 8px 14px; border: 0; border-radius: 13px; background: #25282d; color: #fff; font-size: 10px; font-weight: 760; }
+#tmrw-phone-root .tmrw-phone-instant-target { border-bottom: 1px solid rgba(70,90,110,.08); }
+#tmrw-phone-root .tmrw-phone-contact-row { width: 100%; min-height: 62px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(70,90,110,.08); }
+#tmrw-phone-root .tmrw-phone-contact-row > span { min-width: 0; display: flex; flex-direction: column; }
+#tmrw-phone-root .tmrw-phone-contact-row strong, #tmrw-phone-root .tmrw-phone-contact-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tmrw-phone-root .tmrw-phone-contact-row strong { font-size: 11px; }
+#tmrw-phone-root .tmrw-phone-contact-row small { margin-top: 3px; color: #84919a; font-size: 8px; }
+#tmrw-phone-root .tmrw-phone-contact-actions { flex-direction: row; gap: 5px; }
+#tmrw-phone-root .tmrw-phone-contact-actions > button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 12px; background: #edf5fa; color: #39779e; }
 #tmrw-phone-root .tmrw-v3-message-composer textarea { flex: 1 1 auto; min-width: 0; min-height: 38px; max-height: 96px; resize: none; border: 0; outline: 0; background: transparent; color: inherit; }
 #tmrw-phone-root .tmrw-v3-feed-composer textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--tmrw-line); border-radius: 14px; background: var(--tmrw-card); color: var(--tmrw-ink); padding: 10px 12px; }
 #tmrw-phone-root .tmrw-v3-feed-composer > button { margin-top: 8px; }

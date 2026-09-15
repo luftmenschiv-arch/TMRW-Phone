@@ -6,16 +6,21 @@ import { VoiceProfileService } from '../application/voice-profile-service.mjs';
 import { VoiceAudioHistoryService } from '../application/voice-audio-history-service.mjs';
 import { createPhase19VoiceCapabilityState } from '../domain/voice/voice-capability.mjs';
 import { GuideStateService } from './guide.mjs';
+import { PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
 
 const emptyCallUi = () => Object.freeze({ sessions: Object.freeze([]), history: Object.freeze([]), transcript: Object.freeze([]), selectedCallSessionId: null, island: Object.freeze({ kind: 'empty', title: 'No calls yet', callSessionId: null, actions: Object.freeze([]) }), dialTargets: Object.freeze([]), owner: Object.freeze({ available: false, canAct: false, inspectionOnly: true, reason: 'unavailable' }), metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: 0, transcriptLoaded: 0, timers: 0, pollers: 0 }) });
 
+const GENERIC_PRESENTATION_NAME = /^(?:character(?:\s+card)?|contact|owner|unknown|ไม่ทราบชื่อ)$/i;
+
 function presentationDisplayName(...candidates) {
+  let generic = null;
   for (const candidate of candidates) {
     const value = String(candidate || '').trim();
     if (!value || /\{\{[^{}]+\}\}/.test(value)) continue;
+    if (GENERIC_PRESENTATION_NAME.test(value)) { generic ||= value; continue; }
     return value;
   }
-  return 'เจ้าของเครื่อง';
+  return generic || 'เจ้าของเครื่อง';
 }
 
 export class PhoneShellViewModels {
@@ -59,17 +64,46 @@ export class PhoneShellViewModels {
   clearSearchEntry(input) { if (!this.#phoneWorldUtilities) throw new Error('Search service is unavailable'); return this.#phoneWorldUtilities.clearSearchEntry(input); }
   setLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.setLocation(input); }
   endLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.endLocation(input); }
-  async deviceRoster(scopeInput, { playerActorId = null, playerDisplayName = null } = {}) {
+  async deviceRoster(scopeInput, { playerActorId = null, playerDisplayName = null, activeCharacterDisplayName = null } = {}) {
     const scope = requireEventScope(scopeInput);
     return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors'], scope }, async repositories => {
       const states = await repositories.phoneStates.list(); const roster = [];
+      const nonPlayerCount = states.length - 1;
       for (const state of states) {
         const instance = await repositories.instances.get(state.deviceOwnerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId); if (!instance || !actor) continue;
         const playerOwned = isPlayerControlled(actor);
-        const label = presentationDisplayName(instance.displayNameOverride, playerOwned && actor.id === playerActorId ? playerDisplayName : null, actor.displayName, playerOwned ? 'เจ้าของเครื่อง' : 'ไม่ทราบชื่อ');
+        const liveCharacterName = !playerOwned && nonPlayerCount === 1 ? activeCharacterDisplayName : null;
+        const label = presentationDisplayName(instance.displayNameOverride, playerOwned && actor.id === playerActorId ? playerDisplayName : null, liveCharacterName, actor.displayName, ...(actor.aliases || []), playerOwned ? 'เจ้าของเครื่อง' : 'ไม่ทราบชื่อ');
         roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label, kind: playerOwned ? 'my-phone' : 'their-phone', lockState: state.lockState }));
       }
       return Object.freeze(roster.sort((left, right) => (left.kind === 'my-phone' ? -1 : right.kind === 'my-phone' ? 1 : left.label.localeCompare(right.label) || left.deviceId.localeCompare(right.deviceId))));
+    });
+  }
+  async #instantCommunicationTargets(scope, settings, viewerAccountId, activeCharacterDisplayName = null) {
+    if (settings.phoneNumberDiscovery !== PHONE_NUMBER_DISCOVERY.ON || !viewerAccountId) return Object.freeze([]);
+    return this.#unitOfWork.readonly({ stores: ['instances', 'actors', 'accounts'], scope }, async repositories => {
+      const instances = await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId]);
+      const candidates = [];
+      for (const instance of instances) {
+        const actor = await repositories.actors.get(instance.actorId);
+        if (!actor) continue;
+        const accounts = await repositories.accounts.listByIndex('by_owner_scope', [scope.storyId, scope.branchId, instance.id]);
+        const phoneAccounts = accounts.filter(account => account.kind === 'phone');
+        const preferred = phoneAccounts.length ? phoneAccounts : accounts;
+        const account = preferred.find(row => row.isPrimary) || (preferred.length === 1 ? preferred[0] : null);
+        if (!account || account.id === viewerAccountId) continue;
+        candidates.push({ instance, actor, account });
+      }
+      const useLiveName = candidates.length === 1 ? activeCharacterDisplayName : null;
+      return Object.freeze(candidates.map(({ instance, actor, account }) => Object.freeze({
+        accountId: account.id,
+        actorId: actor.id,
+        instanceId: instance.id,
+        label: presentationDisplayName(instance.displayNameOverride, useLiveName, actor.displayName, ...(actor.aliases || []), account.label, 'Contact'),
+        aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]),
+        availability: 'instant',
+        numberRequired: false,
+      })).sort((left, right) => left.label.localeCompare(right.label) || left.accountId.localeCompare(right.accountId)));
     });
   }
   async previewOverview({ scope: inputScope, deviceId, playerActorId, playerInstanceId, controller }) {
@@ -117,17 +151,20 @@ export class PhoneShellViewModels {
     const step = health.find(row => row.metric === 'steps') || null;
     return Object.freeze({ opened, themeId: settings.themeId, status: Number(phoneWorld.unreadTotal || 0) > 0 ? `${phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน', badges: phoneWorld.badges || Object.freeze({}), unreadTotal: Number(phoneWorld.unreadTotal || 0), noteText: note ? (note.title || note.text || null) : null, steps: step ? Number(step.value) : null, lockNotifications });
   }
-  async selected({ scope: inputScope, deviceId, playerActorId, playerInstanceId, route, controller, selectedThreadId = null, selectedCallSessionId = null, selectedLiveSessionId = null }) {
+  async selected({ scope: inputScope, deviceId, playerActorId, playerInstanceId, route, controller, selectedThreadId = null, selectedCallSessionId = null, selectedLiveSessionId = null, activeCharacterDisplayName = null }) {
     const scope = requireEventScope(inputScope); const settings = await this.#settings.get({ scope, playerInstanceId }); const opened = await controller.open({ scope, deviceId, playerActorId, playerInstanceId, settings, appId: route === 'diagnostics' ? 'diagnostics' : route });
     let guideState = null; let guideError = null;
     if (route === 'guide') { try { guideState = await this.#guide.get({ scope, playerInstanceId }); } catch (error) { guideError = error instanceof Error ? error.message : String(error); } }
     const contacts = (route === 'contacts' || route === 'calls' || route === 'messages' || route === 'maps' || route === 'calendar' || route === 'search') && opened.authorization.granted && opened.perspective.accountId ? await this.#contacts.listContacts({ scope, ownerAccountId: opened.perspective.accountId }) : Object.freeze([]);
+    const instantEligible = opened.perspective.accountOwnerInstanceId === playerInstanceId;
+    const communicationTargets = ['contacts', 'calls', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId && instantEligible ? await this.#instantCommunicationTargets(scope, settings, opened.perspective.accountId, activeCharacterDisplayName) : Object.freeze([]);
     const threads = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
     const activeThreadId = threads.some(thread => thread.threadId === selectedThreadId) ? selectedThreadId : (threads[0]?.threadId || null);
     const messages = route === 'messages' && this.#messaging && activeThreadId && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: activeThreadId }) : Object.freeze([]);
     const threadRows = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? Object.freeze(await Promise.all(threads.map(async thread => {
       const matchingContacts = contacts.filter(contact => contact.targetInstanceId && thread.participantInstanceIds.includes(contact.targetInstanceId));
-      const participantLabels = [...new Set(matchingContacts.map(contact => contact.savedName || contact.number).filter(Boolean))];
+      const matchingInstant = communicationTargets.filter(target => thread.participantInstanceIds.includes(target.instanceId));
+      const participantLabels = [...new Set([...matchingContacts.map(contact => contact.savedName || contact.number), ...matchingInstant.map(target => target.label)].filter(Boolean))];
       const label = thread.kind === 'dm' ? (participantLabels[0] || 'ข้อความส่วนตัว') : (participantLabels.length ? participantLabels.join(', ') : `กลุ่ม ${thread.participantInstanceIds.length} คน`);
       const primaryContact = thread.kind === 'dm' ? matchingContacts[0] || null : null;
       const secondary = primaryContact?.savedName ? primaryContact.number : (thread.kind === 'group' ? `${thread.participantAccountIds.length} คน` : '');
@@ -135,7 +172,7 @@ export class PhoneShellViewModels {
       const latest = latestMessages.at(-1) || null;
       return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', participantCount: thread.participantAccountIds.length });
     }))) : Object.freeze([]);
-    const callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts }) : emptyCallUi();
+    const callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts, directTargets: communicationTargets }) : emptyCallUi();
     const calls = callUi.sessions;
     const activeCallSessionId = callUi.selectedCallSessionId;
     const transcripts = callUi.transcript;
@@ -254,6 +291,6 @@ export class PhoneShellViewModels {
       }
     }
     const phoneWorld = this.#notifications && opened.authorization.granted && opened.perspective.accountId ? await this.#notifications.phoneWorld({ scope, accountId: opened.perspective.accountId, deviceId: opened.perspective.deviceId, recentLimit: route === 'notifications' ? 25 : 5 }) : Object.freeze({ badges: Object.freeze({}), recent: Object.freeze([]), unreadTotal: 0, activeLiveAlerts: 0 });
-    return Object.freeze({ settings, guideState, guideError, opened, contacts, threads, threadRows, messages, activeThreadId, calls, transcripts, activeCallSessionId, callUi, feed, feedAccountLabels, insungramThreads, socialProfile, socialError, liveSessions, selectedLive, liveViewers, liveMessages, liveAccountLabels, liveError, galleryItems, fileItems, locationItems, locationAudienceChoices, calendarView, calendarRecipients, calendarError, walletView, shopView, commerceError, weatherItems, healthItems, noteItems, searchHistory, searchSources, utilityError, phoneWorld, messagingEnabled: Boolean(this.#messaging), callsEnabled: Boolean(this.#callCoordinator), socialEnabled: Boolean(this.#social), liveEnabled: Boolean(this.#live), notificationsEnabled: Boolean(this.#notifications), phoneWorldUtilitiesEnabled: Boolean(this.#phoneWorldUtilities), calendarEnabled: Boolean(this.#calendar), commerceEnabled: Boolean(this.#commerce), renderMetrics: Object.freeze({ canonicalEventHistoryScans: callUi.metrics.eventHistoryScans || 0, selectedPhoneReads: 1, contactsLoaded: contacts.length, threadsLoaded: threads.length, messagesLoaded: messages.length, callsLoaded: calls.length, transcriptsLoaded: transcripts.length, callTimers: callUi.metrics.timers || 0, callPollers: callUi.metrics.pollers || 0, feedPostsLoaded: feed.items.length, insungramThreadsLoaded: insungramThreads.length, liveSessionsLoaded: liveSessions.items.length, liveViewersLoaded: liveViewers.items.length, liveMessagesLoaded: liveMessages.items.length, galleryItemsLoaded: galleryItems.length, filesLoaded: fileItems.length, locationsLoaded: locationItems.length, calendarItemsLoaded: calendarView.items.length, walletEntriesLoaded: walletView.entries.length, shopItemsLoaded: shopView.items.length, shopOrdersLoaded: shopView.orders.length, weatherItemsLoaded: weatherItems.length, healthItemsLoaded: healthItems.length, notesLoaded: noteItems.length, searchHistoryLoaded: searchHistory.length, searchSourcesLoaded: searchSources.length, notificationsLoaded: phoneWorld.recent.length, notificationFullScans: 0 }) });
+    return Object.freeze({ settings, guideState, guideError, opened, contacts, communicationTargets, instantEligible, threads, threadRows, messages, activeThreadId, calls, transcripts, activeCallSessionId, callUi, feed, feedAccountLabels, insungramThreads, socialProfile, socialError, liveSessions, selectedLive, liveViewers, liveMessages, liveAccountLabels, liveError, galleryItems, fileItems, locationItems, locationAudienceChoices, calendarView, calendarRecipients, calendarError, walletView, shopView, commerceError, weatherItems, healthItems, noteItems, searchHistory, searchSources, utilityError, phoneWorld, messagingEnabled: Boolean(this.#messaging), callsEnabled: Boolean(this.#callCoordinator), socialEnabled: Boolean(this.#social), liveEnabled: Boolean(this.#live), notificationsEnabled: Boolean(this.#notifications), phoneWorldUtilitiesEnabled: Boolean(this.#phoneWorldUtilities), calendarEnabled: Boolean(this.#calendar), commerceEnabled: Boolean(this.#commerce), renderMetrics: Object.freeze({ canonicalEventHistoryScans: callUi.metrics.eventHistoryScans || 0, selectedPhoneReads: 1, contactsLoaded: contacts.length, threadsLoaded: threads.length, messagesLoaded: messages.length, callsLoaded: calls.length, transcriptsLoaded: transcripts.length, callTimers: callUi.metrics.timers || 0, callPollers: callUi.metrics.pollers || 0, feedPostsLoaded: feed.items.length, insungramThreadsLoaded: insungramThreads.length, liveSessionsLoaded: liveSessions.items.length, liveViewersLoaded: liveViewers.items.length, liveMessagesLoaded: liveMessages.items.length, galleryItemsLoaded: galleryItems.length, filesLoaded: fileItems.length, locationsLoaded: locationItems.length, calendarItemsLoaded: calendarView.items.length, walletEntriesLoaded: walletView.entries.length, shopItemsLoaded: shopView.items.length, shopOrdersLoaded: shopView.orders.length, weatherItemsLoaded: weatherItems.length, healthItemsLoaded: healthItems.length, notesLoaded: noteItems.length, searchHistoryLoaded: searchHistory.length, searchSourcesLoaded: searchSources.length, notificationsLoaded: phoneWorld.recent.length, notificationFullScans: 0 }) });
   }
 }

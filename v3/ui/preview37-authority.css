@@ -37,7 +37,8 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 #tmrw-phone-root {
     position: fixed;
     inset: 0;
-    z-index: 2147483001;
+    z-index: 2147483647;
+    isolation: isolate;
     display: none;
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", sans-serif;
     color: var(--tmrw-ink);

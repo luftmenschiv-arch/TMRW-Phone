@@ -24,16 +24,18 @@ export class CallCoordinator {
     this.#unitOfWork = new V3UnitOfWork(database); this.#calls = callService; this.#phones = phoneStateService;
   }
 
-  async #identityMap(scope, sessions, contacts = []) {
+  async #identityMap(scope, sessions, contacts = [], directTargets = []) {
     const accountIds = [...new Set(sessions.flatMap(session => session.participantAccountIds))];
     const contactByInstance = new Map(contacts.filter(row => row.targetInstanceId).map(row => [row.targetInstanceId, row]));
+    const directByInstance = new Map(directTargets.filter(row => row.instanceId).map(row => [row.instanceId, row]));
     return this.#unitOfWork.readonly({ stores: ['accounts', 'instances', 'actors'], scope }, async repositories => {
       const output = new Map();
       for (const accountId of accountIds) {
         const account = await repositories.accounts.get(accountId); const instance = account && await repositories.instances.get(account.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId);
         if (!account || !instance || !actor) continue;
         const contact = contactByInstance.get(instance.id);
-        output.set(accountId, Object.freeze({ accountId, actorId: actor.id, instanceId: instance.id, displayName: instance.displayNameOverride || actor.displayName, savedName: contact?.savedName || null, aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]) }));
+        const direct = directByInstance.get(instance.id);
+        output.set(accountId, Object.freeze({ accountId, actorId: actor.id, instanceId: instance.id, displayName: direct?.label || instance.displayNameOverride || actor.displayName, savedName: contact?.savedName || null, aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]) }));
       }
       return output;
     });
@@ -58,12 +60,12 @@ export class CallCoordinator {
     return { perspective, owner };
   }
 
-  async view({ scope: inputScope, deviceId, playerActorId, playerInstanceId, selectedCallSessionId = null, contacts = [], historyLimit = MAX_CALLS, transcriptLimit = MAX_TRANSCRIPT }) {
+  async view({ scope: inputScope, deviceId, playerActorId, playerInstanceId, selectedCallSessionId = null, contacts = [], directTargets = [], historyLimit = MAX_CALLS, transcriptLimit = MAX_TRANSCRIPT }) {
     const scope = requireEventScope(inputScope); const { perspective, owner } = await this.#actionContext(scope, deviceId, playerActorId, playerInstanceId);
     if (!perspective.accountId) return Object.freeze({ sessions: Object.freeze([]), history: Object.freeze([]), transcript: Object.freeze([]), selectedCallSessionId: null, island: Object.freeze({ kind: 'empty', title: 'No account on this device', callSessionId: null, actions: Object.freeze([]) }), dialTargets: Object.freeze([]), owner, metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: 0, transcriptLoaded: 0, timers: 0, pollers: 0 }) });
     const limit = Math.max(1, Math.min(MAX_CALLS, Number(historyLimit) || MAX_CALLS));
     const sessions = await this.#calls.listCalls({ scope, viewerAccountId: perspective.accountId, limit });
-    const identities = await this.#identityMap(scope, sessions, contacts);
+    const identities = await this.#identityMap(scope, sessions, contacts, directTargets);
     const history = callHistoryViewModel({ sessions, viewerAccountId: perspective.accountId, identities });
     const selected = sessions.find(row => row.state === CALL_STATE.ACTIVE) || sessions.find(row => row.state === CALL_STATE.RINGING) || sessions.find(row => row.callSessionId === selectedCallSessionId) || sessions[0] || null;
     const transcriptLimitBounded = Math.max(1, Math.min(MAX_TRANSCRIPT, Number(transcriptLimit) || MAX_TRANSCRIPT));
@@ -74,6 +76,10 @@ export class CallCoordinator {
       if (!contact.targetInstanceId) continue;
       const account = await this.#accountForInstance(scope, contact.targetInstanceId); if (!account || account.id === perspective.accountId || dialTargets.some(row => row.accountId === account.id)) continue;
       dialTargets.push(Object.freeze({ accountId: account.id, actorId: contact.targetActorId, instanceId: contact.targetInstanceId, label: contact.savedName || contact.number || 'Contact', aliases: Object.freeze([]) }));
+    }
+    for (const target of directTargets) {
+      if (!target?.accountId || target.accountId === perspective.accountId || dialTargets.some(row => row.accountId === target.accountId)) continue;
+      dialTargets.push(Object.freeze({ accountId: target.accountId, actorId: target.actorId, instanceId: target.instanceId, label: target.label || 'Contact', aliases: Object.freeze(target.aliases || []) }));
     }
     return Object.freeze({ sessions, history, transcript, selectedCallSessionId: selected?.callSessionId || null, island, dialTargets: Object.freeze(dialTargets), owner, metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: sessions.length, transcriptLoaded: transcript.length, timers: 0, pollers: 0, maxHistory: MAX_CALLS, maxTranscript: MAX_TRANSCRIPT }) });
   }
