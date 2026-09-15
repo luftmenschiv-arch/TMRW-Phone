@@ -76,7 +76,7 @@ export class CallVoicePresenter {
 
     let renderResult = null;
     try {
-      renderResult = await this.#adapter.render(request, { signal: controller.signal });
+      renderResult = await this.#adapter.render(request, { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
       if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'text-only', reason: 'voice-cancelled', transcriptEntryId: key, language });
       if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) return this.#record({ status: 'text-only', reason: renderResult?.errorCode || renderResult?.status || 'voice-render-failed', transcriptEntryId: key, language });
       const playback = await this.#playback.play({ callSessionId: transcript.callSessionId, transcriptEntryId: key, audioArtifactRef: renderResult.audioArtifactRef });

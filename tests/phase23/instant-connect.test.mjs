@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { setupPhase9 } from '../phase9/call-fixtures.mjs';
 import { TmrwPhoneShell } from '../../ui/shell.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY, resolveExperiencePreset } from '../../ui/experience-presets.mjs';
+import { DEFAULT_VOICE_RUNTIME_BASE_URL } from '../../ui/settings-beta.mjs';
+import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 async function waitFor(predicate, label = 'Instant Connect UI') {
@@ -71,6 +74,43 @@ test('a persisted legacy Simple preference reads as the current Instant contract
   assert.equal(normalized.phoneNumberDiscovery, PHONE_NUMBER_DISCOVERY.ON);
 });
 
+test('Windows Voice Runtime endpoint is explicit, validated, and preserved across Experience changes', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-runtime-url' });
+  assert.equal((await context.settings.get({ scope: context.scope, playerInstanceId: context.user.instanceId })).voiceRuntimeBaseUrl, DEFAULT_VOICE_RUNTIME_BASE_URL);
+  await context.settings.setVoiceRuntimeBaseUrl({ scope: context.scope, playerInstanceId: context.user.instanceId, baseUrl: 'http://192.168.1.20:18769/' });
+  await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
+  assert.equal((await context.settings.get({ scope: context.scope, playerInstanceId: context.user.instanceId })).voiceRuntimeBaseUrl, 'http://192.168.1.20:18769');
+  await assert.rejects(() => context.settings.setVoiceRuntimeBaseUrl({ scope: context.scope, playerInstanceId: context.user.instanceId, baseUrl: 'http://192.168.1.20:18769/private/path' }), /origin only/);
+});
+
+test('Puzzle adapter uses the saved per-call Windows origin instead of Android localhost', async () => {
+  const urls = [];
+  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl: async url => { urls.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) }; } });
+  const health = await adapter.health({ baseUrl: 'http://192.168.1.20:18769' });
+  assert.equal(health.ready, true);
+  assert.equal(health.endpoint, 'http://192.168.1.20:18769');
+  assert.deepEqual(urls, ['http://192.168.1.20:18769/health']);
+});
+
+test('Call Voice presentation forwards the saved Windows origin without changing canonical text', async () => {
+  const calls = [];
+  const presenter = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({ profileName: 'Puzzle', language: 'ja', defaultDelivery: 'natural', providerNeutral: true }) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'ja', voiceRuntimeBaseUrl: 'http://192.168.1.20:18769' }) },
+    adapter: { render: async (request, options) => { calls.push({ request, options }); return { status: 'unavailable', audioArtifactRef: null, errorCode: 'test-stop' }; }, release() {}, dispose() {} },
+    playbackController: { play: async () => ({ status: 'completed' }), cancelCall: () => false, dispose() {} },
+  });
+  const result = await presenter.presentCommittedBotTranscript({
+    scope: { storyId: 'story:test', branchId: 'branch:test' },
+    playerActorId: 'actor:player',
+    playerInstanceId: 'character-instance:player',
+    commit: { event: { eventType: 'calls.transcript-added.v1', id: 'event:test' }, transcript: { transcriptEntryId: 'transcript:test', callSessionId: 'call:test', actualAuthorActorId: 'actor:bot', actualAuthorInstanceId: 'character-instance:bot', text: 'です。' } },
+  });
+  assert.equal(result.status, 'text-only');
+  assert.equal(calls[0].options.baseUrl, 'http://192.168.1.20:18769');
+  assert.equal(calls[0].request.canonicalText, 'です。');
+});
+
 test('Instant exposes canonical cast Accounts without fabricating Contacts or phone numbers', async () => {
   const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-view-model' });
   await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
@@ -102,6 +142,41 @@ test('Story and Off do not bypass number evidence, and Their Phone never gains p
   assert.deepEqual((await selected(context.alice.deviceId)).communicationTargets, []);
 });
 
+test('ordinary non-Instant outgoing Calls remain ringing and are never silently auto-answered', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-no-auto-answer' });
+  const result = await context.viewModels.callCoordinator.startOutgoing({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    source: { authority: 'p23-instant-test', kind: 'ordinary-call', recordId: 'ordinary-call', version: '1' },
+    idempotencyKey: 'ordinary-call',
+  });
+  assert.equal(result.session.state, 'ringing');
+  assert.equal(result.autoAccepted, false);
+});
+
+test('Instant auto-answer recovers the exact already-ringing Character Call without creating a duplicate', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-recover-ringing' });
+  const input = {
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    source: { authority: 'p23-instant-test', kind: 'recover-call', recordId: 'recover-call', version: '1' },
+    idempotencyKey: 'recover-call',
+  };
+  const ringing = await context.viewModels.callCoordinator.startOutgoing(input);
+  assert.equal(ringing.session.state, 'ringing');
+  const recovered = await context.viewModels.callCoordinator.startOutgoing({ ...input, autoAcceptTarget: true });
+  assert.equal(recovered.session.state, 'active');
+  assert.equal(recovered.autoAccepted, true);
+  assert.equal(recovered.reusedOpenSession, true);
+  assert.equal((await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).length, 1);
+});
+
 test('Instant Messages creates one canonical DM on demand and leaves Contacts untouched', async () => {
   const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-message' });
   await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
@@ -120,7 +195,7 @@ test('Instant Messages creates one canonical DM on demand and leaves Contacts un
   await waitFor(() => /Kaelan Vance/.test(allText(shell.root)), 'Instant DM presentation');
 });
 
-test('Instant Calls starts one canonical Call and keeps the approved active Call surface', async () => {
+test('Instant Calls auto-answers the exact current Character, creates one canonical Call, and keeps the approved active Call surface', async () => {
   const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-call' });
   await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
   const shell = shellFor(context);
@@ -130,9 +205,9 @@ test('Instant Calls starts one canonical Call and keeps the approved active Call
   assert.ok(target);
   target.click();
   target.click();
-  await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).length === 1, 'Instant Call creation');
+  await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId }))[0]?.state === 'active', 'Instant Call auto-answer');
   const calls = await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId });
-  assert.equal(calls[0].state, 'ringing');
-  await waitFor(() => Boolean(find(shell.root, node => node.dataset?.callAction === 'cancel')), 'approved Call surface');
+  assert.equal(calls[0].state, 'active');
+  await waitFor(() => Boolean(find(shell.root, node => node.dataset?.callAction === 'end')), 'approved active Call surface');
   assert.deepEqual(await context.contacts.listContacts({ scope: context.scope, ownerAccountId: context.user.accountId }), []);
 });

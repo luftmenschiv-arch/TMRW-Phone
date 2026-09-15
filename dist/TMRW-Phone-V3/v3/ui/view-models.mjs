@@ -24,9 +24,9 @@ function presentationDisplayName(...candidates) {
 }
 
 export class PhoneShellViewModels {
-  #unitOfWork; #phones; #contacts; #settings; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability;
-  constructor({ database, phoneStateService, contactService, settingsService, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null }) {
-    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState();
+  #unitOfWork; #phones; #contacts; #settings; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter;
+  constructor({ database, phoneStateService, contactService, settingsService, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null }) {
+    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState(); this.#voiceAdapter = voiceAdapter;
   }
   get messagingEnabled() { return Boolean(this.#messaging); }
   get callsEnabled() { return Boolean(this.#callCoordinator); }
@@ -44,6 +44,8 @@ export class PhoneShellViewModels {
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
   setVoiceLanguagePreference({ scope, playerInstanceId, language }) { return this.#settings.setVoiceLanguagePreference({ scope, playerInstanceId, language }); }
   setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }) { return this.#settings.setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }); }
+  setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }) { return this.#settings.setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }); }
+  async testVoiceRuntime({ scope, playerInstanceId }) { const settings = await this.#settings.get({ scope, playerInstanceId }); if (!this.#voiceAdapter?.health) return Object.freeze({ ok: false, ready: false, endpoint: settings.voiceRuntimeBaseUrl, reason: 'voice-adapter-unavailable' }); return this.#voiceAdapter.health({ baseUrl: settings.voiceRuntimeBaseUrl }); }
   setTheme({ scope, playerInstanceId, themeId }) { return this.#settings.setTheme({ scope, playerInstanceId, themeId }); }
   get socialEnabled() { return Boolean(this.#social); }
   get liveEnabled() { return Boolean(this.#live); }
@@ -103,6 +105,7 @@ export class PhoneShellViewModels {
         aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]),
         availability: 'instant',
         numberRequired: false,
+        autoAnswerEligible: candidates.length === 1 && Boolean(useLiveName),
       })).sort((left, right) => left.label.localeCompare(right.label) || left.accountId.localeCompare(right.accountId)));
     });
   }

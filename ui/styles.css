@@ -90,6 +90,10 @@
 #tmrw-phone-root .tmrw-v3-voice-field { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; margin-top: 9px; }
 #tmrw-phone-root .tmrw-v3-voice-field input { min-width: 0; height: 36px; padding: 8px 10px; border: 1px solid #dfe2e6; border-radius: 11px; background: #fff; color: inherit; }
 #tmrw-phone-root .tmrw-v3-voice-field button, #tmrw-phone-root .tmrw-v3-voice-test-card > button { min-height: 36px; padding: 8px 12px; border: 0; border-radius: 11px; background: #25282d; color: #fff; font-size: 10px; font-weight: 720; }
+#tmrw-phone-root .tmrw-v3-voice-connection > button { min-height: 36px; margin-top: 9px; padding: 8px 12px; border: 0; border-radius: 11px; background: #e9f3f9; color: #316b91; font-size: 10px; font-weight: 720; }
+#tmrw-phone-root .tmrw-v3-voice-connection > button:disabled { opacity: .48; cursor: default; }
+#tmrw-phone-root [data-voice-runtime-health="ready"] { color: #23805b; }
+#tmrw-phone-root [data-voice-runtime-health="unavailable"] { color: #a64c52; }
 #tmrw-phone-root .tmrw-v3-voice-test-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; }
 
 /* Production Theme preference applies only through Preview37's existing surface tokens. */

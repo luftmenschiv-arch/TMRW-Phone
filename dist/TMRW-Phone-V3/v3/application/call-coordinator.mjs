@@ -1,6 +1,7 @@
 import { V3UnitOfWork } from '../storage/unit-of-work.mjs';
 import { requireEventScope } from '../domain/events/event-validator.mjs';
 import { CALL_ACTION, CALL_STATE } from '../domain/calls/call-state-machine.mjs';
+import { isPlayerControlled } from '../domain/identity/control-authority.mjs';
 import { resolveCallUiOwner } from '../ui/calls/call-ui-owner.mjs';
 import { callHistoryViewModel } from '../ui/calls/history.mjs';
 import { callIslandViewModel } from '../ui/calls/call-island.mjs';
@@ -54,6 +55,21 @@ export class CallCoordinator {
     return this.#unitOfWork.readonly({ stores: ['accounts'], scope }, repositories => repositories.accounts.get(requireId(accountId, 'accountId')));
   }
 
+  async #autoAnswerEndpoint(scope, accountId) {
+    return this.#unitOfWork.readonly({ stores: ['accounts', 'instances', 'actors', 'devices'], scope }, async repositories => {
+      const account = await repositories.accounts.get(requireId(accountId, 'accountId'));
+      const instance = account && await repositories.instances.get(account.ownerInstanceId);
+      const actor = instance && await repositories.actors.get(instance.actorId);
+      if (!account || !instance || !actor || isPlayerControlled(actor)) throw new Error('Instant auto-answer requires one canonical non-player Character endpoint');
+      const devices = await repositories.devices.listByIndex('by_owner_scope', [scope.storyId, scope.branchId, instance.id]);
+      const accountDeviceIds = new Set(account.deviceIds || []);
+      const eligible = devices.filter(device => device.kind === 'phone' && (!accountDeviceIds.size || accountDeviceIds.has(device.id)));
+      const device = eligible.find(row => row.isPrimary) || (eligible.length === 1 ? eligible[0] : null);
+      if (!device) throw new Error('Instant auto-answer requires one canonical Character phone Device');
+      return Object.freeze({ account, instance, actor, device });
+    });
+  }
+
   async #actionContext(scope, deviceId, playerActorId, playerInstanceId) {
     const perspective = await this.#phones.getPerspective(scope, deviceId); if (!perspective) throw new Error('Call UI requires a scoped phone perspective');
     const owner = resolveCallUiOwner({ perspective, playerActorId, playerInstanceId });
@@ -79,18 +95,42 @@ export class CallCoordinator {
     }
     for (const target of directTargets) {
       if (!target?.accountId || target.accountId === perspective.accountId || dialTargets.some(row => row.accountId === target.accountId)) continue;
-      dialTargets.push(Object.freeze({ accountId: target.accountId, actorId: target.actorId, instanceId: target.instanceId, label: target.label || 'Contact', aliases: Object.freeze(target.aliases || []) }));
+      dialTargets.push(Object.freeze({ accountId: target.accountId, actorId: target.actorId, instanceId: target.instanceId, label: target.label || 'Contact', aliases: Object.freeze(target.aliases || []), availability: target.availability || null, autoAnswerEligible: target.autoAnswerEligible === true }));
     }
     return Object.freeze({ sessions, history, transcript, selectedCallSessionId: selected?.callSessionId || null, island, dialTargets: Object.freeze(dialTargets), owner, metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: sessions.length, transcriptLoaded: transcript.length, timers: 0, pollers: 0, maxHistory: MAX_CALLS, maxTranscript: MAX_TRANSCRIPT }) });
   }
 
-  async startOutgoing({ scope: inputScope, deviceId, playerActorId, playerInstanceId, targetAccountId, source, idempotencyKey }) {
+  async startOutgoing({ scope: inputScope, deviceId, playerActorId, playerInstanceId, targetAccountId, autoAcceptTarget = false, source, idempotencyKey }) {
     const scope = requireEventScope(inputScope); const { perspective, owner } = await this.#actionContext(scope, deviceId, playerActorId, playerInstanceId);
     if (!owner.canAct || !perspective.accountId) throw new Error('Current phone perspective is inspection-only for Call actions');
     const target = await this.#account(scope, targetAccountId); if (!target) throw new Error('Call target Account is not in this Story/Branch'); if (target.id === perspective.accountId) throw new Error('A Call requires a distinct target Account');
     const current = await this.#calls.listCalls({ scope, viewerAccountId: perspective.accountId, limit: 10 }); const open = current.find(session => [CALL_STATE.RINGING, CALL_STATE.ACTIVE].includes(session.state));
-    if (open) { const sameEndpoints = open.participantAccountIds.includes(target.id); if (sameEndpoints) return Object.freeze({ session: open, event: null, replayed: true, reusedOpenSession: true }); throw new Error('Another Call is already ringing or active on this Account'); }
-    return this.#calls.initiate({ scope, participantAccountIds: [perspective.accountId, target.id], callingAccountId: perspective.accountId, calledAccountId: target.id, actualActorId: owner.actualActorId, actualInstanceId: owner.actualInstanceId, deviceId: perspective.deviceId, source, producer: 'phase18-call-coordinator', idempotencyKey });
+    let initiated;
+    if (open) {
+      const sameEndpoints = open.participantAccountIds.includes(target.id);
+      if (!sameEndpoints) throw new Error('Another Call is already ringing or active on this Account');
+      initiated = Object.freeze({ session: open, event: null, replayed: true, reusedOpenSession: true });
+    } else {
+      initiated = await this.#calls.initiate({ scope, participantAccountIds: [perspective.accountId, target.id], callingAccountId: perspective.accountId, calledAccountId: target.id, actualActorId: owner.actualActorId, actualInstanceId: owner.actualInstanceId, deviceId: perspective.deviceId, source, producer: 'phase18-call-coordinator', idempotencyKey });
+    }
+    if (!autoAcceptTarget || initiated.session.state === CALL_STATE.ACTIVE) return Object.freeze({ ...initiated, autoAccepted: initiated.session.state === CALL_STATE.ACTIVE });
+    if (initiated.session.state !== CALL_STATE.RINGING || initiated.session.calledAccountId !== target.id) throw new Error('Instant auto-answer requires the exact ringing called endpoint');
+    const acceptIdempotencyKey = requireId(idempotencyKey, 'idempotencyKey');
+    const sourceRecordId = requireId(source?.recordId, 'source.recordId');
+    const endpoint = await this.#autoAnswerEndpoint(scope, target.id);
+    const accepted = await this.#calls.transition({
+      scope,
+      callSessionId: initiated.session.callSessionId,
+      action: CALL_ACTION.ACCEPT,
+      actualActorId: endpoint.actor.id,
+      actualInstanceId: endpoint.instance.id,
+      deviceId: endpoint.device.id,
+      source: { ...source, recordId: `${sourceRecordId}:instant-auto-answer` },
+      producer: 'phase18-call-coordinator',
+      idempotencyKey: `${acceptIdempotencyKey}:instant-auto-answer`,
+      sourceEventId: initiated.event?.id || null,
+    });
+    return Object.freeze({ ...initiated, session: accepted.session, autoAccepted: true, acceptanceEvent: accepted.event });
   }
 
   async transition({ scope: inputScope, deviceId, playerActorId, playerInstanceId, callSessionId, action, measuredDurationMs = null, source, idempotencyKey }) {
