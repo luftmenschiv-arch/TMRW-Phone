@@ -60,7 +60,11 @@ import { SillyTavernCallContinuationDriver } from '../platform/sillytavern/call-
 import { CallStoryIntegrationCoordinator } from '../application/call-story-integration.mjs';
 import { VoiceProfileService } from '../application/voice-profile-service.mjs';
 import { VoiceAudioHistoryService } from '../application/voice-audio-history-service.mjs';
-import { createPhase19VoiceCapabilityState } from '../domain/voice/voice-capability.mjs';
+import { CallBotReplyCoordinator } from '../application/call-bot-reply-coordinator.mjs';
+import { CallVoicePresenter } from '../application/call-voice-presenter.mjs';
+import { createPhase19VoiceCapabilityState, createProductionVoiceV1CapabilityState } from '../domain/voice/voice-capability.mjs';
+import { PuzzleLocalRuntimeVoiceAdapter } from '../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { CallVoicePlaybackController } from '../ui/calls/call-voice-playback.mjs';
 import { SillyTavernV3RuntimeIntegration } from '../platform/sillytavern/runtime-integration.mjs';
 import { PhoneShellViewModels } from '../ui/view-models.mjs';
 import { PhoneController } from '../application/phone-controller.mjs';
@@ -584,9 +588,22 @@ async function buildRuntime(options, entry) {
     await activation.mark('voice-profile-service');
     const voiceAudioHistory = new VoiceAudioHistoryService({ database: normalDatabase });
     await activation.mark('voice-audio-history-service');
-    const voiceCapability = createPhase19VoiceCapabilityState();
-    if (voiceCapability.runtimeAvailable !== false) throw new Error('S08 must preserve Voice runtimeAvailable=false');
-    await activation.mark('voice-runtime-unavailable', voiceCapability);
+    const voiceCapability = createProductionVoiceV1CapabilityState();
+    const voiceAdapter = new PuzzleLocalRuntimeVoiceAdapter({
+      fetchImpl: globalObject.fetch?.bind?.(globalObject) || null,
+      createObjectURL: globalObject.URL?.createObjectURL?.bind?.(globalObject.URL) || null,
+      revokeObjectURL: globalObject.URL?.revokeObjectURL?.bind?.(globalObject.URL) || null,
+    });
+    const voicePlayback = new CallVoicePlaybackController({
+      audioFactory: source => typeof globalObject.Audio === 'function' ? new globalObject.Audio(source) : null,
+    });
+    const callVoicePresenter = new CallVoicePresenter({ voiceProfileService: voiceProfiles, settingsService: settings, adapter: voiceAdapter, playbackController: voicePlayback });
+    const callBotReply = new CallBotReplyCoordinator({ callService: calls, voiceProfileService: voiceProfiles, settingsService: settings, bindingResolver, getContext });
+    activation.addResource('voice-presenter', () => callVoicePresenter.dispose());
+    await activation.mark('voice-runtime-configured', voiceCapability);
+    await activation.mark('voice-puzzle-adapter');
+    await activation.mark('voice-presenter');
+    await activation.mark('call-bot-reply');
 
     const runtimeIntegration = new SillyTavernV3RuntimeIntegration({
       eventSource,
@@ -630,7 +647,7 @@ async function buildRuntime(options, entry) {
     gate.close('s08-awaiting-s09-mount-launcher');
     await activation.mark('s08-ready-without-mount', finalHealth);
 
-    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, viewModels, phoneController });
+    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, voiceAdapter, voicePlayback, callVoicePresenter, callBotReply, viewModels, phoneController });
     const composition = Object.freeze({ normalDatabase, identityKernel, contextAdapter, identityResolver, eventEngine, runtimeIntegration, listenerOwner, generationOwner, heartbeat, authoringGate: gate, runtimeGuard, productionHealth });
 
     const root = Object.freeze({

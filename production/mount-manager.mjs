@@ -180,6 +180,8 @@ export class ProductionMountManager {
         callService: services.calls,
         callCoordinator: services.callCoordinator,
         callStoryIntegration: services.callStoryIntegration,
+        callBotReply: services.callBotReply,
+        callVoicePresenter: services.callVoicePresenter,
         storyContinuation: services.continuation,
         socialService: services.social,
         notificationService: services.notifications,
