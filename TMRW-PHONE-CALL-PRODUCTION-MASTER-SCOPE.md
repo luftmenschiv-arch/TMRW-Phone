@@ -362,4 +362,14 @@ Recorded result:
 - production package: 241 files, 731 import edges
 - package verification: passed
 - Character Card image route on the live SillyTavern host: HTTP 200, `image/png`
-- Android deployment: pending this checkpoint commit
+- GitHub checkpoint: `da00f1d` (`Polish archived call audio and mobile call UI`)
+- Android deployment: clean fast-forward from `de51342` to `da00f1d`
+
+Deployment commands:
+
+```powershell
+git bundle create C:\ai\tmrw-phone-da00f1d.bundle codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 push C:\ai\tmrw-phone-da00f1d.bundle /data/local/tmp/tmrw-phone-da00f1d.bundle
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 fetch /data/local/tmp/tmrw-phone-da00f1d.bundle codex/phone-instant-connect-ui:refs/remotes/local-deploy/codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 merge --ff-only refs/remotes/local-deploy/codex/phone-instant-connect-ui
+```
