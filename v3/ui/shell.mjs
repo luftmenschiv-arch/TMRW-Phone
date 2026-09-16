@@ -32,7 +32,7 @@ const createActionNonce = () => typeof globalThis.crypto?.randomUUID === 'functi
   : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #callWarmKey = null; #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #callWarmKey = null; #callConnectedAt = new Map(); #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
 
   #renderedRoute = null;
   #renderRevision = 0;
@@ -228,7 +228,12 @@ export class TmrwPhoneShell {
     return this.#socialShell('insungram', this.#selectedPerspectiveLabel, body);
   }
 
-  #renderCallsBase(view) { const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const historyTab=element(this.#document,'button','Call History');historyTab.className='is-active';const contactsTab=element(this.#document,'button','Saved Names');contactsTab.addEventListener('click',()=>this.#router.navigate('contacts'));tabs.append(historyTab,contactsTab);body.append(tabs);const filters=element(this.#document,'div');filters.className='tmrw-phone-filter-chips tmrw-phone-soft-chips tmrw-phone-call-filters';for(const label of ['All','Missed','Outgoing','Voice','Video']){const b=element(this.#document,'button',label);b.disabled=true;if(label==='All')b.className='is-active';filters.append(b);}body.append(filters);const groups=element(this.#document,'div');groups.className='tmrw-phone-call-groups';if(!view.callUi.history.length)groups.append(element(this.#document,'p','ยังไม่มี Call History'));for(const call of view.callUi.history){const section=element(this.#document,'section');section.className='tmrw-phone-call-group';section.append(element(this.#document,'h3','Today'));const row=element(this.#document,'button');row.className='tmrw-phone-call-row';row.dataset.callSessionId=call.callSessionId;row.append(createPreviewAvatar({document:this.#document,label:call.displayLabel,size:'sm'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',call.displayLabel),element(this.#document,'small',call.statusLabel));row.append(copy,element(this.#document,'time',call.timeLabel||'ล่าสุด'),createPreviewIcon({document:this.#document,name:'more',size:17}));row.addEventListener('click',()=>{this.#selectedCallSessionId=call.callSessionId;this.#closedCallSurfaceId=null;void this.renderActive();});section.append(row);groups.append(section);}body.append(groups);return wrapPreviewApp({document:this.#document,kind:'personal',app:'calls',title:'Phone',subtitle:'Call History และ Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()}); }
+  #renderCallsBase(view) {
+    const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const historyTab=element(this.#document,'button','Call History');historyTab.className='is-active';const contactsTab=element(this.#document,'button','Saved Names');contactsTab.addEventListener('click',()=>this.#router.navigate('contacts'));tabs.append(historyTab,contactsTab);body.append(tabs);const filters=element(this.#document,'div');filters.className='tmrw-phone-filter-chips tmrw-phone-soft-chips tmrw-phone-call-filters';for(const label of ['All','Missed','Outgoing','Voice','Video']){const b=element(this.#document,'button',label);b.disabled=true;if(label==='All')b.className='is-active';filters.append(b);}body.append(filters);
+    const groups=element(this.#document,'div');groups.className='tmrw-phone-call-groups';if(!view.callUi.history.length)groups.append(element(this.#document,'p','ยังไม่มี Call History'));
+    const sections=new Map();
+    for(const call of view.callUi.history){let section=sections.get(call.dateGroupKey);if(!section){section=element(this.#document,'section');section.className='tmrw-phone-call-group';section.dataset.dateGroup=call.dateGroupKey;section.append(element(this.#document,'h3',call.dateGroupLabel));sections.set(call.dateGroupKey,section);groups.append(section);}const row=element(this.#document,'button');row.className='tmrw-phone-call-row';row.dataset.callSessionId=call.callSessionId;row.append(createPreviewAvatar({document:this.#document,label:call.displayLabel,size:'sm'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',call.displayLabel),element(this.#document,'small',`${call.statusLabel} · ${call.durationLabel}`));row.append(copy,element(this.#document,'time',call.timeLabel),createPreviewIcon({document:this.#document,name:'more',size:17}));row.addEventListener('click',()=>{this.#selectedCallSessionId=call.callSessionId;this.#closedCallSurfaceId=null;void this.renderActive();});section.append(row);}body.append(groups);return wrapPreviewApp({document:this.#document,kind:'personal',app:'calls',title:'Phone',subtitle:'Call History และ Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()});
+  }
   #renderContacts(view) { const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const history=element(this.#document,'button','Call History');history.addEventListener('click',()=>this.#router.navigate('calls'));const saved=element(this.#document,'button','Saved Names');saved.className='is-active';tabs.append(history,saved);body.append(tabs);const search=element(this.#document,'label');search.className='tmrw-phone-personal-search tmrw-phone-soft-search';addIcon(this.#document,search,'search',20);const input=element(this.#document,'input');input.placeholder='Search saved names...';input.disabled=true;search.append(input);body.append(search);const list=element(this.#document,'div');list.className='tmrw-phone-saved-list';for(const contact of contactsViewModel(view.contacts)){const row=element(this.#document,'button');row.dataset.contactPointId=contact.id;row.append(createPreviewAvatar({document:this.#document,label:contact.primary,size:'md'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',contact.primary),element(this.#document,'small',contact.secondary));row.append(copy);const icon=element(this.#document,'b');addIcon(this.#document,icon,'phone',18);row.append(icon);list.append(row);}if(!view.contacts.length)list.append(element(this.#document,'p','ยังไม่มี Saved Names'));body.append(list);return wrapPreviewApp({document:this.#document,kind:'personal',app:'contacts',title:'Phone',subtitle:'Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()}); }
 
   #commerceNav(route) { return createPreviewCommerceNav({ document:this.#document, active:route, onNavigate:target=>{ if(target==='launcher')this.#goHome(); else this.#openRoute(target); } }); }
@@ -285,7 +290,7 @@ export class TmrwPhoneShell {
     if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
       const call = view.calls.find(row => row.callSessionId === island.callSessionId);
       this.#restoreInterruptedCallTurn(island, call);
-      if (island.kind === 'active') this.#warmActiveCall(view, island.callSessionId);
+      if (island.kind === 'active') { this.#rememberConnectedAt(call); this.#warmActiveCall(view, island.callSessionId); }
       return renderApprovedCallSurface({
         document: this.#document,
         island,
@@ -322,6 +327,20 @@ export class TmrwPhoneShell {
     this.#callWarmKey = key;
     void this.#callVoicePresenter.warmCall({ scope: this.#scope, playerInstanceId: this.#player.instanceId, callSessionId });
     return true;
+  }
+
+  #rememberConnectedAt(call) {
+    const id = String(call?.callSessionId || '').trim();
+    if (!id || this.#callConnectedAt.has(id)) return;
+    const canonical = Date.parse(call?.connectedAt || '');
+    this.#callConnectedAt.set(id, Number.isFinite(canonical) ? canonical : Date.now());
+  }
+
+  #measuredCallDuration(call) {
+    const id = String(call?.callSessionId || '').trim();
+    this.#rememberConnectedAt(call);
+    const startedAt = this.#callConnectedAt.get(id);
+    return Number.isFinite(startedAt) ? Math.max(0, Math.round(Date.now() - startedAt)) : 0;
   }
 
   async #renderContent(view) {
@@ -452,6 +471,7 @@ export class TmrwPhoneShell {
   }
   async #transitionCall(view, call, action) {
     if (!call) return; const perspective = view.opened.perspective; const sequence = ++this.#callSequence; let canonicalEndCommitted = false;
+    const measuredDurationMs = action === 'end' ? this.#measuredCallDuration(call) : null;
     if (['end', 'cancel', 'decline'].includes(action)) this.#cancelCallTurn(call.callSessionId, `call-${action}`);
     try {
       this.#lastCallError = null;
@@ -462,7 +482,7 @@ export class TmrwPhoneShell {
           playerActorId: this.#player.actorId,
           playerInstanceId: this.#player.instanceId,
           callSessionId: call.callSessionId,
-          measuredDurationMs: 0,
+          measuredDurationMs,
           consequences: [],
           latestVisibleRole: this.#storyContinuation?.latestVisibleRole?.() || null,
           continuationDriver: this.#storyContinuation,
@@ -473,14 +493,15 @@ export class TmrwPhoneShell {
         canonicalEndCommitted = true;
       } else if (this.#callCoordinator) {
         const key = 'phase18-call-transition:' + perspective.deviceId + ':' + this.#callActionNonce + ':' + sequence;
-        await this.#callCoordinator.transition({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, action, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, idempotencyKey: key });
+        await this.#callCoordinator.transition({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, action, measuredDurationMs, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, idempotencyKey: key });
         canonicalEndCommitted = action === 'end';
       } else if (this.#calls && perspective.accountId) {
         const key = 'call-transition:' + perspective.deviceId + ':' + this.#callActionNonce + ':' + sequence;
-        await this.#calls.transition({ scope: this.#scope, callSessionId: call.callSessionId, action, actualActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, measuredDurationMs: action === 'end' ? 0 : null, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, producer: 'phase9-shell', idempotencyKey: key });
+        await this.#calls.transition({ scope: this.#scope, callSessionId: call.callSessionId, action, actualActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, measuredDurationMs, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, producer: 'phase9-shell', idempotencyKey: key });
         canonicalEndCommitted = action === 'end';
       }
       if (canonicalEndCommitted && !this.#callStoryIntegration) { try { this.#callVoicePresenter?.cancelCall?.(call.callSessionId); } catch {} }
+      if (canonicalEndCommitted) this.#callConnectedAt.delete(call.callSessionId);
     } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); }
     await this.renderActive();
   }
@@ -512,6 +533,7 @@ export class TmrwPhoneShell {
     try { this.#callBotReply?.cancelCall?.(id); } catch {}
     try { this.#callVoicePresenter?.cancelCall?.(id, reason); } catch {}
     if (this.#callWarmKey?.startsWith(`${id}|`)) this.#callWarmKey = null;
+    this.#callConnectedAt.delete(id);
     return Boolean(controller);
   }
   #failCallTurn(callSessionId, message, retryLabel, retry) {

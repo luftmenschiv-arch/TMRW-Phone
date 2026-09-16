@@ -36,10 +36,12 @@ function sorted(rows) { return [...rows].sort((left, right) => left.sourceEventS
 async function materializeSession(repositories, scope, callSessionId, rows, updatedAt) {
   let current = null;
   for (const row of sorted(rows)) {
-    if (row.data.operation === 'initiate') current = { ...row.data.session, sourceInitiatedEventId: row.sourceEventId, sourceInitiatedSequence: row.sourceEventSequence, lastLifecycleEventId: row.sourceEventId, lastLifecycleSequence: row.sourceEventSequence, durationEvidence: null, durationSourceEventId: null, revision: 1 };
+    if (row.data.operation === 'initiate') current = { ...row.data.session, startedAt: row.updatedAt, connectedAt: null, endedAt: null, sourceInitiatedEventId: row.sourceEventId, sourceInitiatedSequence: row.sourceEventSequence, lastLifecycleEventId: row.sourceEventId, lastLifecycleSequence: row.sourceEventSequence, durationEvidence: null, durationSourceEventId: null, revision: 1 };
     else if (row.data.operation === 'transition' && current) {
       const transition = row.data.transition;
-      current = { ...current, state: transition.state, lastLifecycleEventId: row.sourceEventId, lastLifecycleSequence: row.sourceEventSequence, lastActualActorId: transition.actualActorId, lastActualInstanceId: transition.actualInstanceId, lastDeviceId: transition.deviceId, durationEvidence: transition.storyClockAdvance || current.durationEvidence, durationSourceEventId: transition.storyClockAdvance ? row.sourceEventId : current.durationSourceEventId, revision: current.revision + 1 };
+      const connectedAt = transition.action === 'accept' ? (current.connectedAt || row.updatedAt) : current.connectedAt;
+      const endedAt = ['ended', 'declined', 'cancelled', 'missed'].includes(transition.state) ? row.updatedAt : current.endedAt;
+      current = { ...current, state: transition.state, connectedAt, endedAt, lastLifecycleEventId: row.sourceEventId, lastLifecycleSequence: row.sourceEventSequence, lastActualActorId: transition.actualActorId, lastActualInstanceId: transition.actualInstanceId, lastDeviceId: transition.deviceId, durationEvidence: transition.storyClockAdvance || current.durationEvidence, durationSourceEventId: transition.storyClockAdvance ? row.sourceEventId : current.durationSourceEventId, revision: current.revision + 1 };
     }
   }
   const id = callSessionHeadId(scope, callSessionId);
