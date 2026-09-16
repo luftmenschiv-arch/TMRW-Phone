@@ -6,6 +6,7 @@ import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-loca
 import { CallVoicePlaybackController } from '../../ui/calls/call-voice-playback.mjs';
 import { BetaSettingsService, GLOBAL_VOICE_SETTINGS_KEY } from '../../ui/settings-beta.mjs';
 import { renderApprovedCallSurface } from '../../ui/calls/approved-call-surface.mjs';
+import { TmrwPhoneShell } from '../../ui/shell.mjs';
 import { CALL_EVENT_TYPES } from '../../domain/calls/call-event-types.mjs';
 import { setupPhase9 } from '../phase9/call-fixtures.mjs';
 import { FakeDocument } from '../phase7/fake-dom.mjs';
@@ -63,7 +64,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.equal(prepared.status, 'prepared');
   assert.equal(h.bindingInputs[0].canonicalAccountId, botBinding.accountId);
   assert.equal(h.bindingInputs[0].allowLegacySingleCharacterPlaceholder, true);
-  assert.equal(h.prompts[0].responseLength, 1024, 'reasoning-capable providers must have enough output budget to close the bilingual JSON object');
+  assert.equal(h.prompts[0].responseLength, 4096, 'reasoning-capable providers must have enough output budget to close the bilingual JSON object');
   assert.equal(prepared.language, 'ja');
   assert.deepEqual(prepared.segments.map(row => [row.subtitleThai, row.spokenText]), [
     ['อรุณสวัสดิ์ครับ', 'おはようございます。'],
@@ -373,4 +374,53 @@ test('active Call UI locks typing during work, keeps hangup available, and expos
   const speaking = renderApprovedCallSurface({ document, island, turnState: { phase: 'speaking', locked: true, subtitleThai: 'อรุณสวัสดิ์ครับ' }, captionsVisible: false });
   assert.match(allText(speaking), /กำลังพูด/);
   assert.doesNotMatch(allText(speaking), /อรุณสวัสดิ์ครับ/);
+});
+
+test('same-route Call state refresh keeps the current surface visible while view data hydrates', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'voice-v2-call-refresh' });
+  let delayNextCalls = false;
+  let releaseHydration = null;
+  const viewModels = new Proxy(context.viewModels, {
+    get(target, property) {
+      if (property === 'selected') return async input => {
+        const view = await target.selected(input);
+        if (delayNextCalls && input.route === 'calls') {
+          delayNextCalls = false;
+          await new Promise(resolve => { releaseHydration = resolve; });
+        }
+        return view;
+      };
+      const value = target[property];
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const shell = new TmrwPhoneShell({
+    document: context.document,
+    viewModels,
+    controller: context.controller,
+    messageService: context.messages,
+    callService: context.calls,
+    callCoordinator: viewModels.callCoordinator,
+    scope: context.scope,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    selectedDeviceId: context.user.deviceId,
+  });
+  await shell.mount(context.target);
+  find(shell.root, node => node.dataset?.action === 'unlock').click();
+  for (let index = 0; index < 100 && !find(shell.root, node => node.dataset?.app === 'calls'); index += 1) await new Promise(resolve => setImmediate(resolve));
+  find(shell.root, node => node.dataset?.app === 'calls').click();
+  for (let index = 0; index < 100 && !/ยังไม่มี Call History/.test(allText(shell.root)); index += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.match(allText(shell.root), /ยังไม่มี Call History/);
+  const screen = find(shell.root, node => node.id === 'tmrw-phone-screen');
+  const visibleCallSurface = screen.children[0];
+
+  delayNextCalls = true;
+  const refreshing = shell.renderActive();
+  for (let index = 0; index < 100 && !releaseHydration; index += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.equal(typeof releaseHydration, 'function');
+  assert.equal(screen.children[0], visibleCallSurface, 'same-route refresh must not replace the Call surface with a loading screen');
+  assert.doesNotMatch(allText(screen), /กำลังโหลด Phone/);
+  releaseHydration();
+  await refreshing;
 });

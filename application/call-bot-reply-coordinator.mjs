@@ -226,7 +226,7 @@ export class CallBotReplyCoordinator {
         quietToLoud: false,
         skipWIAN: false,
         quietName: 'TMRW Call',
-        responseLength: 1024,
+        responseLength: 4096,
         forceChId,
         removeReasoning: true,
         trimToSentence: false,

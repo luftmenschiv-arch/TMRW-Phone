@@ -34,6 +34,9 @@ const createActionNonce = () => typeof globalThis.crypto?.randomUUID === 'functi
 export class TmrwPhoneShell {
   #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
 
+  #renderedRoute = null;
+  #renderRevision = 0;
+
   constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, callBotReply = null, callVoicePresenter = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, playerDisplayName = null, activeCharacterDisplayName = null, selectedDeviceId, onClose = null }) {
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
     this.#document = document; this.#models = viewModels; this.#controller = controller; this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || viewModels.callCoordinator || null; this.#callStoryIntegration = callStoryIntegration; this.#callBotReply = callBotReply; this.#callVoicePresenter = callVoicePresenter; this.#storyContinuation = storyContinuation; this.#social = socialService; this.#notifications = notificationService; this.#scope = scope; this.#player = { actorId: playerActorId, instanceId: playerInstanceId }; this.#playerDisplayName = playerDisplayName; this.#activeCharacterDisplayName = activeCharacterDisplayName; this.#selectedDeviceId = selectedDeviceId; this.#onClose = typeof onClose === 'function' ? onClose : null;
@@ -64,9 +67,10 @@ export class TmrwPhoneShell {
   }
 
   async render() {
+    const revision = ++this.#renderRevision;
     const root = this.#root; const screen = this.#screen; const route = this.#router.route;
     if (!root || !screen) return null;
-    const isCurrent = () => this.#root === root && this.#screen === screen && this.#router.route === route;
+    const isCurrent = () => this.#root === root && this.#screen === screen && this.#router.route === route && this.#renderRevision === revision;
     const roster = await this.#deviceRoster(); if (!isCurrent()) return null; const myPhone = roster.find(row => row.kind === 'my-phone');
     if (!myPhone) throw new Error('Canonical My Phone device is unavailable for the current Story/Branch');
     if (!roster.some(row => row.deviceId === this.#selectedDeviceId)) this.#selectedDeviceId = myPhone.deviceId;
@@ -81,18 +85,19 @@ export class TmrwPhoneShell {
       } else {
         screen.replaceChildren(createPreviewHome({ document: this.#document, ownerLabel: selected.label, overview, homePage: this.#homePage, onOwner, onApp: nextRoute => this.#openRoute(nextRoute), onPage: (page, pager) => { this.#homePage = Math.max(0, Math.min(1, Number(page) || 0)); const left = this.#homePage * Math.max(1, Number(pager.clientWidth || 0)); if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior: 'smooth' }); else pager.scrollLeft = left; }, onDock: action => { if (action === 'owner') onOwner(); else this.#openRoute(action); }, onLock: () => this.#lock() }));
       }
-      this.#metrics.appRegionUpdates += 1; return overview;
+      this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return overview;
     }
 
-    screen.replaceChildren(this.#loadingScreen(route));
+    const refreshingSameRoute = this.#renderedRoute === route && Boolean(screen.children?.length);
+    if (!refreshingSameRoute) screen.replaceChildren(this.#loadingScreen(route));
     let view;
     try { view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId, selectedLiveSessionId: this.#selectedLiveSessionId, activeCharacterDisplayName: this.#activeCharacterDisplayName }); }
-    catch (error) { if (!isCurrent()) return null; screen.replaceChildren(this.#errorScreen(route, error)); this.#metrics.appRegionUpdates += 1; return null; }
+    catch (error) { if (!isCurrent()) return null; screen.replaceChildren(this.#errorScreen(route, error)); this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return null; }
     if (!isCurrent()) return null;
     root.dataset.theme = view.settings?.themeId || 'light-blue';
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
     this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
-    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content); this.#metrics.appRegionUpdates += 1; return view;
+    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content); this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return view;
   }
 
   #loadingScreen(route) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-utility-list'; const row = element(this.#document, 'p', `กำลังโหลด ${APP_TITLES[route] || route}…`); row.setAttribute('role','status'); body.append(row); return wrapPreviewApp({ document:this.#document, kind:appKind(route), app:route, title:APP_TITLES[route]||route, body, onBack:()=>this.#goHome() }); }
@@ -516,7 +521,7 @@ export class TmrwPhoneShell {
       const prepared = await this.#callBotReply.prepareReplyToCommittedUserTranscript({ scope: this.#scope, playerInstanceId: this.#player.instanceId, commit: userCommit, signal: controller.signal, timeoutMs: 30000 });
       if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
       if (prepared?.status !== 'prepared') {
-        const message = prepared?.reason === 'generation-timeout' ? 'บอทใช้เวลาตอบเกิน 30 วินาที' : 'สร้างคำตอบไม่สำเร็จ';
+        const message = prepared?.reason === 'generation-timeout' ? 'บอทใช้เวลาตอบเกิน 30 วินาที' : prepared?.reason === 'invalid-structured-model-response' ? 'คำตอบจากโมเดลมาไม่ครบ' : 'สร้างคำตอบไม่สำเร็จ';
         this.#failCallTurn(callSessionId, message, 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit)); return false;
       }
       return this.#runPreparedVoice(call, prepared, { controller, committed: null, startIndex: 0 });
