@@ -46,6 +46,7 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 if [[ ! -f "$PID_FILE" ]]; then
+  export HOME="$TERMUX_HOME"
   export PREFIX="$TERMUX_PREFIX"
   export PATH="$TERMUX_PREFIX/bin:${PATH:-/system/bin}"
   export GENIE_DATA_DIR="$WORKSPACE/GenieData"
@@ -65,6 +66,10 @@ for _ in $("$TERMUX_PREFIX/bin/seq" 1 180); do
   if health_ready; then
     echo 'READY: http://127.0.0.1:18769'
     exit 0
+  fi
+  if [[ ! -f "$PID_FILE" ]]; then
+    echo 'TMRW Voice Mobile startup was stopped.' >&2
+    exit 1
   fi
   runtime_pid=$(<"$PID_FILE")
   if ! "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null; then
