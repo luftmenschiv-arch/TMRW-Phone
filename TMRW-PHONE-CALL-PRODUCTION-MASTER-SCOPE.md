@@ -396,4 +396,14 @@ Recorded result:
 - the unrelated `production-home-presentation.test.mjs` aggregate could not load because the tracked baseline still references absent `tests/phase17/notification-fixtures.mjs`
 - production package: 241 files, 731 import edges
 - package verification: passed
-- Android deployment: pending this checkpoint commit
+- GitHub checkpoint: `3e704a2` (`Stabilize call UI and add phone dialpad`)
+- Android deployment: clean fast-forward from `d62ef10` to `3e704a2`; live-file checks found the dialpad launcher and grapheme wave renderer
+
+Deployment commands:
+
+```powershell
+git bundle create C:\ai\tmrw-phone-3e704a2.bundle codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 push C:\ai\tmrw-phone-3e704a2.bundle /data/local/tmp/tmrw-phone-3e704a2.bundle
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 fetch /data/local/tmp/tmrw-phone-3e704a2.bundle codex/phone-instant-connect-ui:refs/remotes/local-deploy/codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 merge --ff-only refs/remotes/local-deploy/codex/phone-instant-connect-ui
+```
