@@ -201,6 +201,39 @@ test('Instant auto-answer recovers the exact already-ringing Character Call with
   assert.equal((await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).length, 1);
 });
 
+test('an ended Call stays in history without replacing the Instant dial screen on reopen', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-ended-history-only' });
+  await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
+  const call = await context.viewModels.callCoordinator.startOutgoing({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    autoAcceptTarget: true,
+    source: { authority: 'p23-instant-test', kind: 'ended-history', recordId: 'ended-history-call', version: '1' },
+    idempotencyKey: 'ended-history-call',
+  });
+  await context.viewModels.callCoordinator.transition({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    callSessionId: call.session.callSessionId,
+    action: 'end',
+    measuredDurationMs: 0,
+    source: { authority: 'p23-instant-test', kind: 'ended-history', recordId: 'ended-history-end', version: '1' },
+    idempotencyKey: 'ended-history-end',
+  });
+  const input = { scope: context.scope, deviceId: context.user.deviceId, playerActorId: context.user.actorId, playerInstanceId: context.user.instanceId, route: 'calls', controller: context.controller, activeCharacterDisplayName: 'Kaelan Vance' };
+  const reopened = await context.viewModels.selected(input);
+  assert.equal(reopened.callUi.island.kind, 'empty');
+  assert.deepEqual(reopened.callUi.dialTargets.map(row => row.accountId), [context.alice.accountId]);
+  assert.equal(reopened.callUi.history.some(row => row.callSessionId === call.session.callSessionId), true);
+  const historyDetail = await context.viewModels.selected({ ...input, selectedCallSessionId: call.session.callSessionId });
+  assert.equal(historyDetail.callUi.island.kind, 'ended');
+});
+
 test('active text Call gets a canonical bot reply even before a Voice profile is configured', async () => {
   const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-text-before-voice' });
   const call = await context.viewModels.callCoordinator.startOutgoing({

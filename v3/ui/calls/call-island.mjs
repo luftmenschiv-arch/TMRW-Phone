@@ -6,8 +6,7 @@ import { endedCallViewModel } from './ended.mjs';
 function chooseSession(sessions, selectedCallSessionId) {
   return sessions.find(row => row.state === 'active')
     || sessions.find(row => row.state === 'ringing')
-    || sessions.find(row => row.callSessionId === selectedCallSessionId)
-    || sessions[0]
+    || (selectedCallSessionId ? sessions.find(row => row.callSessionId === selectedCallSessionId) : null)
     || null;
 }
 

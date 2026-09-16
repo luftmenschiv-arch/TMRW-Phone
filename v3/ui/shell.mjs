@@ -264,9 +264,9 @@ export class TmrwPhoneShell {
         inspectionOnly: view.callUi.owner.inspectionOnly,
         onAction: action => call ? this.#transitionCall(view, call, action) : null,
         onSend: input => call ? this.#sendCallText(view, call, input) : null,
-        onClose: () => { this.#closedCallSurfaceId = island.callSessionId; return this.renderActive(); },
+        onClose: () => { this.#closedCallSurfaceId = island.callSessionId; this.#selectedCallSessionId = null; return this.renderActive(); },
         onContinueOnce: island.kind === 'ended' && this.#callStoryIntegration && this.#storyContinuation ? () => this.#continueAfterEnded(island.callSessionId) : null,
-        onNavigate: target => { if (target === 'settings') this.#router.navigate('settings'); else if (target === 'history') { this.#closedCallSurfaceId = island.callSessionId; void this.renderActive(); } },
+        onNavigate: target => { if (target === 'settings') this.#router.navigate('settings'); else if (target === 'history') { this.#closedCallSurfaceId = island.callSessionId; this.#selectedCallSessionId = null; void this.renderActive(); } },
       });
     }
     const base = this.#renderCallsBase(view); const main = firstDescendant(base, node => String(node.tagName || '').toLowerCase() === 'main'); if (!main) return base;

@@ -83,7 +83,8 @@ export class CallCoordinator {
     const sessions = await this.#calls.listCalls({ scope, viewerAccountId: perspective.accountId, limit });
     const identities = await this.#identityMap(scope, sessions, contacts, directTargets);
     const history = callHistoryViewModel({ sessions, viewerAccountId: perspective.accountId, identities });
-    const selected = sessions.find(row => row.state === CALL_STATE.ACTIVE) || sessions.find(row => row.state === CALL_STATE.RINGING) || sessions.find(row => row.callSessionId === selectedCallSessionId) || sessions[0] || null;
+    const requested = selectedCallSessionId ? sessions.find(row => row.callSessionId === selectedCallSessionId) : null;
+    const selected = sessions.find(row => row.state === CALL_STATE.ACTIVE) || sessions.find(row => row.state === CALL_STATE.RINGING) || requested || null;
     const transcriptLimitBounded = Math.max(1, Math.min(MAX_TRANSCRIPT, Number(transcriptLimit) || MAX_TRANSCRIPT));
     const transcript = selected ? await this.#calls.listTranscript({ scope, viewerAccountId: perspective.accountId, callSessionId: selected.callSessionId, limit: transcriptLimitBounded }) : Object.freeze([]);
     const island = callIslandViewModel({ sessions, history, transcript, viewerAccountId: perspective.accountId, selectedCallSessionId: selected?.callSessionId || null, canAct: owner.canAct });
