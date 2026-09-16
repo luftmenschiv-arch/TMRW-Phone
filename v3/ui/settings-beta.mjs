@@ -9,6 +9,24 @@ const preferenceId = (scope, playerInstanceId) => `phone-ui-preferences:${scope.
 export const GLOBAL_VOICE_SETTINGS_KEY = 'tmrw-phone:global-voice-settings:v1';
 export const DEFAULT_VOICE_RUNTIME_BASE_URL = 'http://127.0.0.1:18769';
 const GLOBAL_VOICE_FIELDS = Object.freeze(['voiceCallsEnabled', 'botCallsWithVoice', 'voiceLanguagePreference', 'voiceDefaultDelivery', 'voiceRuntimeBaseUrl', 'voiceCaptionsEnabled', 'voiceSetupInitialized']);
+export const PLAYABLE_BOOTSTRAP_STATUS = Object.freeze({ IDLE: 'idle', RUNNING: 'running', QUICK_READY: 'quick-ready', READY: 'ready', FAILED: 'failed' });
+
+function normalizePlayableBootstrap(input = {}) {
+  const status = Object.values(PLAYABLE_BOOTSTRAP_STATUS).includes(input?.status) ? input.status : PLAYABLE_BOOTSTRAP_STATUS.IDLE;
+  return Object.freeze({
+    version: 1,
+    status,
+    stage: String(input?.stage || (status === PLAYABLE_BOOTSTRAP_STATUS.IDLE ? 'not-started' : status)).slice(0, 80),
+    runId: input?.runId ? String(input.runId).slice(0, 160) : null,
+    processedOrdinal: Math.max(0, Math.trunc(Number(input?.processedOrdinal) || 0)),
+    totalMessages: Math.max(0, Math.trunc(Number(input?.totalMessages) || 0)),
+    headFingerprint: input?.headFingerprint ? String(input.headFingerprint).slice(0, 80) : null,
+    castCount: Math.max(0, Math.trunc(Number(input?.castCount) || 0)),
+    candidateCount: Math.max(0, Math.trunc(Number(input?.candidateCount) || 0)),
+    lastError: input?.lastError ? String(input.lastError).slice(0, 500) : null,
+    completedAt: input?.completedAt ? String(input.completedAt).slice(0, 80) : null,
+  });
+}
 
 export function normalizeVoiceRuntimeBaseUrl(value = DEFAULT_VOICE_RUNTIME_BASE_URL) {
   let parsed;
@@ -72,13 +90,14 @@ export class BetaSettingsService {
     const id = preferenceId(scope, player);
     return this.#unitOfWork.readonly({ stores: ['phoneUiPreferences'], scope }, async repositories => {
       const current = await repositories.phoneUiPreferences.get(id);
-      const base = current || Object.freeze({ id, storyId: scope.storyId, branchId: scope.branchId, playerInstanceId: player, ...resolveExperiencePreset(EXPERIENCE_PRESET.STORY), themeId: normalizePhoneTheme(null), developerDiagnosticsEnabled: false, continueStoryAfterCalls: false, ...voiceDefaults(), phase: 23 });
+      const base = current || Object.freeze({ id, storyId: scope.storyId, branchId: scope.branchId, playerInstanceId: player, ...resolveExperiencePreset(EXPERIENCE_PRESET.STORY), themeId: normalizePhoneTheme(null), developerDiagnosticsEnabled: false, continueStoryAfterCalls: false, playableBootstrap: normalizePlayableBootstrap(), ...voiceDefaults(), phase: 23 });
       const currentPreset = current?.preset === EXPERIENCE_PRESET.SIMPLE ? resolveExperiencePreset(EXPERIENCE_PRESET.SIMPLE) : null;
       const globalVoice = this.#readGlobalVoice();
       return Object.freeze({
         ...base,
         ...(currentPreset || {}),
         ...(globalVoice || normalizeVoiceFields({ ...voiceDefaults(), ...base })),
+        playableBootstrap: normalizePlayableBootstrap(base.playableBootstrap),
         themeId: normalizePhoneTheme(base.themeId),
         phase: 23,
       });
@@ -109,6 +128,7 @@ export class BetaSettingsService {
   setTheme({ scope, playerInstanceId, themeId }) { return this.#update({ scope, playerInstanceId, patch: { themeId: normalizePhoneTheme(themeId) } }); }
   setDeveloperDiagnostics({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { developerDiagnosticsEnabled: Boolean(enabled) } }); }
   setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { continueStoryAfterCalls: Boolean(enabled) } }); }
+  setPlayableBootstrapState({ scope, playerInstanceId, state }) { return this.#update({ scope, playerInstanceId, patch: { playableBootstrap: normalizePlayableBootstrap(state) } }); }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { voiceCallsEnabled: Boolean(enabled), voiceSetupInitialized: true }, globalVoice: true }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { botCallsWithVoice: Boolean(enabled), voiceSetupInitialized: true }, globalVoice: true }); }
   setVoiceCaptions({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { voiceCaptionsEnabled: Boolean(enabled), voiceSetupInitialized: true }, globalVoice: true }); }

@@ -30,8 +30,8 @@ This document is the durable implementation authority for turning the current TM
 |---|---|---|---|---|
 | 0 | Durable scope and baseline | COMPLETE | `2d22fe8` | scope committed and pushed |
 | 1 | Stable Phone Shell navigation and home-page restoration | COMPLETE | `3043042` | 33 focused tests passed; package verified |
-| 2 | Cast Manifest and bounded RP history reader | COMPLETE | pending commit | 2 focused tests passed |
-| 3 | Quick Start plus resumable Deep Backfill orchestration | NOT STARTED | — | pending |
+| 2 | Cast Manifest and bounded RP history reader | COMPLETE | `54b1e9a` | 2 focused tests passed |
+| 3 | Quick Start plus resumable Deep Backfill orchestration | COMPLETE | pending commit | 4 focused tests passed |
 | 4 | One-click Settings bootstrap/update experience | NOT STARTED | — | pending |
 | 5 | Initial Phone Seed and shared living UI states | NOT STARTED | — | pending |
 | 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | NOT STARTED | — | pending |
@@ -144,3 +144,19 @@ Result:
 - focused tests: 2 passed, 0 failed
 - 205-message history fixture split into bounded stable chunks
 - no Preview37 input or storage dependency
+
+### Checkpoint 3 — 2026-09-17
+
+Added replay-safe bootstrap orchestration. Quick Start expands the approved cast, initializes the new canonical phones, and reconciles the most recent RP window first. Deep Backfill then walks bounded older chunks and persists progress in Story/Branch-scoped settings. Re-running an unchanged bootstrap reuses the same identity manifest and does not duplicate Actors or Devices. Failure records a retryable state without manufacturing completion.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-cast-history.test.mjs
+```
+
+Result:
+
+- focused tests: 4 passed, 0 failed
+- Quick Start/Deep Backfill progress persisted
+- identity expansion replay produced no duplicate Actors or Devices

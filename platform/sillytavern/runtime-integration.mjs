@@ -167,6 +167,19 @@ export class SillyTavernV3RuntimeIntegration {
     return Object.freeze({ available: true, evaluated, discovered, replayed, eligibleWithoutValue, errors, candidates, scanned: chat.length - start, truncated: start > 0 });
   }
 
+  async reconcileHistory({ startOrdinal = 0, endOrdinal = null, onProgress = null } = {}) {
+    if (!this.#authoringEnabled()) return Object.freeze({ skipped: 'authoring-disabled', processed: 0, unresolved: 0, failed: 0 });
+    const chat = this.#getContext()?.chat || []; const start = Math.max(0, Math.trunc(Number(startOrdinal) || 0)); const end = Math.max(start, Math.min(chat.length, endOrdinal == null ? chat.length : Math.trunc(Number(endOrdinal) || 0)));
+    let processed = 0; let unresolved = 0; let failed = 0;
+    for (let index = start; index < end; index += 1) {
+      const message = chat[index]; if (!message) continue;
+      try { const result = await this.#processIndex(index, { changeKind: 'reprocess', role: message.is_user ? 'user' : 'assistant', mode: 'normal' }); if (result?.skipped) unresolved += 1; else processed += 1; }
+      catch { failed += 1; }
+      onProgress?.(Object.freeze({ ordinal: index + 1, endOrdinal: end, processed, unresolved, failed }));
+    }
+    return Object.freeze({ startOrdinal: start, endOrdinal: end, processed, unresolved, failed });
+  }
+
   async #processIndex(index, options) {
     if (!this.#authoringEnabled()) { this.#metrics.skipped += 1; return { skipped: 'authoring-disabled' }; }
     if (options.mode !== 'normal') { this.#metrics.skipped += 1; return { skipped: options.mode }; }
