@@ -71,6 +71,7 @@ export class ProductionMountManager {
   #shellFactory;
   #playerDisplayNameResolver;
   #activeCharacterDisplayNameResolver;
+  #activeCharacterAvatarUrlResolver;
   #onVisibilityChange;
   #host = null;
   #shell = null;
@@ -82,7 +83,7 @@ export class ProductionMountManager {
   #requiresAuthoringRevalidation = false;
   #blocked = false;
 
-  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options), playerDisplayNameResolver = null, activeCharacterDisplayNameResolver = null, onVisibilityChange = null }) {
+  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options), playerDisplayNameResolver = null, activeCharacterDisplayNameResolver = null, activeCharacterAvatarUrlResolver = null, onVisibilityChange = null }) {
     if (!productionRuntime || productionRuntime.role !== 'owner' || !productionRuntime.services || !productionRuntime.composition || typeof productionRuntime.resolveCurrentIdentity !== 'function') {
       throw new TypeError('ProductionMountManager requires the S08 owner composition root');
     }
@@ -91,6 +92,7 @@ export class ProductionMountManager {
     if (typeof shellFactory !== 'function') throw new TypeError('shellFactory must be a function');
     if (playerDisplayNameResolver != null && typeof playerDisplayNameResolver !== 'function') throw new TypeError('playerDisplayNameResolver must be a function when provided');
     if (activeCharacterDisplayNameResolver != null && typeof activeCharacterDisplayNameResolver !== 'function') throw new TypeError('activeCharacterDisplayNameResolver must be a function when provided');
+    if (activeCharacterAvatarUrlResolver != null && typeof activeCharacterAvatarUrlResolver !== 'function') throw new TypeError('activeCharacterAvatarUrlResolver must be a function when provided');
     if (onVisibilityChange != null && typeof onVisibilityChange !== 'function') throw new TypeError('onVisibilityChange must be a function when provided');
     this.#runtime = productionRuntime;
     this.#runtimeArbiter = runtimeArbiter;
@@ -99,6 +101,7 @@ export class ProductionMountManager {
     this.#shellFactory = shellFactory;
     this.#playerDisplayNameResolver = playerDisplayNameResolver;
     this.#activeCharacterDisplayNameResolver = activeCharacterDisplayNameResolver;
+    this.#activeCharacterAvatarUrlResolver = activeCharacterAvatarUrlResolver;
     this.#onVisibilityChange = onVisibilityChange;
   }
 
@@ -193,6 +196,7 @@ export class ProductionMountManager {
         playerInstanceId: identity.player.instanceId,
         playerDisplayName: this.#playerDisplayNameResolver?.() || null,
         activeCharacterDisplayName: this.#activeCharacterDisplayNameResolver?.() || null,
+        activeCharacterAvatarUrl: this.#activeCharacterAvatarUrlResolver?.() || null,
         selectedDeviceId: identity.player.deviceId,
         onClose: () => this.hide(),
       });

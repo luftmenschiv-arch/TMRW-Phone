@@ -471,6 +471,12 @@ export class ProductionActiveStartupSession {
           const characters = Array.isArray(context?.characters) ? context.characters : [];
           return String(characters[context?.characterId]?.name || '').trim() || null;
         },
+        activeCharacterAvatarUrlResolver: () => {
+          const context = getContext(); if (context?.groupId) return null;
+          const character = Array.isArray(context?.characters) ? context.characters[context?.characterId] : null;
+          const avatar = String(character?.avatar || '').trim(); if (!avatar) return null;
+          return /^(?:https?:|data:|blob:)/iu.test(avatar) ? avatar : `/characters/${encodeURIComponent(avatar)}`;
+        },
         onVisibilityChange: () => this.launcherOwner?.reconcile?.(),
       });
       await this.mountManager.mount(this.identity);

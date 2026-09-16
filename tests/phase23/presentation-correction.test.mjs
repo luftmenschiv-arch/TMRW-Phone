@@ -47,6 +47,14 @@ test('presentation correction retains recovered Call authority and does not repl
   for (const surface of surfaces) assert.equal(surface.dataset.presentationAuthority, 'v3/design/call-ui-authority'); assert.doesNotMatch(surfaces.map(surface => allText(surface)).join(' '), /Character Instance Override|Capability status|instance-secret/i); assert.match(allText(surfaces[2]), /TMRW Phone/);
 });
 
+test('Call surface uses the current Character Card image with an initials fallback underneath', () => {
+  const document = new FakeDocument();
+  const surface = renderApprovedCallSurface({ document, avatarUrl: '/characters/Kaelan.png', island: { callSessionId: 'call-avatar', counterpartLabel: 'Dr. Kaelan Vance', kind: 'active', state: 'active', transcript: [], actions: [{ id: 'end', enabled: true }] } });
+  const image = find(surface, node => hasClass(node, 'tmrw-call-authority-avatar-image'));
+  assert.ok(image);
+  assert.equal(image.src, '/characters/Kaelan.png');
+});
+
 test('Voice settings expose one authoritative call language and do not advertise unsupported delivery modes', () => {
   const document = new FakeDocument();
   const voice = renderVoiceSetup({
@@ -64,8 +72,7 @@ test('Voice settings expose one authoritative call language and do not advertise
   const text = allText(voice);
   assert.match(text, /ภาษาที่ใช้ในการโทรตอนนี้/);
   assert.match(text, /ใช้กับตัวละครทุกคน/);
-  assert.match(text, /Natural/);
-  assert.match(text, /ยังไม่รองรับ Soft และ Expressive/);
+  assert.doesNotMatch(text, /Local Voice Runtime|Natural|Soft|Expressive|เสียงจากประวัติการโทร|ภาษาเสียง/);
   assert.equal(findAll(voice, node => node.dataset?.voiceLanguage).length, 2);
   assert.equal(findAll(voice, node => node.dataset?.baseVoiceLanguage || node.dataset?.overrideVoiceLanguage || node.dataset?.voiceDelivery).length, 0);
 });

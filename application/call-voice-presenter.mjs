@@ -215,10 +215,17 @@ export class CallVoicePresenter {
 
   async playArchivedArtifacts({ callSessionId, artifacts = [] }) {
     const id = String(callSessionId || '').trim();
-    const rows = artifacts.filter(row => row?.recoverable && row?.audioBlob).sort((left, right) => Number(left.segmentIndex || 0) - Number(right.segmentIndex || 0));
+    const rows = artifacts.filter(row => row?.recoverable && row?.audioBlob).slice().sort((left, right) => Number(left.turnIndex || 0) - Number(right.turnIndex || 0) || Number(left.segmentIndex || 0) - Number(right.segmentIndex || 0));
     if (!id || !rows.length || typeof this.#adapter.materializeStoredBlob !== 'function') return Object.freeze({ status: 'unavailable', played: 0 });
     this.#playback.cancelActive?.('replaced');
     const sequence = ++this.#archivePlaybackSequence;
+    if (typeof this.#adapter.materializeStoredBlobs === 'function') {
+      const merged = await this.#adapter.materializeStoredBlobs(rows.map(row => row.audioBlob), { durationMs: rows.reduce((sum, row) => sum + Number(row.durationMs || 0), 0) });
+      if (sequence !== this.#archivePlaybackSequence || merged.status !== VOICE_RENDER_STATUS.READY) return Object.freeze({ status: merged.status || 'failed', played: 0 });
+      const result = await this.#playback.play({ callSessionId: id, transcriptEntryId: `archive:${id}:${sequence}`, audioArtifactRef: merged.audioArtifactRef });
+      try { this.#adapter.release?.(merged); } catch {}
+      return Object.freeze({ status: result.status, played: result.status === 'completed' ? rows.length : 0 });
+    }
     let played = 0;
     for (const row of rows) {
       if (sequence !== this.#archivePlaybackSequence) return Object.freeze({ status: 'cancelled', played });
@@ -231,6 +238,12 @@ export class CallVoicePresenter {
       played += 1;
     }
     return Object.freeze({ status: 'completed', played });
+  }
+
+  async combineArchivedArtifacts(artifacts = []) {
+    const rows = artifacts.filter(row => row?.recoverable && row?.audioBlob).slice().sort((left, right) => Number(left.turnIndex || 0) - Number(right.turnIndex || 0) || Number(left.segmentIndex || 0) - Number(right.segmentIndex || 0));
+    if (!rows.length || typeof this.#adapter.combineStoredBlobs !== 'function') return null;
+    try { return await this.#adapter.combineStoredBlobs(rows.map(row => row.audioBlob)); } catch { return null; }
   }
 
   stopArchivedPlayback(callSessionId) {

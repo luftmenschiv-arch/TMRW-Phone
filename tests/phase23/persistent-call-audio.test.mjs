@@ -2,9 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VoiceAudioHistoryService } from '../../application/voice-audio-history-service.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
+import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
 import { setupPhase9, startCall, transitionCall, addCallText } from '../phase9/call-fixtures.mjs';
 
 const wav = marker => new Blob([new Uint8Array(64).fill(marker)], { type: 'audio/wav' });
+const pcmWav = samples => {
+  const buffer = new ArrayBuffer(44 + samples.length); const view = new DataView(buffer); const bytes = new Uint8Array(buffer);
+  const write = (offset, value) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+  write(0, 'RIFF'); view.setUint32(4, 36 + samples.length, true); write(8, 'WAVE'); write(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true); write(36, 'data'); view.setUint32(40, samples.length, true); bytes.set(samples, 44); return new Blob([buffer], { type: 'audio/wav' });
+};
+
+test('Puzzle archive combines same-format WAV segments into one playable file', async () => {
+  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl: async () => { throw new Error('unused'); }, createObjectURL: () => 'blob:combined', revokeObjectURL: () => {} });
+  const merged = await adapter.combineStoredBlobs([pcmWav(Uint8Array.from([1, 2])), pcmWav(Uint8Array.from([3, 4, 5]))]);
+  const view = new DataView(await merged.arrayBuffer());
+  assert.equal(merged.type, 'audio/wav');
+  assert.equal(view.getUint32(40, true), 5);
+  assert.deepEqual([...new Uint8Array(await merged.arrayBuffer()).slice(44)], [1, 2, 3, 4, 5]);
+});
 
 test('actual call audio bytes, bilingual metadata, Keep, and cleanup remain scoped without deleting transcript', async () => {
   const c = await setupPhase9({ castSize: 1, manifestId: 'p23-audio-persistence' });

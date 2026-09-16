@@ -32,17 +32,12 @@ export function renderVoiceSetup({ document, settings, capability, runtimeHealth
 
   const status = node(document, 'section'); status.className = 'tmrw-v3-voice-card tmrw-v3-voice-status'; const mark = node(document, 'span'); mark.className = 'tmrw-v3-voice-status-icon'; mark.append(createPreviewIcon({ document, name: 'voice', size: 23 })); const statusCopy = node(document, 'div'); statusCopy.append(node(document, 'small', 'VOICE'), node(document, 'h3', runtimeReady ? 'พร้อมใช้งาน' : (runtimeConfigured ? 'พร้อมตั้งค่า' : 'ยังไม่พร้อมใช้งาน')), node(document, 'p', runtimeReady ? 'ตั้งค่าเสียงสำหรับการโทรของ TMRW Phone' : (runtimeConfigured ? 'ระบบจะตรวจ Puzzle Voice ก่อนสร้างเสียง หากไม่สำเร็จจะให้ลองคำตอบเดิมใหม่' : 'การโทรด้วยเสียงจะเปิดเมื่อ runtime พร้อม'))); status.append(mark, statusCopy); root.append(status);
 
-  const connection = node(document, 'section'); connection.className = 'tmrw-v3-voice-card tmrw-v3-voice-connection'; connection.append(node(document, 'h4', 'Local Voice Runtime'), node(document, 'p', 'มือถือและ PC ใช้ runtime ที่ปรับไว้สำหรับเครื่องนั้นเองผ่าน http://127.0.0.1:18769'));
-  connection.append(textField(document, { value: settings.voiceRuntimeBaseUrl || 'http://127.0.0.1:18769', placeholder: 'http://127.0.0.1:18769', actionLabel: 'บันทึก', action: onSaveRuntimeBaseUrl, disabled: !runtimeConfigured || runtimeBusy, ariaLabel: 'Local Voice Runtime URL' }));
-  const testRuntime = node(document, 'button', runtimeBusy ? 'กำลังตรวจ…' : 'ตรวจสอบการเชื่อมต่อ'); testRuntime.type = 'button'; testRuntime.dataset.voiceAction = 'test-runtime'; testRuntime.disabled = !runtimeConfigured || runtimeBusy; if (!testRuntime.disabled) testRuntime.addEventListener('click', () => onTestRuntime?.()); connection.append(testRuntime);
-  const healthText = runtimeHealth?.ready ? `เชื่อมต่อสำเร็จ • ${runtimeHealth.voice || 'Puzzle'}` : runtimeHealth ? `ยังเชื่อมต่อไม่ได้ • ${runtimeHealth.reason || 'runtime-unreachable'}` : 'ยังไม่ได้ตรวจสอบการเชื่อมต่อ'; const health = node(document, 'p', healthText); health.dataset.voiceRuntimeHealth = runtimeHealth?.ready ? 'ready' : runtimeHealth ? 'unavailable' : 'unchecked'; connection.append(health); root.append(connection);
-
   const general = node(document, 'section'); general.className = 'tmrw-v3-voice-card'; general.append(node(document, 'h4', 'การโทรด้วยเสียง'));
   general.append(toggleRow(document, { label: 'Voice Calls', detail: runtimeReady ? 'เล่นเสียงพร้อมข้อความในการโทร' : (runtimeConfigured ? 'เปิดไว้ได้ ระบบจะตรวจ Puzzle runtime ตอนใช้งานจริง' : 'ยังใช้ไม่ได้ในขณะนี้'), pressed: settings.voiceCallsEnabled, setting: 'voice-calls', onClick: onToggleVoiceCalls, disabled: !runtimeConfigured }));
   general.append(toggleRow(document, { label: 'เสียงของตัวละคร', detail: runtimeReady ? 'ใช้เสียงเมื่อตัวละครโทรหา' : (runtimeConfigured ? 'ถ้า Voice ไม่พร้อม Call จะใช้ข้อความตามปกติ' : 'ยังใช้ไม่ได้ในขณะนี้'), pressed: settings.botCallsWithVoice, setting: 'bot-calls-with-voice', onClick: onToggleBotVoice, disabled: !runtimeConfigured }));
   general.append(toggleRow(document, { label: 'คำบรรยายภาษาไทย', detail: 'เปิดหรือปิดได้ระหว่างสาย', pressed: settings.voiceCaptionsEnabled !== false, setting: 'voice-captions', onClick: onToggleCaptions, disabled: !runtimeConfigured }));
   general.append(choiceGroup(document, { title: 'ภาษาที่ใช้ในการโทรตอนนี้', detail: 'ใช้กับตัวละครทุกคน • เลือกได้ครั้งละหนึ่งภาษาและสลับระหว่างสายได้', values: ['en', 'ja'], selected: settings.voiceLanguagePreference === 'ja' ? 'ja' : 'en', datasetKey: 'voiceLanguage', onSelect: onSetDefaultLanguage, disabled: !runtimeConfigured }));
-  const delivery = node(document, 'section'); delivery.className = 'tmrw-v3-voice-choice'; delivery.append(copyBlock(document, 'น้ำเสียง', 'Natural • runtime ปัจจุบันยังไม่รองรับ Soft และ Expressive')); general.append(delivery); root.append(general);
+  root.append(general);
 
   const profiles = node(document, 'section'); profiles.className = 'tmrw-v3-voice-card tmrw-v3-voice-profiles'; profiles.append(node(document, 'h4', 'เสียงของตัวละคร'));
   if (roster.length === 0) profiles.append(node(document, 'p', 'ยังไม่มีตัวละครสำหรับตั้งค่าเสียงในเรื่องนี้'));
@@ -51,7 +46,6 @@ export function renderVoiceSetup({ document, settings, capability, runtimeHealth
   if (selectedIdentity) {
     const base = node(document, 'section'); base.className = 'tmrw-v3-voice-profile-card'; base.dataset.voiceProfileKind = 'actor-base'; base.append(copyBlock(document, selectedIdentity.label, 'ค่าเสียงหลักของตัวละคร'));
     base.append(textField(document, { value: baseProfile?.profileName || '', placeholder: 'ชื่อโปรไฟล์เสียง', actionLabel: 'บันทึก', action: onSaveBaseName, disabled: !runtimeConfigured }));
-    base.append(copyBlock(document, 'ภาษาเสียง', 'ใช้ “ภาษาที่ใช้ในการโทรตอนนี้” ด้านบนกับตัวละครทุกคน'));
     base.append(toggleRow(document, { label: 'ล็อกการตั้งค่านี้', pressed: Boolean(baseProfile?.lockedByUser), setting: 'voice-base-lock', onClick: onToggleBaseLock, disabled: !runtimeConfigured })); profiles.append(base);
 
     const specific = node(document, 'section'); specific.className = 'tmrw-v3-voice-profile-card'; specific.dataset.voiceProfileKind = 'instance-override'; specific.append(copyBlock(document, 'เฉพาะตัวละครนี้', 'ใช้ค่าต่างจากค่าเสียงหลักในเรื่องนี้'));
@@ -63,6 +57,5 @@ export function renderVoiceSetup({ document, settings, capability, runtimeHealth
 
   const testCard = node(document, 'section'); testCard.className = 'tmrw-v3-voice-card tmrw-v3-voice-test-card'; const test = node(document, 'button', 'ทดลองเสียง'); test.type = 'button'; test.dataset.voiceAction = 'test-voice'; test.disabled = !runtimeReady || capability?.testVoiceEnabled !== true; test.setAttribute('aria-disabled', String(test.disabled)); testCard.append(copyBlock(document, 'ตัวอย่างเสียง', test.disabled ? 'จะเปิดใช้งานเมื่อ Voice พร้อม' : 'ฟังเสียงก่อนใช้งาน'), test); root.append(testCard);
 
-  const history = node(document, 'section'); history.className = 'tmrw-v3-voice-card tmrw-v3-voice-audio-history'; history.append(node(document, 'h4', 'เสียงจากประวัติการโทร'), node(document, 'p', 'ยังไม่มีไฟล์เสียงจากการโทร')); root.append(history);
   return root;
 }

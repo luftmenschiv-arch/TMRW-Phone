@@ -33,6 +33,34 @@ function emitTiming(callback, phase, detail = {}) {
   try { callback?.(Object.freeze({ phase, ...detail })); } catch {}
 }
 
+const ascii = (view, offset, length) => Array.from({ length }, (_, index) => String.fromCharCode(view.getUint8(offset + index))).join('');
+async function mergePcmWavBlobs(blobs) {
+  if (blobs.length === 1) return blobs[0];
+  const parsed = [];
+  for (const blob of blobs) {
+    const buffer = await blob.arrayBuffer(); const view = new DataView(buffer);
+    if (buffer.byteLength < 44 || ascii(view, 0, 4) !== 'RIFF' || ascii(view, 8, 4) !== 'WAVE') throw new Error('invalid-stored-wav');
+    let offset = 12, format = null, data = null;
+    while (offset + 8 <= buffer.byteLength) {
+      const id = ascii(view, offset, 4); const size = view.getUint32(offset + 4, true); const start = offset + 8;
+      if (start + size > buffer.byteLength) break;
+      if (id === 'fmt ') format = new Uint8Array(buffer.slice(start, start + size));
+      if (id === 'data') data = new Uint8Array(buffer.slice(start, start + size));
+      offset = start + size + (size % 2);
+    }
+    if (!format || !data) throw new Error('invalid-stored-wav'); parsed.push({ format, data });
+  }
+  const signature = bytes => Array.from(bytes).join(','); const expected = signature(parsed[0].format);
+  if (parsed.some(row => signature(row.format) !== expected)) throw new Error('incompatible-stored-wav');
+  const format = parsed[0].format; const dataSize = parsed.reduce((sum, row) => sum + row.data.byteLength, 0);
+  const output = new ArrayBuffer(12 + 8 + format.byteLength + (format.byteLength % 2) + 8 + dataSize); const view = new DataView(output); const bytes = new Uint8Array(output);
+  const write = (offset, value) => [...value].forEach((character, index) => view.setUint8(offset + index, character.charCodeAt(0)));
+  write(0, 'RIFF'); view.setUint32(4, output.byteLength - 8, true); write(8, 'WAVE'); write(12, 'fmt '); view.setUint32(16, format.byteLength, true); bytes.set(format, 20);
+  let offset = 20 + format.byteLength + (format.byteLength % 2); write(offset, 'data'); view.setUint32(offset + 4, dataSize, true); offset += 8;
+  for (const row of parsed) { bytes.set(row.data, offset); offset += row.data.byteLength; }
+  return new Blob([output], { type: 'audio/wav' });
+}
+
 export class PuzzleLocalRuntimeVoiceAdapter {
   #fetch;
   #baseUrl;
@@ -234,6 +262,17 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     if (!audioArtifactRef) return failedResult('audio-url-failed');
     this.#refs.add(audioArtifactRef);
     return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, audioBlob: blob, mimeType: mimeType || blob.type || 'audio/wav', durationMs });
+  }
+
+  async combineStoredBlobs(blobs = []) {
+    const source = blobs.filter(blob => blob && Number(blob.size || 0) > 0);
+    if (!source.length) throw new Error('stored-audio-unavailable');
+    return mergePcmWavBlobs(source);
+  }
+
+  async materializeStoredBlobs(blobs = [], { durationMs = null } = {}) {
+    try { return this.materializeStoredBlob(await this.combineStoredBlobs(blobs), { durationMs, mimeType: 'audio/wav' }); }
+    catch { return failedResult('stored-audio-merge-failed'); }
   }
 
   release(resultOrRef) {

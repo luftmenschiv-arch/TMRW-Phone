@@ -342,3 +342,24 @@ adb -s 192.168.100.125:41429 push C:\ai\tmrw-phone-checkpoints-1-7.bundle /data/
 adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 fetch /data/local/tmp/tmrw-phone-checkpoints-1-7.bundle codex/phone-instant-connect-ui:refs/remotes/local-deploy/codex/phone-instant-connect-ui
 adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 merge --ff-only refs/remotes/local-deploy/codex/phone-instant-connect-ui
 ```
+
+### Post-checkpoint 7 — Call archive, Character Card avatar, and mobile keyboard polish — 2026-09-17
+
+Call History now merges the runtime's ordered PCM WAV segments before whole-call playback, so mobile browser autoplay policy cannot stop the archive after the first segment. Each character turn presents one combined spoken-text row, one replay action, and one combined WAV download instead of separate controls for every internal TTS segment; per-segment Pause controls were removed while the explicit whole-call Stop action remains. Normal Voice Settings no longer expose the Local Voice Runtime URL, the inactive Natural/Soft/Expressive row, redundant character-language copy, or the duplicate call-audio-history placeholder. The active call portrait uses the direct character's Character Card image with initials as a truthful load-error fallback. Focusing the mobile composer switches the call surface to a compact, animation-free keyboard layout, and sending immediately dismisses the keyboard before the locked bot turn begins.
+
+Commands:
+
+```powershell
+node --test tests/phase23/persistent-call-audio.test.mjs tests/phase23/presentation-correction.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/call-history-production.test.mjs tests/phase23/instant-connect.test.mjs
+npm run build:production-package
+npm run verify:production-package
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/curl -s -I --max-time 5 http://127.0.0.1:8000/characters/default_Seraphina.png
+```
+
+Recorded result:
+
+- focused production-call tests: 45 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
+- Character Card image route on the live SillyTavern host: HTTP 200, `image/png`
+- Android deployment: pending this checkpoint commit

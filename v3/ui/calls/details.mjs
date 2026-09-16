@@ -28,6 +28,7 @@ export function callDetailsViewModel({ session, historyItem, transcript = [], au
         subtitleThai: artifact.subtitleThai || entry.text,
         spokenText: artifact.spokenText || null,
         segmentIndex: Number(artifact.segmentIndex || 0),
+        turnIndex,
         durationMs: Number(artifact.durationMs || 0),
         retention: artifact.retention || 'temporary',
         audioBlob: artifact.audioBlob || null,
