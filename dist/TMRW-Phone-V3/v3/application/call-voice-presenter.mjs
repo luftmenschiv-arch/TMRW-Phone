@@ -102,7 +102,10 @@ export class CallVoicePresenter {
         if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'cancelled', reason: 'voice-cancelled', failedIndex: absoluteIndex, committed: currentCommit });
         if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) {
           onUpdate?.(Object.freeze({ phase: 'retrying-voice', segmentIndex: absoluteIndex, segmentCount: segments.length }));
-          renderResult = await this.#adapter.render(requests[offset], { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
+          const canResumeRuntimeTurn = renderResult?.errorCode === 'runtime-timeout' && typeof sequence?.retryAt === 'function';
+          renderResult = canResumeRuntimeTurn
+            ? await sequence.retryAt(offset)
+            : await this.#adapter.render(requests[offset], { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
         }
         if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'cancelled', reason: 'voice-cancelled', failedIndex: absoluteIndex, committed: currentCommit });
         if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) return this.#record({ status: 'failed', reason: renderResult?.errorCode || renderResult?.status || 'voice-render-failed', failedIndex: absoluteIndex, committed: currentCommit, language });

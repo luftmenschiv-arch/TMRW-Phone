@@ -127,34 +127,41 @@ export class PuzzleLocalRuntimeVoiceAdapter {
       if (!pushResponse.ok || push?.ok !== true) throw Object.assign(new Error('turn-push-failed'), { code: 'turn-push-failed' });
     }
     const cache = new Map();
+    const fetchAudio = async index => {
+      try {
+        const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=${index}`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
+        if (!audioResponse.ok) return failedResult('audio-fetch-failed');
+        const contentType = String(audioResponse.headers?.get?.('Content-Type') || '').toLowerCase();
+        if (contentType && !contentType.includes('audio/wav') && !contentType.includes('audio/x-wav')) return failedResult('invalid-audio-content-type');
+        const blob = await audioResponse.blob();
+        if (!blob || Number(blob.size || 0) < 44) return failedResult('invalid-audio-payload');
+        if (signal?.aborted) return cancelledResult();
+        const audioArtifactRef = this.#createObjectURL(blob);
+        if (!audioArtifactRef) return failedResult('audio-url-failed');
+        this.#refs.add(audioArtifactRef);
+        const durationSeconds = Number(audioResponse.headers?.get?.('X-TMRW-Duration'));
+        const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
+        return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
+      } catch (error) {
+        if (signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
+        if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
+        return failedResult(error?.code || 'runtime-error');
+      }
+    };
     const renderAt = index => {
       if (!Number.isSafeInteger(index) || index < 0 || index >= requests.length) return Promise.resolve(failedResult('invalid-sequence-index'));
       if (cache.has(index)) return cache.get(index);
-      const pending = (async () => {
-        try {
-          const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=${index}`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
-          if (!audioResponse.ok) return failedResult('audio-fetch-failed');
-          const contentType = String(audioResponse.headers?.get?.('Content-Type') || '').toLowerCase();
-          if (contentType && !contentType.includes('audio/wav') && !contentType.includes('audio/x-wav')) return failedResult('invalid-audio-content-type');
-          const blob = await audioResponse.blob();
-          if (!blob || Number(blob.size || 0) < 44) return failedResult('invalid-audio-payload');
-          if (signal?.aborted) return cancelledResult();
-          const audioArtifactRef = this.#createObjectURL(blob);
-          if (!audioArtifactRef) return failedResult('audio-url-failed');
-          this.#refs.add(audioArtifactRef);
-          const durationSeconds = Number(audioResponse.headers?.get?.('X-TMRW-Duration'));
-          const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
-          return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
-        } catch (error) {
-          if (signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
-          if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
-          return failedResult(error?.code || 'runtime-error');
-        }
-      })();
+      const pending = fetchAudio(index);
       cache.set(index, pending);
       return pending;
     };
-    return Object.freeze({ turnId, length: requests.length, runtimeLanguage, endpoint, renderAt });
+    const retryAt = index => {
+      if (!Number.isSafeInteger(index) || index < 0 || index >= requests.length) return Promise.resolve(failedResult('invalid-sequence-index'));
+      const pending = fetchAudio(index);
+      cache.set(index, pending);
+      return pending;
+    };
+    return Object.freeze({ turnId, length: requests.length, runtimeLanguage, endpoint, renderAt, retryAt });
   }
 
   async render(input, options = {}) {

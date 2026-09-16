@@ -159,6 +159,35 @@ test('Puzzle multi-segment turn sends selected-language speech plus paired Thai 
   assert.equal(requests.filter(row => row.url.includes('/turn/audio?')).length, 2);
 });
 
+test('Puzzle sequence can resume the same runtime turn after the first audio wait times out', async () => {
+  const requests = [];
+  let audioFetches = 0;
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+    if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn:slow-audio' }) };
+    if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    if (url.includes('/turn/audio?')) {
+      audioFetches += 1;
+      if (audioFetches === 1) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true }));
+      return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'audio/wav' : name.toLowerCase() === 'x-tmrw-duration' ? '0.5' : null }, blob: async () => ({ size: 128 }) };
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:resumed-turn', revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 1000 });
+  const profile = Object.freeze({ profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
+  const sequence = await adapter.openSequence([{ actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:slow-audio', canonicalText: 'Good morning.', subtitleText: 'อรุณสวัสดิ์ครับ', language: 'en', resolvedProfile: profile }]);
+  const first = await sequence.renderAt(0);
+  const resumed = await sequence.retryAt(0);
+  assert.equal(first.status, 'failed');
+  assert.equal(first.errorCode, 'runtime-timeout');
+  assert.equal(resumed.status, 'ready');
+  assert.equal(resumed.audioArtifactRef, 'blob:resumed-turn');
+  assert.equal(requests.filter(row => row.url.endsWith('/turn/start')).length, 1, 'resume must not start a duplicate synthesis turn');
+  assert.equal(requests.filter(row => row.url.endsWith('/turn/push')).length, 1, 'resume must not push the same text again');
+  assert.equal(requests.filter(row => row.url.includes('/turn/audio?')).length, 2);
+});
+
 test('presenter uses Puzzle fallback, retries one failed segment automatically, commits only after audio is ready, and streams all segments', async () => {
   const events = [];
   const requestSets = [];
@@ -215,6 +244,38 @@ test('presenter uses Puzzle fallback, retries one failed segment automatically, 
   assert.ok(events.indexOf('retry:Good morning.') < events.indexOf('commit'));
   assert.ok(events.indexOf('commit') < events.findIndex(value => value.startsWith('play:')));
   assert.equal(events.filter(value => value.startsWith('play:')).length, 2);
+});
+
+test('presenter resumes a timed-out runtime turn instead of synthesizing the segment again', async () => {
+  const events = [];
+  let fallbackRenders = 0;
+  const adapter = {
+    async openSequence() {
+      return {
+        renderAt(index) { events.push(`wait:${index}`); return Promise.resolve({ status: 'failed', errorCode: 'runtime-timeout' }); },
+        retryAt(index) { events.push(`resume:${index}`); return Promise.resolve({ status: 'ready', audioArtifactRef: `blob:resumed:${index}`, durationMs: 500 }); },
+      };
+    },
+    async render() { fallbackRenders += 1; return { status: 'ready', audioArtifactRef: 'blob:duplicate-turn' }; },
+    release() {},
+    dispose() {},
+  };
+  const presenter = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en', voiceDefaultDelivery: 'natural', voiceRuntimeBaseUrl: 'http://127.0.0.1:18769' }) },
+    adapter,
+    playbackController: { status: Object.freeze({ active: false }), async play() { return { status: 'completed' }; }, cancelCall() { return false; }, dispose() {} },
+  });
+  const result = await presenter.presentPreparedBotReply({
+    scope,
+    playerInstanceId: 'character-instance:user',
+    prepared: Object.freeze({ status: 'prepared', preparedId: 'event:user:slow', callSessionId: 'call:slow-audio', language: 'en', resolvedProfile: null, botBinding, segments: Object.freeze([Object.freeze({ index: 0, subtitleThai: 'อรุณสวัสดิ์ครับ', spokenText: 'Good morning.' })]) }),
+    commit: async () => ({ committed: true, transcript: { transcriptEntryId: 'transcript:bot:slow', callSessionId: 'call:slow-audio' } }),
+    onUpdate: update => events.push(`state:${update.phase}`),
+  });
+  assert.equal(result.status, 'played');
+  assert.equal(fallbackRenders, 0, 'a timed-out wait must not start a duplicate synthesis turn');
+  assert.deepEqual(events.slice(0, 4), ['state:synthesizing', 'wait:0', 'state:retrying-voice', 'resume:0']);
 });
 
 class MemoryStorage {
