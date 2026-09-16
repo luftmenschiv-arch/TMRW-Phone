@@ -262,12 +262,12 @@ test('active text Call gets a canonical bot reply even before a Voice profile is
     voiceProfileService: new VoiceProfileService({ database: context.database }),
     settingsService: context.settings,
     bindingResolver: async () => ({ actorBinding: { actorId: context.alice.actorId, instanceId: context.alice.instanceId, accountId: context.alice.accountId, deviceId: context.alice.deviceId } }),
-    getContext: () => ({ groupId: null, characterId: 0, name2: 'Alice', chat: [], generateQuietPrompt: async options => { generationCalls.push(options); return 'Yes, I can hear you.'; } }),
+    getContext: () => ({ groupId: null, characterId: 0, name2: 'Alice', chat: [], generateQuietPrompt: async options => { generationCalls.push(options); return JSON.stringify({ segments: [{ subtitle_th: 'ได้ยินชัดเจนครับ', spoken_text: 'Yes, I can hear you.' }] }); } }),
   });
   const botCommit = await replies.replyToCommittedUserTranscript({ scope: context.scope, playerInstanceId: context.user.instanceId, commit: userCommit });
   assert.equal(botCommit.committed, true);
   assert.equal(generationCalls.length, 1);
-  assert.equal((await context.calls.listTranscript({ scope: context.scope, viewerAccountId: context.user.accountId, callSessionId: call.session.callSessionId })).at(-1).text, 'Yes, I can hear you.');
+  assert.equal((await context.calls.listTranscript({ scope: context.scope, viewerAccountId: context.user.accountId, callSessionId: call.session.callSessionId })).at(-1).text, 'ได้ยินชัดเจนครับ');
 });
 
 test('Instant Messages creates one canonical DM on demand and leaves Contacts untouched', async () => {

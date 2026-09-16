@@ -5,49 +5,97 @@ import { VOICE_LANGUAGE } from '../domain/voice/voice-profile.mjs';
 
 const MAX_PROMPT_TRANSCRIPT = 12;
 const MAX_PROMPT_CHARACTERS = 6000;
+const MAX_REPLY_SEGMENTS = 3;
+export const CALL_LLM_DEADLINE_MS = 30000;
 
 function committedTranscript(commit) {
   if (!commit || commit.event?.eventType !== CALL_EVENT_TYPES.TRANSCRIPT_ADDED) return null;
   return commit.transcript || commit.event?.payload?.transcript || null;
 }
-
 function resolveLanguage(profile, settings) {
-  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(settings?.voiceLanguagePreference)) return settings.voiceLanguagePreference;
-  return null;
+  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
+  return VOICE_LANGUAGE.ENGLISH;
 }
 
-function languageInstruction(language) {
-  if (language === VOICE_LANGUAGE.ENGLISH) return 'Reply in English.';
-  if (language === VOICE_LANGUAGE.JAPANESE) return 'Reply in Japanese.';
-  return 'Use the language that is natural for this character and the caller. Do not translate merely for Voice.';
+function spokenLanguageName(language) {
+  return language === VOICE_LANGUAGE.JAPANESE ? 'Japanese' : 'English';
 }
 
-function promptFor({ transcript, botAccountId, language }) {
+function promptFor({ transcript, botAccountId, language, targetName }) {
   const rows = transcript.slice(-MAX_PROMPT_TRANSCRIPT).map(row => {
     const label = row.speakerAccountId === botAccountId ? 'YOU' : 'CALLER';
     return `${label}: ${String(row.text || '').trim()}`;
   });
   let history = rows.join('\n');
   if (history.length > MAX_PROMPT_CHARACTERS) history = history.slice(-MAX_PROMPT_CHARACTERS);
+  const spokenLanguage = spokenLanguageName(language);
   return [
-    'You are currently speaking inside an active private TMRW phone call.',
-    'Return only the character\'s next spoken reply.',
-    'Do not add narration, action markers, speaker labels, quotes, metadata, or an explanation.',
-    'Treat the transcript below as the authoritative call conversation.',
-    languageInstruction(language),
+    `You are ${targetName || 'the selected character'} speaking inside an active private TMRW phone call.`,
+    'The caller deliberately selected you. Never answer as a different character.',
+    'Return only strict JSON. Do not use markdown or code fences.',
+    '{"segments":[{"subtitle_th":"คำบรรยายภาษาไทย","spoken_text":"spoken voice text"}]}',
+    `subtitle_th must be natural Thai. spoken_text must be natural ${spokenLanguage}.`,
+    'Each pair must carry exactly the same meaning, names, terms of address, and emotion.',
+    `Use one to ${MAX_REPLY_SEGMENTS} short, naturally speakable segments. Split only at semantic sentence boundaries.`,
+    'Dialogue only. Do not add narration, action markers, speaker labels, quotation marks, metadata, or explanations.',
+    'Natural written laughter that the voice can speak is allowed inside spoken dialogue.',
+    'Treat the transcript below as the authoritative call conversation and answer its final CALLER turn.',
     '',
     'CANONICAL CALL TRANSCRIPT:',
     history,
     '',
-    'NEXT SPOKEN REPLY:',
+    'STRICT JSON REPLY:',
   ].join('\n');
 }
 
-function normalizeGeneratedText(value) {
-  const text = String(value || '').trim();
-  if (!text) return null;
-  return text.length <= 8000 ? text : text.slice(0, 8000).trim();
+function jsonCandidate(value) {
+  const text = String(value || '').trim().replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '').trim();
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  return first >= 0 && last > first ? text.slice(first, last + 1) : null;
+}
+
+function parseGeneratedReply(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(jsonCandidate(raw));
+    const source = Array.isArray(parsed?.segments) ? parsed.segments : [];
+    const segments = source.slice(0, MAX_REPLY_SEGMENTS).map((segment, index) => Object.freeze({
+      index,
+      subtitleThai: String(segment?.subtitle_th || '').trim(),
+      spokenText: String(segment?.spoken_text || '').trim(),
+    })).filter(segment => segment.subtitleThai && segment.spokenText);
+    if (!segments.length || segments.length !== Math.min(source.length, MAX_REPLY_SEGMENTS)) return null;
+    return Object.freeze({
+      subtitleText: segments.map(segment => segment.subtitleThai).join(' ').trim(),
+      segments: Object.freeze(segments),
+      structured: true,
+    });
+  } catch { return null; }
+}
+
+function generationFailure(reason, error = null) {
+  return Object.freeze({ status: reason === 'generation-cancelled' ? 'cancelled' : 'failed', reason, retryable: reason !== 'generation-cancelled', error: error ? String(error?.message || error) : null });
+}
+
+async function withDeadline(promise, { signal = null, timeoutMs = CALL_LLM_DEADLINE_MS } = {}) {
+  if (signal?.aborted) throw Object.assign(new Error('generation-cancelled'), { code: 'generation-cancelled' });
+  let timer = null;
+  let abortListener = null;
+  const deadline = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error('generation-timeout'), { code: 'generation-timeout' })), Math.max(100, Number(timeoutMs) || CALL_LLM_DEADLINE_MS));
+    if (signal) {
+      abortListener = () => reject(Object.assign(new Error('generation-cancelled'), { code: 'generation-cancelled' }));
+      signal.addEventListener('abort', abortListener, { once: true });
+    }
+  });
+  try { return await Promise.race([promise, deadline]); }
+  finally {
+    clearTimeout(timer);
+    if (signal && abortListener) signal.removeEventListener('abort', abortListener);
+  }
 }
 
 export class CallBotReplyCoordinator {
@@ -57,7 +105,8 @@ export class CallBotReplyCoordinator {
   #bindingResolver;
   #getContext;
   #inflight = new Map();
-  #completed = new Map();
+  #prepared = new Map();
+  #committed = new Map();
 
   constructor({ callService, voiceProfileService, settingsService, bindingResolver, getContext }) {
     if (!callService?.getSession || !callService?.listTranscript || !callService?.addTranscript) throw new TypeError('CallBotReplyCoordinator requires canonical CallService');
@@ -72,84 +121,119 @@ export class CallBotReplyCoordinator {
     this.#getContext = getContext;
   }
 
-  async replyToCommittedUserTranscript({ scope: inputScope, playerInstanceId, commit }) {
+  cancelCall(callSessionId) {
+    const id = String(callSessionId || '').trim();
+    if (!id) return false;
+    let removed = false;
+    for (const [key, row] of this.#prepared) if (row.callSessionId === id) { this.#prepared.delete(key); removed = true; }
+    return removed;
+  }
+
+  async prepareReplyToCommittedUserTranscript({ scope: inputScope, playerInstanceId, commit, signal = null, timeoutMs = CALL_LLM_DEADLINE_MS }) {
     const scope = requireEventScope(inputScope);
     const userTranscript = committedTranscript(commit);
-    if (!userTranscript) return Object.freeze({ status: 'skipped', reason: 'not-committed-transcript' });
+    if (!userTranscript) return generationFailure('not-committed-transcript');
     const key = String(userTranscript.transcriptEntryId || commit.event?.id || '').trim();
-    if (!key) return Object.freeze({ status: 'skipped', reason: 'missing-transcript-id' });
-    if (this.#completed.has(key)) return this.#completed.get(key);
+    if (!key) return generationFailure('missing-transcript-id');
+    if (this.#prepared.has(key)) return this.#prepared.get(key);
     if (this.#inflight.has(key)) return this.#inflight.get(key);
-    const promise = this.#reply({ scope, playerInstanceId, commit, userTranscript }).then(result => {
-      this.#completed.set(key, result);
-      while (this.#completed.size > 256) this.#completed.delete(this.#completed.keys().next().value);
+    const promise = this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal, timeoutMs }).then(result => {
+      if (result?.status === 'prepared') {
+        this.#prepared.set(key, result);
+        while (this.#prepared.size > 256) this.#prepared.delete(this.#prepared.keys().next().value);
+      }
       return result;
     }).finally(() => this.#inflight.delete(key));
     this.#inflight.set(key, promise);
     return promise;
   }
 
-  async #reply({ scope, playerInstanceId, commit, userTranscript }) {
+  async commitPreparedReply({ scope: inputScope, prepared }) {
+    const scope = requireEventScope(inputScope);
+    if (prepared?.status !== 'prepared' || !prepared.preparedId) return generationFailure('invalid-prepared-reply');
+    if (this.#committed.has(prepared.preparedId)) return this.#committed.get(prepared.preparedId);
+    const current = await this.#calls.getSession({ scope, callSessionId: prepared.callSessionId });
+    if (!current || current.state !== CALL_STATE.ACTIVE) return generationFailure('call-ended-before-bot-commit');
+    const source = Object.freeze({ authority: 'tmrw-production-call-bot-v2', kind: 'bilingual-call-reply', recordId: `${prepared.callSessionId}:${prepared.preparedId}`, version: '2' });
+    const result = await this.#calls.addTranscript({
+      scope,
+      callSessionId: prepared.callSessionId,
+      speakerAccountId: prepared.botBinding.accountId,
+      actualAuthorActorId: prepared.botBinding.actorId,
+      actualAuthorInstanceId: prepared.botBinding.instanceId,
+      deviceId: prepared.botBinding.deviceId,
+      text: prepared.subtitleText,
+      sourceMode: 'live',
+      causeEventIds: [prepared.causeEventId].filter(Boolean),
+      source,
+      producer: 'outbound-call-bilingual-v2',
+      idempotencyKey: `bilingual-call-reply:${prepared.preparedId}`,
+    });
+    const committed = Object.freeze({ status: 'committed', committed: true, language: prepared.language, resolvedProfile: prepared.resolvedProfile, botBinding: prepared.botBinding, voiceSegments: prepared.segments, prepared, ...result });
+    this.#committed.set(prepared.preparedId, committed);
+    while (this.#committed.size > 256) this.#committed.delete(this.#committed.keys().next().value);
+    return committed;
+  }
+
+  async replyToCommittedUserTranscript(input) {
+    const prepared = await this.prepareReplyToCommittedUserTranscript(input);
+    if (prepared?.status !== 'prepared') return prepared;
+    return this.commitPreparedReply({ scope: input.scope, prepared });
+  }
+
+  async #prepare({ scope, playerInstanceId, commit, userTranscript, signal, timeoutMs }) {
     const session = await this.#calls.getSession({ scope, callSessionId: userTranscript.callSessionId });
-    if (!session || session.state !== CALL_STATE.ACTIVE) return Object.freeze({ status: 'skipped', reason: 'call-not-active' });
-    if (!session.participantAccountIds.includes(userTranscript.speakerAccountId)) return Object.freeze({ status: 'skipped', reason: 'speaker-not-participant' });
+    if (!session || session.state !== CALL_STATE.ACTIVE) return generationFailure('call-not-active');
+    if (!session.participantAccountIds.includes(userTranscript.speakerAccountId)) return generationFailure('speaker-not-participant');
 
     const context = this.#getContext();
-    if (!context || typeof context !== 'object') return Object.freeze({ status: 'skipped', reason: 'sillytavern-context-unavailable' });
-    if (context.groupId) return Object.freeze({ status: 'skipped', reason: 'v1-direct-character-only' });
-    if (typeof context.generateQuietPrompt !== 'function') return Object.freeze({ status: 'skipped', reason: 'quiet-generation-unavailable' });
+    if (!context || typeof context !== 'object') return generationFailure('sillytavern-context-unavailable');
+    if (context.groupId) return generationFailure('v1-direct-character-only');
+    if (typeof context.generateQuietPrompt !== 'function') return generationFailure('quiet-generation-unavailable');
 
-    const resolved = await this.#bindingResolver({
-      scope,
-      role: 'assistant',
-      context,
-      message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }),
-    });
+    const resolved = await this.#bindingResolver({ scope, role: 'assistant', context, message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }) });
     const bot = resolved?.actorBinding || null;
-    if (!bot || !session.participantAccountIds.includes(bot.accountId) || bot.accountId === userTranscript.speakerAccountId) {
-      return Object.freeze({ status: 'skipped', reason: 'current-character-not-call-counterpart' });
-    }
+    if (!bot || !session.participantAccountIds.includes(bot.accountId) || bot.accountId === userTranscript.speakerAccountId) return generationFailure('current-character-not-call-counterpart');
 
     const profile = await this.#voiceProfiles.resolve({ scope, actorId: bot.actorId, instanceId: bot.instanceId });
     const settings = await this.#settings.get({ scope, playerInstanceId });
     const language = resolveLanguage(profile, settings);
     const transcript = await this.#calls.listTranscript({ scope, viewerAccountId: userTranscript.speakerAccountId, callSessionId: session.callSessionId, limit: MAX_PROMPT_TRANSCRIPT });
-    const prompt = promptFor({ transcript, botAccountId: bot.accountId, language });
+    const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim() });
     const forceChId = Number.isInteger(context.characterId) ? context.characterId : null;
-    const generated = await context.generateQuietPrompt({
-      quietPrompt: prompt,
-      quietToLoud: false,
-      skipWIAN: false,
-      quietName: 'TMRW Call',
-      responseLength: 220,
-      forceChId,
-      removeReasoning: true,
-      trimToSentence: false,
-    });
-    const text = normalizeGeneratedText(generated);
-    if (!text) return Object.freeze({ status: 'skipped', reason: 'empty-model-response' });
-
-    const current = await this.#calls.getSession({ scope, callSessionId: session.callSessionId });
-    if (!current || current.state !== CALL_STATE.ACTIVE) return Object.freeze({ status: 'skipped', reason: 'call-ended-before-bot-commit' });
-
-    const sourceKey = String(commit.event?.id || userTranscript.transcriptEntryId);
-    const source = Object.freeze({ authority: 'tmrw-production-call-bot-v1', kind: 'quiet-call-reply', recordId: `${session.callSessionId}:${sourceKey}`, version: '1' });
-    const result = await this.#calls.addTranscript({
-      scope,
-      callSessionId: session.callSessionId,
-      speakerAccountId: bot.accountId,
-      actualAuthorActorId: bot.actorId,
-      actualAuthorInstanceId: bot.instanceId,
-      deviceId: bot.deviceId,
-      text,
-      sourceMode: 'live',
-      causeEventIds: [commit.event?.id].filter(Boolean),
-      source,
-      producer: 'post-release-voice-v1-call-bot',
-      idempotencyKey: `voice-v1-bot-reply:${sourceKey}`,
-    });
-    return Object.freeze({ status: 'committed', committed: true, language, resolvedProfile: profile, botBinding: bot, ...result });
+    try {
+      const generated = await withDeadline(Promise.resolve(context.generateQuietPrompt({
+        quietPrompt: prompt,
+        quietToLoud: false,
+        skipWIAN: false,
+        quietName: 'TMRW Call',
+        responseLength: 420,
+        forceChId,
+        removeReasoning: true,
+        trimToSentence: false,
+        signal,
+      })), { signal, timeoutMs });
+      if (signal?.aborted) return generationFailure('generation-cancelled');
+      const reply = parseGeneratedReply(generated);
+      if (!reply) return generationFailure('invalid-structured-model-response');
+      return Object.freeze({
+        status: 'prepared',
+        preparedId: String(commit.event?.id || userTranscript.transcriptEntryId),
+        callSessionId: session.callSessionId,
+        causeEventId: commit.event?.id || null,
+        language,
+        resolvedProfile: profile,
+        botBinding: Object.freeze({ ...bot }),
+        subtitleText: reply.subtitleText,
+        segments: reply.segments,
+        structured: reply.structured,
+      });
+    } catch (error) {
+      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
+      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error);
+      return generationFailure('generation-failed', error);
+    }
   }
 }
 
-export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT });
+export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT, maxReplySegments: MAX_REPLY_SEGMENTS, llmDeadlineMs: CALL_LLM_DEADLINE_MS });

@@ -7,15 +7,29 @@ function committedTranscript(commit) {
   if (!commit || commit.event?.eventType !== CALL_EVENT_TYPES.TRANSCRIPT_ADDED) return null;
   return commit.transcript || commit.event?.payload?.transcript || null;
 }
-
 function profileIsConfigured(profile) {
   return Boolean(String(profile?.profileName || '').trim());
 }
 
-function resolveLanguage(profile, settings) {
-  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
+function effectiveProfile(profile) {
+  if (profileIsConfigured(profile)) return profile;
+  return Object.freeze({ ...(profile || {}), profileName: 'Puzzle', language: profile?.language || VOICE_LANGUAGE.AUTO, defaultDelivery: profile?.defaultDelivery || 'natural', traits: Object.freeze({ ...(profile?.traits || {}) }), providerNeutral: true });
+}
+
+function resolveLanguage(profile, settings, prepared) {
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(settings?.voiceLanguagePreference)) return settings.voiceLanguagePreference;
-  return null;
+  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(prepared?.language)) return prepared.language;
+  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
+  return VOICE_LANGUAGE.ENGLISH;
+}
+
+function preparedSegments(prepared) {
+  const source = Array.isArray(prepared?.segments) ? prepared.segments : [];
+  return source.map((segment, index) => Object.freeze({
+    index,
+    subtitleThai: String(segment?.subtitleThai || segment?.subtitle_th || '').trim(),
+    spokenText: String(segment?.spokenText || segment?.spoken_text || '').trim(),
+  })).filter(segment => segment.subtitleThai && segment.spokenText);
 }
 
 export class CallVoicePresenter {
@@ -42,6 +56,81 @@ export class CallVoicePresenter {
     return Object.freeze({ processedCount: this.#processed.size, activeCalls: Object.freeze([...this.#activeByCall.keys()]), playback: this.#playback.status, lastResult: this.#lastResult });
   }
 
+  async presentPreparedBotReply({ scope: inputScope, playerInstanceId, prepared, commit = null, committed = null, startIndex = 0, onUpdate = null }) {
+    const scope = requireEventScope(inputScope);
+    const callSessionId = String(prepared?.callSessionId || committed?.transcript?.callSessionId || '').trim();
+    const segments = preparedSegments(prepared);
+    const firstIndex = Math.max(0, Number(startIndex) || 0);
+    if (!callSessionId || !segments.length || firstIndex >= segments.length) return this.#record({ status: 'failed', reason: 'invalid-prepared-voice-reply', failedIndex: firstIndex });
+    const settings = await this.#settings.get({ scope, playerInstanceId });
+    if (!settings.voiceCallsEnabled || !settings.botCallsWithVoice) return this.#record({ status: 'failed', reason: 'voice-disabled', failedIndex: firstIndex });
+    const rawProfile = prepared?.resolvedProfile || await this.#profiles.resolve({ scope, actorId: prepared.botBinding.actorId, instanceId: prepared.botBinding.instanceId });
+    const profile = effectiveProfile(rawProfile);
+    const language = resolveLanguage(profile, settings, prepared);
+    const requests = segments.slice(firstIndex).map(segment => normalizeVoiceRenderRequest({
+      actorId: prepared.botBinding.actorId,
+      instanceId: prepared.botBinding.instanceId,
+      callSessionId,
+      canonicalText: segment.spokenText,
+      subtitleText: segment.subtitleThai,
+      language,
+      resolvedProfile: profile,
+      delivery: { preset: settings.voiceDefaultDelivery || profile.defaultDelivery || 'natural' },
+    }));
+
+    this.cancelCall(callSessionId, 'replaced');
+    const controller = new AbortController();
+    this.#activeByCall.set(callSessionId, controller);
+    let sequence = null;
+    try {
+      onUpdate?.(Object.freeze({ phase: 'synthesizing', segmentIndex: firstIndex, segmentCount: segments.length }));
+      if (typeof this.#adapter.openSequence === 'function') {
+        try { sequence = await this.#adapter.openSequence(requests, { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null }); }
+        catch (error) {
+          if (controller.signal.aborted) return this.#record({ status: 'cancelled', reason: 'voice-cancelled', failedIndex: firstIndex, committed });
+          sequence = null;
+        }
+      }
+
+      let nextAudio = sequence ? sequence.renderAt(0) : this.#adapter.render(requests[0], { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
+      let currentCommit = committed;
+      let totalDurationMs = 0;
+      for (let offset = 0; offset < requests.length; offset += 1) {
+        const absoluteIndex = firstIndex + offset;
+        const segment = segments[absoluteIndex];
+        let renderResult = await nextAudio;
+        if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'cancelled', reason: 'voice-cancelled', failedIndex: absoluteIndex, committed: currentCommit });
+        if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) {
+          onUpdate?.(Object.freeze({ phase: 'retrying-voice', segmentIndex: absoluteIndex, segmentCount: segments.length }));
+          renderResult = await this.#adapter.render(requests[offset], { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
+        }
+        if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'cancelled', reason: 'voice-cancelled', failedIndex: absoluteIndex, committed: currentCommit });
+        if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) return this.#record({ status: 'failed', reason: renderResult?.errorCode || renderResult?.status || 'voice-render-failed', failedIndex: absoluteIndex, committed: currentCommit, language });
+
+        if (offset + 1 < requests.length) nextAudio = sequence ? sequence.renderAt(offset + 1) : this.#adapter.render(requests[offset + 1], { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
+        if (!currentCommit) {
+          if (typeof commit !== 'function') return this.#record({ status: 'failed', reason: 'voice-commit-required', failedIndex: absoluteIndex });
+          currentCommit = await commit();
+          if (!currentCommit?.committed) return this.#record({ status: 'failed', reason: currentCommit?.reason || 'voice-commit-failed', failedIndex: absoluteIndex });
+        }
+
+        onUpdate?.(Object.freeze({ phase: 'speaking', segmentIndex: absoluteIndex, segmentCount: segments.length, subtitleThai: segment.subtitleThai }));
+        const transcriptEntryId = String(currentCommit.transcript?.transcriptEntryId || prepared.preparedId || callSessionId);
+        const playback = await this.#playback.play({ callSessionId, transcriptEntryId: `${transcriptEntryId}:segment:${absoluteIndex}`, audioArtifactRef: renderResult.audioArtifactRef });
+        try { this.#adapter.release?.(renderResult); } catch {}
+        if (playback.status !== 'completed' && playback.status !== 'duplicate') return this.#record({ status: controller.signal.aborted ? 'cancelled' : 'failed', reason: `playback-${playback.status}`, failedIndex: absoluteIndex, committed: currentCommit, language });
+        if (Number.isFinite(renderResult.durationMs)) totalDurationMs += renderResult.durationMs;
+        if (offset + 1 < requests.length) onUpdate?.(Object.freeze({ phase: 'synthesizing', segmentIndex: absoluteIndex + 1, segmentCount: segments.length }));
+      }
+      onUpdate?.(Object.freeze({ phase: 'completed', segmentIndex: segments.length - 1, segmentCount: segments.length }));
+      return this.#record({ status: 'played', reason: 'completed', language, committed: currentCommit, segmentCount: segments.length, durationMs: totalDurationMs });
+    } catch (error) {
+      return this.#record({ status: controller.signal.aborted ? 'cancelled' : 'failed', reason: controller.signal.aborted ? 'voice-cancelled' : (error?.code || 'voice-presenter-error'), failedIndex: firstIndex, committed, language, error: String(error?.message || error) });
+    } finally {
+      if (this.#activeByCall.get(callSessionId) === controller) this.#activeByCall.delete(callSessionId);
+    }
+  }
+
   async presentCommittedBotTranscript({ scope: inputScope, playerActorId, playerInstanceId, commit }) {
     const scope = requireEventScope(inputScope);
     const transcript = committedTranscript(commit);
@@ -50,45 +139,22 @@ export class CallVoicePresenter {
     const key = String(transcript.transcriptEntryId || commit.event?.id || '').trim();
     if (!key) return this.#record({ status: 'text-only', reason: 'missing-transcript-id' });
     if (this.#processed.has(key)) return this.#record({ status: 'duplicate', reason: 'already-presented', transcriptEntryId: key });
-    this.#processed.add(key);
-
-    const settings = await this.#settings.get({ scope, playerInstanceId });
-    if (!settings.voiceCallsEnabled || !settings.botCallsWithVoice) return this.#record({ status: 'text-only', reason: 'voice-disabled', transcriptEntryId: key });
-    const profile = await this.#profiles.resolve({ scope, actorId: transcript.actualAuthorActorId, instanceId: transcript.actualAuthorInstanceId });
-    if (!profileIsConfigured(profile)) return this.#record({ status: 'text-only', reason: 'voice-profile-required', transcriptEntryId: key });
-    const language = resolveLanguage(profile, settings);
-    if (!language) return this.#record({ status: 'text-only', reason: 'language-unresolved', transcriptEntryId: key });
-
-    this.cancelCall(transcript.callSessionId, 'replaced');
-    const controller = new AbortController();
-    this.#activeByCall.set(transcript.callSessionId, controller);
-    const request = normalizeVoiceRenderRequest({
-      actorId: transcript.actualAuthorActorId,
-      instanceId: transcript.actualAuthorInstanceId,
+    const prepared = commit.prepared || Object.freeze({
+      status: 'prepared',
+      preparedId: key,
       callSessionId: transcript.callSessionId,
-      canonicalText: transcript.text,
-      language,
-      resolvedProfile: profile,
-      delivery: { preset: profile.defaultDelivery || 'natural' },
+      language: commit.language || null,
+      resolvedProfile: commit.resolvedProfile || null,
+      botBinding: Object.freeze({ actorId: transcript.actualAuthorActorId, instanceId: transcript.actualAuthorInstanceId }),
+      segments: commit.voiceSegments || Object.freeze([Object.freeze({ index: 0, subtitleThai: transcript.text, spokenText: transcript.text })]),
     });
-
-    let renderResult = null;
-    try {
-      renderResult = await this.#adapter.render(request, { signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null });
-      if (controller.signal.aborted || renderResult?.status === VOICE_RENDER_STATUS.CANCELLED) return this.#record({ status: 'text-only', reason: 'voice-cancelled', transcriptEntryId: key, language });
-      if (renderResult?.status !== VOICE_RENDER_STATUS.READY || !renderResult.audioArtifactRef) return this.#record({ status: 'text-only', reason: renderResult?.errorCode || renderResult?.status || 'voice-render-failed', transcriptEntryId: key, language });
-      const playback = await this.#playback.play({ callSessionId: transcript.callSessionId, transcriptEntryId: key, audioArtifactRef: renderResult.audioArtifactRef });
-      if (playback.status === 'completed') return this.#record({ status: 'played', reason: 'completed', transcriptEntryId: key, language, durationMs: renderResult.durationMs });
-      if (playback.status === 'duplicate') return this.#record({ status: 'duplicate', reason: 'playback-duplicate', transcriptEntryId: key, language });
-      return this.#record({ status: 'text-only', reason: `playback-${playback.status}`, transcriptEntryId: key, language });
-    } catch (error) {
-      return this.#record({ status: 'text-only', reason: controller.signal.aborted ? 'voice-cancelled' : 'voice-presenter-error', transcriptEntryId: key, language, error: String(error?.message || error) });
-    } finally {
-      if (this.#activeByCall.get(transcript.callSessionId) === controller) this.#activeByCall.delete(transcript.callSessionId);
-      if (renderResult?.audioArtifactRef) {
-        try { this.#adapter.release?.(renderResult); } catch {}
-      }
+    const result = await this.presentPreparedBotReply({ scope, playerInstanceId, prepared, committed: commit });
+    if (result.status === 'played') {
+      this.#processed.add(key);
+      return Object.freeze({ ...result, transcriptEntryId: key });
     }
+    if (result.status === 'cancelled') return this.#record({ status: 'text-only', reason: 'voice-cancelled', transcriptEntryId: key, language: result.language });
+    return this.#record({ status: 'text-only', reason: result.reason, transcriptEntryId: key, language: result.language, failedIndex: result.failedIndex });
   }
 
   cancelCall(callSessionId, reason = 'end-call') {

@@ -13,6 +13,7 @@ export function normalizeVoiceRenderRequest(input) {
     instanceId: requireText(input.instanceId, 'voice request instanceId'),
     callSessionId: requireText(input.callSessionId, 'voice request callSessionId'),
     canonicalText: requireText(input.canonicalText, 'voice request canonicalText'),
+    subtitleText: input.subtitleText == null ? requireText(input.canonicalText, 'voice request canonicalText') : requireText(input.subtitleText, 'voice request subtitleText'),
     language: normalizeVoiceLanguage(input.language),
     resolvedProfile: structuredClone(input.resolvedProfile),
     delivery: Object.freeze({ ...(input.delivery || {}) }),

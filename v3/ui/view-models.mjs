@@ -42,10 +42,12 @@ export class PhoneShellViewModels {
   setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }); }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCalls({ scope, playerInstanceId, enabled }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
+  setVoiceCaptions({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCaptions({ scope, playerInstanceId, enabled }); }
   setVoiceLanguagePreference({ scope, playerInstanceId, language }) { return this.#settings.setVoiceLanguagePreference({ scope, playerInstanceId, language }); }
   setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }) { return this.#settings.setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }); }
   setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }) { return this.#settings.setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }); }
   async testVoiceRuntime({ scope, playerInstanceId }) { const settings = await this.#settings.get({ scope, playerInstanceId }); if (!this.#voiceAdapter?.health) return Object.freeze({ ok: false, ready: false, endpoint: settings.voiceRuntimeBaseUrl, reason: 'voice-adapter-unavailable' }); return this.#voiceAdapter.health({ baseUrl: settings.voiceRuntimeBaseUrl }); }
+  activateDetectedVoice({ scope, playerInstanceId, language = 'en' }) { return this.#settings.activateDetectedVoice({ scope, playerInstanceId, language }); }
   setTheme({ scope, playerInstanceId, themeId }) { return this.#settings.setTheme({ scope, playerInstanceId, themeId }); }
   get socialEnabled() { return Boolean(this.#social); }
   get liveEnabled() { return Boolean(this.#live); }

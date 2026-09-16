@@ -39,14 +39,14 @@ export class PuzzleLocalRuntimeVoiceAdapter {
   #audioTimeoutMs;
   #refs = new Set();
 
-  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = PUZZLE_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 45000 } = {}) {
+  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = PUZZLE_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 20000 } = {}) {
     this.#fetch = typeof fetchImpl === 'function' ? fetchImpl : null;
     this.#baseUrl = String(baseUrl || PUZZLE_LOCAL_RUNTIME_BASE_URL).replace(/\/$/, '');
     this.#createObjectURL = typeof createObjectURL === 'function' ? createObjectURL : null;
     this.#revokeObjectURL = typeof revokeObjectURL === 'function' ? revokeObjectURL : null;
     this.#healthTimeoutMs = Math.max(100, Number(healthTimeoutMs) || 1200);
     this.#requestTimeoutMs = Math.max(100, Number(requestTimeoutMs) || 2500);
-    this.#audioTimeoutMs = Math.max(1000, Number(audioTimeoutMs) || 45000);
+    this.#audioTimeoutMs = Math.max(1000, Number(audioTimeoutMs) || 20000);
   }
 
   get capability() {
@@ -92,62 +92,80 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     }
   }
 
-  async render(input, { signal = null, baseUrl = null } = {}) {
-    let request;
-    try { request = normalizeVoiceRenderRequest(input); } catch { return failedResult('invalid-render-request'); }
-    if (signal?.aborted) return cancelledResult();
-    if (!String(request.resolvedProfile?.profileName || '').trim()) return unavailableResult('voice-profile-required');
-    const runtimeLanguage = LANGUAGE_MAP[request.language];
-    if (!runtimeLanguage) return unavailableResult('unsupported-language');
-    if (!this.#fetch || !this.#createObjectURL) return unavailableResult('runtime-client-unavailable');
-
+  async openSequence(inputs, { signal = null, baseUrl = null } = {}) {
+    const source = Array.isArray(inputs) ? inputs : [];
+    if (!source.length || source.length > 12) throw Object.assign(new Error('invalid-render-sequence'), { code: 'invalid-render-sequence' });
+    const requests = source.map(input => normalizeVoiceRenderRequest(input));
+    if (signal?.aborted) throw Object.assign(new Error('voice-cancelled'), { code: 'voice-cancelled' });
+    if (!this.#fetch || !this.#createObjectURL) throw Object.assign(new Error('runtime-client-unavailable'), { code: 'runtime-client-unavailable' });
+    if (requests.some(request => !String(request.resolvedProfile?.profileName || '').trim())) throw Object.assign(new Error('voice-profile-required'), { code: 'voice-profile-required' });
+    const runtimeLanguage = LANGUAGE_MAP[requests[0].language];
+    if (!runtimeLanguage || requests.some(request => LANGUAGE_MAP[request.language] !== runtimeLanguage)) throw Object.assign(new Error('unsupported-language'), { code: 'unsupported-language' });
     let endpoint;
     try { endpoint = normalizedBaseUrl(baseUrl, this.#baseUrl); }
-    catch { return unavailableResult('invalid-runtime-endpoint'); }
+    catch { throw Object.assign(new Error('invalid-runtime-endpoint'), { code: 'invalid-runtime-endpoint' }); }
     const health = await this.health({ signal, baseUrl: endpoint });
-    if (signal?.aborted) return cancelledResult();
-    if (!health.ready) return unavailableResult(health.reason || 'runtime-unavailable');
+    if (signal?.aborted) throw Object.assign(new Error('voice-cancelled'), { code: 'voice-cancelled' });
+    if (!health.ready) throw Object.assign(new Error(health.reason || 'runtime-unavailable'), { code: health.reason || 'runtime-unavailable' });
 
-    try {
-      const startResponse = await this.#fetchTimed('/turn/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ expected_chunks: 1, language: runtimeLanguage, calibration: false }),
-      }, this.#requestTimeoutMs, signal, endpoint);
-      const start = await responseJson(startResponse);
-      if (!startResponse.ok || start?.ok !== true || !start?.turn_id) return failedResult('turn-start-failed');
-
-      const turnId = String(start.turn_id);
+    const startResponse = await this.#fetchTimed('/turn/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expected_chunks: requests.length, language: runtimeLanguage, calibration: false }),
+    }, this.#requestTimeoutMs, signal, endpoint);
+    const start = await responseJson(startResponse);
+    if (!startResponse.ok || start?.ok !== true || !start?.turn_id) throw Object.assign(new Error('turn-start-failed'), { code: 'turn-start-failed' });
+    const turnId = String(start.turn_id);
+    for (let index = 0; index < requests.length; index += 1) {
+      const request = requests[index];
       const pushResponse = await this.#fetchTimed('/turn/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turn_id: turnId, index: 0, text: request.canonicalText, subtitle: request.canonicalText }),
+        body: JSON.stringify({ turn_id: turnId, index, text: request.canonicalText, subtitle: request.subtitleText }),
       }, this.#requestTimeoutMs, signal, endpoint);
       const push = await responseJson(pushResponse);
-      if (!pushResponse.ok || push?.ok !== true) return failedResult('turn-push-failed');
+      if (!pushResponse.ok || push?.ok !== true) throw Object.assign(new Error('turn-push-failed'), { code: 'turn-push-failed' });
+    }
+    const cache = new Map();
+    const renderAt = index => {
+      if (!Number.isSafeInteger(index) || index < 0 || index >= requests.length) return Promise.resolve(failedResult('invalid-sequence-index'));
+      if (cache.has(index)) return cache.get(index);
+      const pending = (async () => {
+        try {
+          const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=${index}`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
+          if (!audioResponse.ok) return failedResult('audio-fetch-failed');
+          const contentType = String(audioResponse.headers?.get?.('Content-Type') || '').toLowerCase();
+          if (contentType && !contentType.includes('audio/wav') && !contentType.includes('audio/x-wav')) return failedResult('invalid-audio-content-type');
+          const blob = await audioResponse.blob();
+          if (!blob || Number(blob.size || 0) < 44) return failedResult('invalid-audio-payload');
+          if (signal?.aborted) return cancelledResult();
+          const audioArtifactRef = this.#createObjectURL(blob);
+          if (!audioArtifactRef) return failedResult('audio-url-failed');
+          this.#refs.add(audioArtifactRef);
+          const durationSeconds = Number(audioResponse.headers?.get?.('X-TMRW-Duration'));
+          const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
+          return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
+        } catch (error) {
+          if (signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
+          if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
+          return failedResult(error?.code || 'runtime-error');
+        }
+      })();
+      cache.set(index, pending);
+      return pending;
+    };
+    return Object.freeze({ turnId, length: requests.length, runtimeLanguage, endpoint, renderAt });
+  }
 
-      const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=0`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
-      if (!audioResponse.ok) return failedResult('audio-fetch-failed');
-      const contentType = String(audioResponse.headers?.get?.('Content-Type') || '').toLowerCase();
-      if (contentType && !contentType.includes('audio/wav') && !contentType.includes('audio/x-wav')) return failedResult('invalid-audio-content-type');
-      const blob = await audioResponse.blob();
-      if (!blob || Number(blob.size || 0) < 44) return failedResult('invalid-audio-payload');
-      if (signal?.aborted) return cancelledResult();
-      const audioArtifactRef = this.#createObjectURL(blob);
-      if (!audioArtifactRef) return failedResult('audio-url-failed');
-      this.#refs.add(audioArtifactRef);
-      const durationSeconds = Number(audioResponse.headers?.get?.('X-TMRW-Duration'));
-      const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
-      return normalizeVoiceRenderResult({
-        status: VOICE_RENDER_STATUS.READY,
-        audioArtifactRef,
-        durationMs,
-        capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true },
-      });
+  async render(input, options = {}) {
+    try {
+      const sequence = await this.openSequence([input], options);
+      return sequence.renderAt(0);
     } catch (error) {
-      if (signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
+      if (options.signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
+      if (error?.code === 'voice-profile-required' || error?.code === 'unsupported-language' || error?.code === 'runtime-client-unavailable' || error?.code === 'invalid-runtime-endpoint' || error?.code === 'runtime-unavailable') return unavailableResult(error.code);
       if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
-      return failedResult('runtime-error');
+      return failedResult(error?.code || 'runtime-error');
     }
   }
 

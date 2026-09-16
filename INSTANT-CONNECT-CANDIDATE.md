@@ -18,15 +18,31 @@ The approved Android runtime is started with `mobile-runtime/START-TMRW-VOICE-MO
 
 The candidate also raises the extension phone surface above the host-side toolbar stacking context and uses the active SillyTavern character name for the single-character presentation instead of a generic `Character card` label.
 
+## Playable outbound Voice flow
+
+An active outbound call now has one bounded turn pipeline:
+
+- the caller's typed line is committed first, then the composer locks and immediately shows `กำลังคิด…`;
+- quiet generation has a 30-second deadline and must return one to three paired segments containing a Thai subtitle plus English or Japanese spoken text with matching meaning, names, address, and emotion;
+- invalid one-language or malformed output fails closed and exposes a retry action without creating a new call;
+- Puzzle synthesis uses one multi-chunk runtime turn, starts the first playable segment while later chunks continue in the background, applies a 20-second deadline per audio request, and retries a failed segment once;
+- no bot transcript is exposed until the first real audio artifact is ready; captions and audio then advance together while user input remains locked;
+- hangup stays available and cancels generation, synthesis, retry, and playback;
+- a missing Character Voice Profile uses the existing Puzzle voice as the temporary playable fallback.
+
+Voice Calls, bot voice, the mutually exclusive English/Japanese selection, delivery, Thai captions, and the runtime origin are stored as device-global preferences. They survive chat, branch, and reload changes. A detected ready runtime enables the initial defaults only once; later manual disables are preserved. Character Voice Profiles remain character-scoped.
+
 ## Verification
 
 Run:
 
 ```text
-node --test tests/phase23/instant-connect.test.mjs tests/phase23/smart-contact-discovery.test.mjs
+node --test tests/phase23/outbound-call-playable.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/presentation-correction.test.mjs
 npm run build:production-package
 npm run verify:production-package
 ```
+
+The targeted Voice/Instant/UI regression set passes 24/24. The broad historical `npm test` command remains blocked by test files already absent from this checkout (including `tests/phase17/notification-fixtures.mjs`, `tests/phase8/messaging-fixtures.mjs`, `tests/phase7/ui-fixtures.mjs`, and `tests/phase1/test-helpers.mjs`); this candidate does not reconstruct unrelated frozen test infrastructure.
 
 The generated production `dist/TMRW-Phone-V3/v3` closure is synchronized byte-for-byte into the repository-root `v3` directory because root `index.js` imports `./v3/production/entry.mjs` directly.
 

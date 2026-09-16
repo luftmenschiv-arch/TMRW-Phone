@@ -97,7 +97,7 @@ function renderRinging({ document, root, island, inspectionOnly, onAction }) {
   root.append(actions);
 }
 
-function renderActive({ document, root, island, inspectionOnly, onAction, onSend, onNavigate }) {
+function renderActive({ document, root, island, inspectionOnly, onAction, onSend, onNavigate, turnState = null, captionsVisible = true, onToggleCaptions = null, onRetry = null }) {
   const top = el(document, 'div', 'tmrw-call-authority-top-actions');
   const minimize = el(document, 'button', 'tmrw-call-authority-icon-btn'); minimize.type = 'button'; minimize.dataset.callAction = 'minimize'; minimize.setAttribute('aria-label', 'ย่อสาย'); minimize.append(icon(document, 'minimize', 18));
   const more = el(document, 'button', 'tmrw-call-authority-icon-btn'); more.type = 'button'; more.dataset.callAction = 'menu'; more.setAttribute('aria-label', 'เมนูเพิ่มเติม'); more.append(icon(document, 'more', 20));
@@ -105,20 +105,29 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
 
   const latest = (island.transcript || []).at(-1) || null;
   const stage = el(document, 'div', 'tmrw-call-authority-turn-stage');
-  if (latest) {
+  if (turnState?.phase && turnState.phase !== 'completed') {
+    const card = el(document, 'div', `tmrw-call-authority-subtitle-card tmrw-call-authority-turn-${turnState.phase}`);
+    const statusText = turnState.phase === 'thinking' ? 'กำลังคิด…' : turnState.phase === 'synthesizing' ? 'กำลังสร้างเสียง…' : turnState.phase === 'retrying-voice' ? 'กำลังลองสร้างเสียงอีกครั้ง…' : turnState.phase === 'speaking' ? (captionsVisible ? turnState.subtitleThai : 'กำลังพูด…') : (turnState.message || 'ตอบไม่สำเร็จ');
+    card.append(el(document, 'div', 'tmrw-call-authority-subtitle-text', statusText));
+    if (turnState.phase === 'failed' && typeof onRetry === 'function') { const retry = el(document, 'button', 'tmrw-call-authority-retry', turnState.retryLabel || 'ลองตอบใหม่'); retry.type = 'button'; retry.dataset.callAction = 'retry-reply'; bindOneShot(retry, onRetry); card.append(retry); }
+    stage.append(card);
+  } else if (latest) {
     const fromCounterpart = latest.speakerAccountId === island.counterpartAccountId;
     const card = el(document, 'div', fromCounterpart ? 'tmrw-call-authority-subtitle-card' : 'tmrw-call-authority-user-message-bubble');
-    if (fromCounterpart) card.append(el(document, 'span', 'tmrw-call-authority-quote left', '“'), el(document, 'div', 'tmrw-call-authority-subtitle-text', latest.text), el(document, 'span', 'tmrw-call-authority-quote right', '“'));
+    if (fromCounterpart && captionsVisible) card.append(el(document, 'span', 'tmrw-call-authority-quote left', '“'), el(document, 'div', 'tmrw-call-authority-subtitle-text', latest.text), el(document, 'span', 'tmrw-call-authority-quote right', '“'));
+    else if (fromCounterpart) card.append(el(document, 'div', 'tmrw-call-authority-subtitle-text tmrw-call-authority-subtitle-empty', ''));
     else card.append(el(document, 'span', 'tmrw-call-authority-user-message-text', latest.text));
     stage.append(card);
   } else stage.append(el(document, 'div', 'tmrw-call-authority-subtitle-card tmrw-call-authority-subtitle-empty', ''));
   root.append(stage);
 
-  const composerWrap = el(document, 'div', 'tmrw-call-authority-composer-wrap'); const composer = el(document, 'div', `tmrw-call-authority-composer ${inspectionOnly ? 'locked' : ''}`);
-  if (inspectionOnly) composer.append(el(document, 'span', 'tmrw-call-authority-lock-icon', '🔒'));
-  const input = el(document, 'input', 'tmrw-call-authority-input'); input.type = 'text'; input.setAttribute('aria-label', 'Call text'); input.placeholder = 'พิมพ์ข้อความ...'; input.disabled = inspectionOnly;
+  const turnLocked = Boolean(turnState?.locked);
+  const composerLocked = inspectionOnly || turnLocked;
+  const composerWrap = el(document, 'div', 'tmrw-call-authority-composer-wrap'); const composer = el(document, 'div', `tmrw-call-authority-composer ${composerLocked ? 'locked' : ''}`);
+  if (composerLocked) composer.append(el(document, 'span', 'tmrw-call-authority-lock-icon', '🔒'));
+  const input = el(document, 'input', 'tmrw-call-authority-input'); input.type = 'text'; input.setAttribute('aria-label', 'Call text'); input.placeholder = turnLocked ? 'รอให้อีกฝ่ายพูดจบ…' : 'พิมพ์ข้อความ...'; input.disabled = composerLocked;
   const send = el(document, 'button', 'tmrw-call-authority-send'); send.type = 'button'; send.dataset.callAction = 'send-text'; send.setAttribute('aria-label', 'ส่ง'); send.append(icon(document, 'send', 18));
-  const syncSend = () => { send.disabled = inspectionOnly || !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); syncSend();
+  const syncSend = () => { send.disabled = composerLocked || !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); syncSend();
   let sendBusy = false; send.addEventListener('click', () => { if (sendBusy || send.disabled) return; sendBusy = true; send.disabled = true; void Promise.resolve(onSend?.(input)).catch(() => {}).finally(() => { sendBusy = false; syncSend(); }); });
   composer.append(input, send); composerWrap.append(composer); root.append(composerWrap);
 
@@ -129,16 +138,14 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
   controls.append(speaker, end, mute); root.append(controls);
 
   const menu = el(document, 'div', 'tmrw-call-authority-menu'); menu.hidden = true;
-  const menuButton = (label, target, enabled = true) => { const button = el(document, 'button', '', label); button.type = 'button'; button.dataset.callNavigate = target; button.disabled = !enabled; button.addEventListener('click', () => { menu.hidden = true; onNavigate?.(target); }); return button; };
-  menu.append(menuButton('โปรไฟล์', 'profile', false), menuButton('ประวัติการโทร', 'history'), menuButton('คำบรรยาย', 'captions'), menuButton('การตั้งค่า', 'settings')); root.append(menu);
+  const menuButton = (label, target, enabled = true, handler = null) => { const button = el(document, 'button', '', label); button.type = 'button'; button.dataset.callNavigate = target; button.disabled = !enabled; button.addEventListener('click', () => { menu.hidden = true; if (handler) handler(); else onNavigate?.(target); }); return button; };
+  menu.append(menuButton('โปรไฟล์', 'profile', false), menuButton('ประวัติการโทร', 'history'), menuButton(captionsVisible ? 'ปิดคำบรรยาย' : 'เปิดคำบรรยาย', 'captions', true, () => onToggleCaptions?.(!captionsVisible)), menuButton('การตั้งค่า', 'settings')); root.append(menu);
   more.addEventListener('click', () => { menu.hidden = !menu.hidden; });
 
   const mini = el(document, 'div', 'tmrw-call-authority-mini-layer'); mini.hidden = true; mini.append(el(document, 'div', 'tmrw-call-authority-mini-title', 'TMRW Phone'), el(document, 'div', 'tmrw-call-authority-mini-sub', 'สายยังคงเชื่อมต่ออยู่'));
   const card = el(document, 'button', 'tmrw-call-authority-mini-card'); card.type = 'button'; card.dataset.callAction = 'restore'; card.append(el(document, 'span', 'tmrw-call-authority-mini-avatar', initials(island.counterpartLabel)), el(document, 'span', 'tmrw-call-authority-mini-info', island.counterpartLabel || 'Call participant'), el(document, 'i', 'tmrw-call-authority-mini-live-dot')); mini.append(card); root.append(mini);
   minimize.addEventListener('click', () => { root.classList?.add?.('is-minimized'); mini.hidden = false; }); card.addEventListener('click', () => { root.classList?.remove?.('is-minimized'); mini.hidden = true; });
 
-  let captionsVisible = true;
-  menu.querySelector?.('[data-call-navigate="captions"]')?.addEventListener?.('click', () => { captionsVisible = !captionsVisible; stage.hidden = !captionsVisible; });
 }
 
 function renderEnded({ document, root, island, onClose, onContinueOnce }) {
@@ -151,7 +158,7 @@ function renderEnded({ document, root, island, onClose, onContinueOnce }) {
   }
 }
 
-export function renderApprovedCallSurface({ document, island, inspectionOnly = false, onAction, onSend, onClose, onContinueOnce, onNavigate = null }) {
+export function renderApprovedCallSurface({ document, island, inspectionOnly = false, onAction, onSend, onClose, onContinueOnce, onNavigate = null, turnState = null, captionsVisible = true, onToggleCaptions = null, onRetry = null }) {
   const root = el(document, 'section', `tmrw-call-authority-surface tmrw-call-authority-${island.kind}`);
   root.dataset.callSessionId = island.callSessionId || '';
   root.dataset.callState = island.state || island.kind;
@@ -160,7 +167,7 @@ export function renderApprovedCallSurface({ document, island, inspectionOnly = f
   root.append(statusBar(document), el(document, 'div', 'tmrw-call-authority-notch'));
 
   if (island.kind === 'incoming' || island.kind === 'outgoing') renderRinging({ document, root, island, inspectionOnly, onAction });
-  else if (island.kind === 'active') renderActive({ document, root, island, inspectionOnly, onAction, onSend, onNavigate });
+  else if (island.kind === 'active') renderActive({ document, root, island, inspectionOnly, onAction, onSend, onNavigate, turnState, captionsVisible, onToggleCaptions, onRetry });
   else if (island.kind === 'ended') renderEnded({ document, root, island, onClose, onContinueOnce });
 
   root.append(el(document, 'div', 'tmrw-call-authority-home-indicator'));
