@@ -9,10 +9,10 @@ async function digest(value) { const bytes = new TextEncoder().encode(String(val
 const emit = (listener, value) => { try { listener?.(Object.freeze({ ...value })); } catch {} };
 
 export class PlayableBootstrapService {
-  #unit; #identity; #phones; #settings; #runtime; #getContext; #now; #running = null;
-  constructor({ database, identityKernel, phoneStateService, settingsService, runtimeIntegration = null, getContext, now = () => new Date().toISOString() }) {
+  #unit; #identity; #phones; #settings; #runtime; #initialSeed; #getContext; #now; #running = null;
+  constructor({ database, identityKernel, phoneStateService, settingsService, runtimeIntegration = null, initialPhoneSeedService = null, getContext, now = () => new Date().toISOString() }) {
     if (!database || !identityKernel || !phoneStateService || !settingsService || typeof getContext !== 'function') throw new TypeError('PlayableBootstrapService requires database, identity, phone, settings, and SillyTavern context');
-    this.#unit = new V3UnitOfWork(database); this.#identity = identityKernel; this.#phones = phoneStateService; this.#settings = settingsService; this.#runtime = runtimeIntegration; this.#getContext = getContext; this.#now = now;
+    this.#unit = new V3UnitOfWork(database); this.#identity = identityKernel; this.#phones = phoneStateService; this.#settings = settingsService; this.#runtime = runtimeIntegration; this.#initialSeed = initialPhoneSeedService; this.#getContext = getContext; this.#now = now;
   }
 
   async status({ scope, playerInstanceId }) { return (await this.#settings.get({ scope, playerInstanceId })).playableBootstrap; }
@@ -47,6 +47,7 @@ export class PlayableBootstrapService {
       const fullHistory = await readPlayableHistory(context, { chunkMessages: 24, chunkCharacters: 12_000 }); const seed = await this.#identitySeed(scope, playerInstanceId, manifest, fullHistory.headFingerprint); await this.#identity.seedIdentityGraph(seed); await this.#phones.initializeScope(scope);
       const quick = recentHistoryWindow(totalMessages, recentMessages); await progress('quick-start', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: quick.startOrdinal });
       if (this.#runtime?.reconcileHistory) await this.#runtime.reconcileHistory({ ...quick, onProgress: value => emit(onProgress, { status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage: 'quick-start', totalMessages, processedOrdinal: value.ordinal, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length }) });
+      if (this.#initialSeed) { await progress('initial-seed', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: totalMessages }); await this.#initialSeed.seed({ scope, context, fingerprint: fullHistory.headFingerprint }); }
       let state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.QUICK_READY, stage: 'quick-ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, lastError: null }); emit(onProgress, state);
       if (deepBackfill && quick.startOrdinal > 0) {
         const chunks = fullHistory.chunks.filter(chunk => chunk.startOrdinal < quick.startOrdinal);

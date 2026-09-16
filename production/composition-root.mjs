@@ -64,6 +64,7 @@ import { CallBotReplyCoordinator } from '../application/call-bot-reply-coordinat
 import { CallVoicePresenter } from '../application/call-voice-presenter.mjs';
 import { CallTimingDiagnostics } from '../application/call-timing-diagnostics.mjs';
 import { PlayableBootstrapService } from '../application/playable-bootstrap/playable-bootstrap-service.mjs';
+import { InitialPhoneSeedService } from '../application/playable-bootstrap/initial-phone-seed.mjs';
 import { createPhase19VoiceCapabilityState, createProductionVoiceV1CapabilityState } from '../domain/voice/voice-capability.mjs';
 import { PuzzleLocalRuntimeVoiceAdapter } from '../platform/voice/puzzle-local-runtime-adapter.mjs';
 import { CallVoicePlaybackController } from '../ui/calls/call-voice-playback.mjs';
@@ -624,7 +625,8 @@ async function buildRuntime(options, entry) {
       authoringEnabled: () => gate.allows(AUTHORING_CAPABILITY.NORMAL),
     });
     await activation.mark('runtime-integration');
-    const playableBootstrap = new PlayableBootstrapService({ database: normalDatabase, identityKernel, phoneStateService: phones, settingsService: settings, runtimeIntegration, getContext, now });
+    const initialPhoneSeed = new InitialPhoneSeedService({ database: normalDatabase, phoneWorldService: phoneWorld, now });
+    const playableBootstrap = new PlayableBootstrapService({ database: normalDatabase, identityKernel, phoneStateService: phones, settingsService: settings, runtimeIntegration, initialPhoneSeedService: initialPhoneSeed, getContext, now });
     await activation.mark('playable-bootstrap');
 
     const scopeChange = async (...args) => {
@@ -654,7 +656,7 @@ async function buildRuntime(options, entry) {
     gate.close('s08-awaiting-s09-mount-launcher');
     await activation.mark('s08-ready-without-mount', finalHealth);
 
-    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, playableBootstrap, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, voiceAdapter, voicePlayback, callTimingDiagnostics, callVoicePresenter, callBotReply, viewModels, phoneController });
+    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, initialPhoneSeed, playableBootstrap, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, voiceAdapter, voicePlayback, callTimingDiagnostics, callVoicePresenter, callBotReply, viewModels, phoneController });
     const composition = Object.freeze({ normalDatabase, identityKernel, contextAdapter, identityResolver, eventEngine, runtimeIntegration, listenerOwner, generationOwner, heartbeat, authoringGate: gate, runtimeGuard, productionHealth });
 
     const root = Object.freeze({
