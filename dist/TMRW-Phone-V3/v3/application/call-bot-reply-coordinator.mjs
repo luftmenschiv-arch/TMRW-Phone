@@ -7,6 +7,20 @@ const MAX_PROMPT_TRANSCRIPT = 12;
 const MAX_PROMPT_CHARACTERS = 6000;
 const MAX_REPLY_SEGMENTS = 3;
 export const CALL_LLM_DEADLINE_MS = 30000;
+export const CALL_LLM_DELIVERY_MODE = Object.freeze({
+  COMPLETE_RESPONSE: 'complete-response',
+});
+export const CALL_LLM_INCREMENTAL_REASON = 'sillytavern-generation-api-has-no-safe-stream';
+
+export function resolveCallLlmDeliveryCapability(context) {
+  return Object.freeze({
+    mode: CALL_LLM_DELIVERY_MODE.COMPLETE_RESPONSE,
+    incremental: false,
+    reason: typeof context?.generateQuietPrompt === 'function'
+      ? CALL_LLM_INCREMENTAL_REASON
+      : 'quiet-generation-unavailable',
+  });
+}
 
 function committedTranscript(commit) {
   if (!commit || commit.event?.eventType !== CALL_EVENT_TYPES.TRANSCRIPT_ADDED) return null;
@@ -14,7 +28,6 @@ function committedTranscript(commit) {
 }
 function resolveLanguage(profile, settings) {
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(settings?.voiceLanguagePreference)) return settings.voiceLanguagePreference;
-  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
   return VOICE_LANGUAGE.ENGLISH;
 }
 
@@ -212,6 +225,7 @@ export class CallBotReplyCoordinator {
     if (!context || typeof context !== 'object') return generationFailure('sillytavern-context-unavailable');
     if (context.groupId) return generationFailure('v1-direct-character-only');
     if (typeof context.generateQuietPrompt !== 'function') return generationFailure('quiet-generation-unavailable');
+    const deliveryCapability = resolveCallLlmDeliveryCapability(context);
 
     const counterpartAccountIds = session.participantAccountIds.filter(accountId => accountId !== userTranscript.speakerAccountId);
     if (counterpartAccountIds.length !== 1) return generationFailure('call-counterpart-not-exact');
@@ -227,7 +241,11 @@ export class CallBotReplyCoordinator {
     const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim() });
     const forceChId = Number.isInteger(context.characterId) ? context.characterId : null;
     try {
-      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-start');
+      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-start', {
+        deliveryMode: deliveryCapability.mode,
+        incremental: deliveryCapability.incremental,
+        incrementalReason: deliveryCapability.reason,
+      });
       const generated = await context.generateQuietPrompt({
         quietPrompt: prompt,
         quietToLoud: false,
@@ -265,6 +283,9 @@ export class CallBotReplyCoordinator {
         subtitleText: reply.subtitleText,
         segments: reply.segments,
         structured: reply.structured,
+        deliveryMode: deliveryCapability.mode,
+        incremental: deliveryCapability.incremental,
+        incrementalReason: deliveryCapability.reason,
       });
     } catch (error) {
       if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
@@ -274,4 +295,4 @@ export class CallBotReplyCoordinator {
   }
 }
 
-export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT, maxReplySegments: MAX_REPLY_SEGMENTS, llmDeadlineMs: CALL_LLM_DEADLINE_MS });
+export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT, maxReplySegments: MAX_REPLY_SEGMENTS, llmDeadlineMs: CALL_LLM_DEADLINE_MS, deliveryMode: CALL_LLM_DELIVERY_MODE.COMPLETE_RESPONSE, incremental: false, incrementalReason: CALL_LLM_INCREMENTAL_REASON });

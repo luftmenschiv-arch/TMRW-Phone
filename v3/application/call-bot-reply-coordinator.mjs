@@ -28,7 +28,6 @@ function committedTranscript(commit) {
 }
 function resolveLanguage(profile, settings) {
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(settings?.voiceLanguagePreference)) return settings.voiceLanguagePreference;
-  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
   return VOICE_LANGUAGE.ENGLISH;
 }
 

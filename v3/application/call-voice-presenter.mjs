@@ -19,7 +19,6 @@ function effectiveProfile(profile) {
 function resolveLanguage(profile, settings, prepared) {
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(settings?.voiceLanguagePreference)) return settings.voiceLanguagePreference;
   if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(prepared?.language)) return prepared.language;
-  if ([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE].includes(profile?.language)) return profile.language;
   return VOICE_LANGUAGE.ENGLISH;
 }
 

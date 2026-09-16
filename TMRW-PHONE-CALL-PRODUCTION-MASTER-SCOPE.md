@@ -39,14 +39,14 @@ These behaviors are already verified and must remain working:
 
 | Checkpoint | Scope | Status | Commit | Evidence |
 | --- | --- | --- | --- | --- |
-| 0 | Durable master scope and baseline | COMPLETE | this checkpoint commit | baseline below |
+| 0 | Durable master scope and baseline | COMPLETE | `2d1e314` | baseline below |
 | 1 | Timing Diagnostics | COMPLETE | `3ea2677` | 31 focused tests passed; package verified |
 | 2 | Safe speedups: warmup, health cache, connection/turn reuse | COMPLETE | `29042b2` | 33 focused tests passed; package verified |
 | 3 | Real Call History dates and measured duration | COMPLETE | `de2c57b` | 36 focused tests passed; package verified |
 | 4 | Call Details and ordered transcript | COMPLETE | `391102d` | 35 focused tests passed; package verified |
-| 5 | Persistent audio replay, download, retention, and Kept archive | COMPLETE | this checkpoint commit | 41 focused tests passed; package verified |
-| 6 | Incremental LLM first segment to TTS | COMPLETE (safe provider fallback) | this checkpoint commit | targeted tests + package verify passed |
-| 7 | Truthful, non-duplicated language/settings behavior | NOT STARTED | pending | pending |
+| 5 | Persistent audio replay, download, retention, and Kept archive | COMPLETE | `da98929` | 41 focused tests passed; package verified |
+| 6 | Incremental LLM first segment to TTS | COMPLETE (safe provider fallback) | `614fcc2` | 16 focused tests passed; package verified |
+| 7 | Truthful, non-duplicated language/settings behavior | COMPLETE | this checkpoint commit | 35 focused tests passed; package verified |
 | 8 | One-click Runtime/Model installation | DEFERRED | — | later approval required |
 | 9 | TMRW Voice Companion | DEFERRED | — | later approval required |
 | 10 | Contextual incoming character calls | DEFERRED | — | later approval required |
@@ -313,3 +313,22 @@ Recorded result:
 - production package: 241 files, 731 import edges
 - package verification: passed
 - checkpoint 6 Android deployment: pending checkpoint 7
+
+### Checkpoint 7 — Truthful language/settings behavior — 2026-09-17
+
+Made `ภาษาที่ใช้ในการโทรตอนนี้` the only active language selector. English and Japanese remain mutually exclusive, global, persistent, and hot-switchable; character profiles now control voice identity only and explicitly say that they use the active call language. Removed the duplicate base/instance language buttons. The generation and playback paths no longer fall back to a character-profile language when the global value is unset; English is the deterministic migration default until the global setting is selected or detected. Replaced the non-functional Natural/Soft/Expressive selector with truthful text: Natural is active and the current runtime does not yet support Soft or Expressive. Also removed stale copy claiming that a failed voice turn silently becomes a text call.
+
+Commands:
+
+```powershell
+node --test tests/phase23/presentation-correction.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/instant-connect.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused settings/call tests: 35 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
+- Android deployment: pending final branch deployment and on-device smoke check

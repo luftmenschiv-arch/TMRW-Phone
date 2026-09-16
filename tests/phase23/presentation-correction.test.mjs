@@ -46,3 +46,26 @@ test('presentation correction retains recovered Call authority and does not repl
   const surfaces = [renderApprovedCallSurface({ document, island: { ...base, kind: 'incoming', state: 'ringing', actions: [{ id: 'accept', enabled: true }, { id: 'decline', enabled: true }] } }), renderApprovedCallSurface({ document, island: { ...base, kind: 'outgoing', state: 'ringing', actions: [{ id: 'cancel', enabled: true }] } }), renderApprovedCallSurface({ document, island: { ...base, kind: 'active', state: 'active', canonicalDurationMs: null, durationLabel: 'เชื่อมต่ออยู่', transcript: [], actions: [{ id: 'end', enabled: true }] } }), renderApprovedCallSurface({ document, island: { ...base, kind: 'ended', state: 'ended', durationLabel: '01:42', actions: [] } })];
   for (const surface of surfaces) assert.equal(surface.dataset.presentationAuthority, 'v3/design/call-ui-authority'); assert.doesNotMatch(surfaces.map(surface => allText(surface)).join(' '), /Character Instance Override|Capability status|instance-secret/i); assert.match(allText(surfaces[2]), /TMRW Phone/);
 });
+
+test('Voice settings expose one authoritative call language and do not advertise unsupported delivery modes', () => {
+  const document = new FakeDocument();
+  const voice = renderVoiceSetup({
+    document,
+    settings: { voiceCallsEnabled: true, botCallsWithVoice: true, voiceCaptionsEnabled: true, voiceLanguagePreference: 'ja', voiceDefaultDelivery: 'expressive' },
+    capability: { configured: true, runtimeAvailable: true, runtimeStatus: 'available', testVoiceEnabled: true },
+    runtimeHealth: { ready: true, voice: 'Puzzle' },
+    roster: [{ actorId: 'actor-kaelan', instanceId: 'instance-kaelan', label: 'Kaelan' }],
+    selectedActorId: 'actor-kaelan',
+    selectedIdentity: { actorId: 'actor-kaelan', instanceId: 'instance-kaelan', label: 'Kaelan' },
+    baseProfile: { profileName: 'Puzzle', language: 'en', lockedByUser: true },
+    instanceOverride: { enabled: true, fields: { profileName: 'Puzzle', language: 'en' } },
+    resolvedProfile: { profileName: 'Puzzle', language: 'en' },
+  });
+  const text = allText(voice);
+  assert.match(text, /ภาษาที่ใช้ในการโทรตอนนี้/);
+  assert.match(text, /ใช้กับตัวละครทุกคน/);
+  assert.match(text, /Natural/);
+  assert.match(text, /ยังไม่รองรับ Soft และ Expressive/);
+  assert.equal(findAll(voice, node => node.dataset?.voiceLanguage).length, 2);
+  assert.equal(findAll(voice, node => node.dataset?.baseVoiceLanguage || node.dataset?.overrideVoiceLanguage || node.dataset?.voiceDelivery).length, 0);
+});
