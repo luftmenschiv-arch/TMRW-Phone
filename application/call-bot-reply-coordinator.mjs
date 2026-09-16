@@ -3,17 +3,12 @@ import { CALL_EVENT_TYPES } from '../domain/calls/call-event-types.mjs';
 import { CALL_STATE } from '../domain/calls/call-state-machine.mjs';
 import { VOICE_LANGUAGE } from '../domain/voice/voice-profile.mjs';
 
-const PUZZLE_PROFILE = 'puzzle';
 const MAX_PROMPT_TRANSCRIPT = 12;
 const MAX_PROMPT_CHARACTERS = 6000;
 
 function committedTranscript(commit) {
   if (!commit || commit.event?.eventType !== CALL_EVENT_TYPES.TRANSCRIPT_ADDED) return null;
   return commit.transcript || commit.event?.payload?.transcript || null;
-}
-
-function isPuzzleProfile(profile) {
-  return String(profile?.profileName || '').trim().toLowerCase() === PUZZLE_PROFILE;
 }
 
 function resolveLanguage(profile, settings) {
@@ -116,7 +111,6 @@ export class CallBotReplyCoordinator {
     }
 
     const profile = await this.#voiceProfiles.resolve({ scope, actorId: bot.actorId, instanceId: bot.instanceId });
-    if (!isPuzzleProfile(profile)) return Object.freeze({ status: 'skipped', reason: 'v1-puzzle-profile-required' });
     const settings = await this.#settings.get({ scope, playerInstanceId });
     const language = resolveLanguage(profile, settings);
     const transcript = await this.#calls.listTranscript({ scope, viewerAccountId: userTranscript.speakerAccountId, callSessionId: session.callSessionId, limit: MAX_PROMPT_TRANSCRIPT });
@@ -158,4 +152,4 @@ export class CallBotReplyCoordinator {
   }
 }
 
-export const voiceV1BotReplyPolicy = Object.freeze({ profileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT });
+export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT });

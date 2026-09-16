@@ -6,6 +6,8 @@ import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY, resolveExperiencePreset } fr
 import { DEFAULT_VOICE_RUNTIME_BASE_URL } from '../../ui/settings-beta.mjs';
 import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
+import { VoiceProfileService } from '../../application/voice-profile-service.mjs';
+import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 async function waitFor(predicate, label = 'Instant Connect UI') {
@@ -175,6 +177,42 @@ test('Instant auto-answer recovers the exact already-ringing Character Call with
   assert.equal(recovered.autoAccepted, true);
   assert.equal(recovered.reusedOpenSession, true);
   assert.equal((await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).length, 1);
+});
+
+test('active text Call gets a canonical bot reply even before a Voice profile is configured', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-text-before-voice' });
+  const call = await context.viewModels.callCoordinator.startOutgoing({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    autoAcceptTarget: true,
+    source: { authority: 'p23-instant-test', kind: 'text-before-voice', recordId: 'text-before-voice-call', version: '1' },
+    idempotencyKey: 'text-before-voice-call',
+  });
+  const userCommit = await context.viewModels.callCoordinator.sendText({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    callSessionId: call.session.callSessionId,
+    text: 'Can you hear me?',
+    source: { authority: 'p23-instant-test', kind: 'text-before-voice', recordId: 'text-before-voice-user', version: '1' },
+    idempotencyKey: 'text-before-voice-user',
+  });
+  const generationCalls = [];
+  const replies = new CallBotReplyCoordinator({
+    callService: context.calls,
+    voiceProfileService: new VoiceProfileService({ database: context.database }),
+    settingsService: context.settings,
+    bindingResolver: async () => ({ actorBinding: { actorId: context.alice.actorId, instanceId: context.alice.instanceId, accountId: context.alice.accountId, deviceId: context.alice.deviceId } }),
+    getContext: () => ({ groupId: null, characterId: 0, name2: 'Alice', chat: [], generateQuietPrompt: async options => { generationCalls.push(options); return 'Yes, I can hear you.'; } }),
+  });
+  const botCommit = await replies.replyToCommittedUserTranscript({ scope: context.scope, playerInstanceId: context.user.instanceId, commit: userCommit });
+  assert.equal(botCommit.committed, true);
+  assert.equal(generationCalls.length, 1);
+  assert.equal((await context.calls.listTranscript({ scope: context.scope, viewerAccountId: context.user.accountId, callSessionId: call.session.callSessionId })).at(-1).text, 'Yes, I can hear you.');
 });
 
 test('Instant Messages creates one canonical DM on demand and leaves Contacts untouched', async () => {
