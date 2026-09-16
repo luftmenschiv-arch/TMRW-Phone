@@ -29,6 +29,10 @@ async function responseJson(response) {
   try { return await response.json(); } catch { return null; }
 }
 
+function emitTiming(callback, phase, detail = {}) {
+  try { callback?.(Object.freeze({ phase, ...detail })); } catch {}
+}
+
 export class PuzzleLocalRuntimeVoiceAdapter {
   #fetch;
   #baseUrl;
@@ -77,7 +81,8 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     }
   }
 
-  async health({ signal = null, baseUrl = null } = {}) {
+  async health({ signal = null, baseUrl = null, onTiming = null, language = null } = {}) {
+    emitTiming(onTiming, 'runtime-health-start', { language, cached: false });
     if (!this.#fetch) return Object.freeze({ ok: false, ready: false, reason: 'voice-fetch-unavailable' });
     let endpoint;
     try { endpoint = normalizedBaseUrl(baseUrl, this.#baseUrl); }
@@ -86,13 +91,15 @@ export class PuzzleLocalRuntimeVoiceAdapter {
       const response = await this.#fetchTimed('/health', { method: 'GET' }, this.#healthTimeoutMs, signal, endpoint);
       const body = await responseJson(response);
       const ok = response.ok === true && body?.ok === true && body?.ready === true && String(body?.voice || '').toLowerCase() === 'puzzle';
+      emitTiming(onTiming, 'runtime-health-end', { language, cached: false, outcome: ok ? 'ready' : 'not-ready' });
       return Object.freeze({ ok, ready: ok, status: response.status, voice: body?.voice || null, endpoint, error: body?.error || null, reason: ok ? null : 'runtime-not-ready' });
     } catch (error) {
+      emitTiming(onTiming, 'runtime-health-end', { language, cached: false, outcome: error?.code || 'runtime-unreachable' });
       return Object.freeze({ ok: false, ready: false, endpoint, reason: error?.code || 'runtime-unreachable', error: String(error?.message || error) });
     }
   }
 
-  async openSequence(inputs, { signal = null, baseUrl = null } = {}) {
+  async openSequence(inputs, { signal = null, baseUrl = null, onTiming = null } = {}) {
     const source = Array.isArray(inputs) ? inputs : [];
     if (!source.length || source.length > 12) throw Object.assign(new Error('invalid-render-sequence'), { code: 'invalid-render-sequence' });
     const requests = source.map(input => normalizeVoiceRenderRequest(input));
@@ -104,10 +111,11 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     let endpoint;
     try { endpoint = normalizedBaseUrl(baseUrl, this.#baseUrl); }
     catch { throw Object.assign(new Error('invalid-runtime-endpoint'), { code: 'invalid-runtime-endpoint' }); }
-    const health = await this.health({ signal, baseUrl: endpoint });
+    const health = await this.health({ signal, baseUrl: endpoint, onTiming, language: requests[0].language });
     if (signal?.aborted) throw Object.assign(new Error('voice-cancelled'), { code: 'voice-cancelled' });
     if (!health.ready) throw Object.assign(new Error(health.reason || 'runtime-unavailable'), { code: health.reason || 'runtime-unavailable' });
 
+    emitTiming(onTiming, 'runtime-turn-start', { segmentCount: requests.length, language: requests[0].language });
     const startResponse = await this.#fetchTimed('/turn/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -115,9 +123,11 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     }, this.#requestTimeoutMs, signal, endpoint);
     const start = await responseJson(startResponse);
     if (!startResponse.ok || start?.ok !== true || !start?.turn_id) throw Object.assign(new Error('turn-start-failed'), { code: 'turn-start-failed' });
+    emitTiming(onTiming, 'runtime-turn-ready', { segmentCount: requests.length, language: requests[0].language });
     const turnId = String(start.turn_id);
     for (let index = 0; index < requests.length; index += 1) {
       const request = requests[index];
+      emitTiming(onTiming, 'runtime-chunk-push-start', { segmentIndex: index, segmentCount: requests.length, language: request.language });
       const pushResponse = await this.#fetchTimed('/turn/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,10 +135,12 @@ export class PuzzleLocalRuntimeVoiceAdapter {
       }, this.#requestTimeoutMs, signal, endpoint);
       const push = await responseJson(pushResponse);
       if (!pushResponse.ok || push?.ok !== true) throw Object.assign(new Error('turn-push-failed'), { code: 'turn-push-failed' });
+      emitTiming(onTiming, 'runtime-chunk-push-end', { segmentIndex: index, segmentCount: requests.length, language: request.language, outcome: 'accepted' });
     }
     const cache = new Map();
     const fetchAudio = async index => {
       try {
+        emitTiming(onTiming, 'audio-fetch-start', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language });
         const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=${index}`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
         if (!audioResponse.ok) return failedResult('audio-fetch-failed');
         const contentType = String(audioResponse.headers?.get?.('Content-Type') || '').toLowerCase();
@@ -141,8 +153,11 @@ export class PuzzleLocalRuntimeVoiceAdapter {
         this.#refs.add(audioArtifactRef);
         const durationSeconds = Number(audioResponse.headers?.get?.('X-TMRW-Duration'));
         const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
+        emitTiming(onTiming, 'synthesis-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
+        emitTiming(onTiming, 'audio-fetch-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
         return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
       } catch (error) {
+        emitTiming(onTiming, 'audio-fetch-end', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, outcome: signal?.aborted ? 'cancelled' : (error?.code || 'runtime-error') });
         if (signal?.aborted || error?.code === 'voice-cancelled') return cancelledResult();
         if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
         return failedResult(error?.code || 'runtime-error');
@@ -151,12 +166,14 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     const renderAt = index => {
       if (!Number.isSafeInteger(index) || index < 0 || index >= requests.length) return Promise.resolve(failedResult('invalid-sequence-index'));
       if (cache.has(index)) return cache.get(index);
+      emitTiming(onTiming, 'synthesis-start', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language });
       const pending = fetchAudio(index);
       cache.set(index, pending);
       return pending;
     };
     const retryAt = index => {
       if (!Number.isSafeInteger(index) || index < 0 || index >= requests.length) return Promise.resolve(failedResult('invalid-sequence-index'));
+      emitTiming(onTiming, 'synthesis-retry', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language });
       const pending = fetchAudio(index);
       cache.set(index, pending);
       return pending;

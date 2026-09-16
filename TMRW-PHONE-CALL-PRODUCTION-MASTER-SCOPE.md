@@ -40,7 +40,7 @@ These behaviors are already verified and must remain working:
 | Checkpoint | Scope | Status | Commit | Evidence |
 | --- | --- | --- | --- | --- |
 | 0 | Durable master scope and baseline | COMPLETE | this checkpoint commit | baseline below |
-| 1 | Timing Diagnostics | NOT STARTED | pending | pending |
+| 1 | Timing Diagnostics | COMPLETE | this checkpoint commit | 31 focused tests passed; package verified |
 | 2 | Safe speedups: warmup, health cache, connection/turn reuse | NOT STARTED | pending | pending |
 | 3 | Real Call History dates and measured duration | NOT STARTED | pending | pending |
 | 4 | Call Details and ordered transcript | NOT STARTED | pending | pending |
@@ -190,3 +190,22 @@ Recorded result before this scope:
 - deployed Android extension HEAD: `b5e444ed3d26c2204ac34dcd724edfe78545535d`
 
 Every later checkpoint appends its exact commands, pass/fail counts, package verification, commit, and deployment status below this section.
+
+### Checkpoint 1 — Timing Diagnostics — 2026-09-17
+
+Implemented bounded, content-free per-turn timing evidence for user submit, LLM start/completion, structured validation, runtime readiness, runtime turn/chunk setup, synthesis, audio fetch, and playback. Diagnostics retains at most 32 turns and 96 events per turn, and explicitly records that prompt, transcript, spoken text, provider secrets, and reasoning are not stored.
+
+Commands:
+
+```powershell
+node --test tests/phase23/call-timing-diagnostics.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/context-identity.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused tests: 31 passed, 0 failed
+- production package: 240 files, 730 import edges
+- package verification: passed
+- deployment: pending checkpoint commit

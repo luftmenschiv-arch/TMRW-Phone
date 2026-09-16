@@ -109,11 +109,12 @@ export class CallBotReplyCoordinator {
   #settings;
   #bindingResolver;
   #getContext;
+  #timing;
   #inflight = new Map();
   #prepared = new Map();
   #committed = new Map();
 
-  constructor({ callService, voiceProfileService, settingsService, bindingResolver, getContext }) {
+  constructor({ callService, voiceProfileService, settingsService, bindingResolver, getContext, timingDiagnostics = null }) {
     if (!callService?.getSession || !callService?.listTranscript || !callService?.addTranscript) throw new TypeError('CallBotReplyCoordinator requires canonical CallService');
     if (!voiceProfileService?.resolve) throw new TypeError('CallBotReplyCoordinator requires VoiceProfileService');
     if (!settingsService?.get) throw new TypeError('CallBotReplyCoordinator requires settings');
@@ -124,6 +125,7 @@ export class CallBotReplyCoordinator {
     this.#settings = settingsService;
     this.#bindingResolver = bindingResolver;
     this.#getContext = getContext;
+    this.#timing = timingDiagnostics;
   }
 
   cancelCall(callSessionId) {
@@ -144,6 +146,8 @@ export class CallBotReplyCoordinator {
     if (!userTranscript) return generationFailure('not-committed-transcript');
     const key = String(userTranscript.transcriptEntryId || commit.event?.id || '').trim();
     if (!key) return generationFailure('missing-transcript-id');
+    const timingId = String(commit.event?.id || userTranscript.transcriptEntryId).trim();
+    this.#timing?.begin?.(timingId, { callSessionId: userTranscript.callSessionId });
     if (this.#prepared.has(key)) return this.#prepared.get(key);
     if (this.#inflight.has(key)) return this.#inflight.get(key);
     const promise = withDeadline(
@@ -157,6 +161,8 @@ export class CallBotReplyCoordinator {
       if (result?.status === 'prepared') {
         this.#prepared.set(key, result);
         while (this.#prepared.size > 256) this.#prepared.delete(this.#prepared.keys().next().value);
+      } else {
+        this.#timing?.finish?.(timingId, result?.reason || result?.status || 'generation-failed');
       }
       return result;
     }).finally(() => this.#inflight.delete(key));
@@ -221,6 +227,7 @@ export class CallBotReplyCoordinator {
     const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim() });
     const forceChId = Number.isInteger(context.characterId) ? context.characterId : null;
     try {
+      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-start');
       const generated = await context.generateQuietPrompt({
         quietPrompt: prompt,
         quietToLoud: false,
@@ -242,8 +249,10 @@ export class CallBotReplyCoordinator {
           },
         },
       });
+      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-complete', { observable: false });
       if (signal?.aborted) return generationFailure('generation-cancelled');
       const reply = parseGeneratedReply(generated);
+      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'structured-validation', { outcome: reply ? 'valid' : 'invalid' });
       if (!reply) return generationFailure('invalid-structured-model-response');
       return Object.freeze({
         status: 'prepared',
