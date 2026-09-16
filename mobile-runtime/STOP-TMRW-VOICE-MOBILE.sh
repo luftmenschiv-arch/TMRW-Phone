@@ -2,9 +2,10 @@
 set -euo pipefail
 
 readonly TERMUX_PREFIX='/data/data/com.termux/files/usr'
-readonly WORKSPACE="${TMRW_VOICE_WORKSPACE:-$HOME/genie-tts-portable}"
+readonly TERMUX_HOME='/data/data/com.termux/files/home'
+readonly WORKSPACE="${TMRW_VOICE_WORKSPACE:-$TERMUX_HOME/genie-tts-portable}"
 readonly RUNTIME="$WORKSPACE/tmrw_call_runtime_v093_deadline_gate.py"
-readonly STATE_DIR="$HOME/.tmrw-phone-runtime"
+readonly STATE_DIR="$TERMUX_HOME/.tmrw-phone-runtime"
 readonly PID_FILE="$STATE_DIR/mobile-voice.pid"
 
 if [[ ! -f "$PID_FILE" ]]; then

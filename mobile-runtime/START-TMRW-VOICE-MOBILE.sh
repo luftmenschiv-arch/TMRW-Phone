@@ -3,10 +3,11 @@ set -euo pipefail
 
 readonly EXPECTED_RUNTIME_SHA256='f7b8b334300bb5d7aa3a5963c92e98647250f1f25ae3b46457c86a7f81b38dfd'
 readonly TERMUX_PREFIX='/data/data/com.termux/files/usr'
-readonly WORKSPACE="${TMRW_VOICE_WORKSPACE:-$HOME/genie-tts-portable}"
+readonly TERMUX_HOME='/data/data/com.termux/files/home'
+readonly WORKSPACE="${TMRW_VOICE_WORKSPACE:-$TERMUX_HOME/genie-tts-portable}"
 readonly RUNTIME="$WORKSPACE/tmrw_call_runtime_v093_deadline_gate.py"
 readonly PYTHON="$WORKSPACE/venv/bin/python"
-readonly STATE_DIR="$HOME/.tmrw-phone-runtime"
+readonly STATE_DIR="$TERMUX_HOME/.tmrw-phone-runtime"
 readonly PID_FILE="$STATE_DIR/mobile-voice.pid"
 readonly OUT_LOG="$STATE_DIR/mobile-voice.out.log"
 readonly ERR_LOG="$STATE_DIR/mobile-voice.err.log"
@@ -46,8 +47,8 @@ fi
 
 if [[ ! -f "$PID_FILE" ]]; then
   export GENIE_DATA_DIR="$WORKSPACE/GenieData"
-  export PYTHONPATH="$HOME/genie-onnx-private/site-packages"
-  export LD_LIBRARY_PATH="$HOME/genie-python313/data/data/com.termux/files/usr/lib:$HOME/genie-onnx-private/lib:$WORKSPACE/venv/lib:$TERMUX_PREFIX/lib"
+  export PYTHONPATH="$TERMUX_HOME/genie-onnx-private/site-packages"
+  export LD_LIBRARY_PATH="$TERMUX_HOME/genie-python313/data/data/com.termux/files/usr/lib:$TERMUX_HOME/genie-onnx-private/lib:$WORKSPACE/venv/lib:$TERMUX_PREFIX/lib"
   export TMRW_VOICE_HOST='127.0.0.1'
   export TMRW_VOICE_PORT='18769'
 
