@@ -66,6 +66,9 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.equal(h.bindingInputs[0].allowLegacySingleCharacterPlaceholder, true);
   assert.equal(h.prompts[0].responseLength, 4096, 'reasoning-capable providers must have enough output budget to close the bilingual JSON object');
   assert.equal(prepared.language, 'ja');
+  assert.equal(prepared.deliveryMode, 'complete-response');
+  assert.equal(prepared.incremental, false);
+  assert.equal(prepared.incrementalReason, 'sillytavern-generation-api-has-no-safe-stream');
   assert.deepEqual(prepared.segments.map(row => [row.subtitleThai, row.spokenText]), [
     ['อรุณสวัสดิ์ครับ', 'おはようございます。'],
     ['เมื่อคืนหลับสบายไหมครับ', '昨夜はよく眠れましたか？'],

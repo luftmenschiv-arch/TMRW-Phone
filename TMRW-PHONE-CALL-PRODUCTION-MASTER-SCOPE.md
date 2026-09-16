@@ -45,7 +45,7 @@ These behaviors are already verified and must remain working:
 | 3 | Real Call History dates and measured duration | COMPLETE | `de2c57b` | 36 focused tests passed; package verified |
 | 4 | Call Details and ordered transcript | COMPLETE | `391102d` | 35 focused tests passed; package verified |
 | 5 | Persistent audio replay, download, retention, and Kept archive | COMPLETE | this checkpoint commit | 41 focused tests passed; package verified |
-| 6 | Incremental LLM first segment to TTS | NOT STARTED | pending | pending |
+| 6 | Incremental LLM first segment to TTS | COMPLETE (safe provider fallback) | this checkpoint commit | targeted tests + package verify passed |
 | 7 | Truthful, non-duplicated language/settings behavior | NOT STARTED | pending | pending |
 | 8 | One-click Runtime/Model installation | DEFERRED | — | later approval required |
 | 9 | TMRW Voice Companion | DEFERRED | — | later approval required |
@@ -290,3 +290,26 @@ Recorded result:
 - package verification: passed
 - full legacy aggregate gate: could not start affected files because tracked test imports reference absent fixture files (`tests/phase17/notification-fixtures.mjs`, `tests/phase8/messaging-fixtures.mjs`, `tests/phase7/ui-fixtures.mjs`, and `tests/phase1/test-helpers.mjs`); independent production-composition files that could load reported 80 passes before the missing-fixture/package-script baseline failures
 - checkpoint 5 Android deployment: pending checkpoint commit
+
+### Checkpoint 6 — Safe incremental LLM capability boundary — 2026-09-17
+
+Inspected the exact SillyTavern generation surface installed on the Android target. Both `generateQuietPrompt()` and `generateRaw()` return a single `Promise` after the provider response completes; their public parameter contracts expose no token, frame, or complete-segment streaming callback. The call coordinator therefore keeps the strict complete structured-response path instead of speaking partial JSON. It now publishes the truthful `complete-response` delivery mode and the reason `sillytavern-generation-api-has-no-safe-stream` in the prepared reply, policy, and timing diagnostics. Existing complete bilingual-pair validation, manual LLM retry, one automatic voice-segment retry, and safe background synthesis of later TTS segments remain intact.
+
+Inspection and verification commands:
+
+```powershell
+adb -s 192.168.100.125:41429 shell run-as com.termux sed -n '3050,3135p' files/home/SillyTavern/public/script.js
+adb -s 192.168.100.125:41429 shell run-as com.termux sed -n '3970,4150p' files/home/SillyTavern/public/script.js
+adb -s 192.168.100.125:41429 shell run-as com.termux grep -R -n "generateQuietPromptStream\|stream.*callback\|onStream" files/home/SillyTavern/public/scripts/st-context.js files/home/SillyTavern/public/script.js
+node --test tests/phase23/outbound-call-playable.test.mjs tests/phase23/call-timing-diagnostics.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- installed SillyTavern public generation contract: complete Promise only; no safe incremental callback found
+- focused tests: 16 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
+- checkpoint 6 Android deployment: pending checkpoint 7
