@@ -80,18 +80,23 @@ function generationFailure(reason, error = null) {
   return Object.freeze({ status: reason === 'generation-cancelled' ? 'cancelled' : 'failed', reason, retryable: reason !== 'generation-cancelled', error: error ? String(error?.message || error) : null });
 }
 
-async function withDeadline(promise, { signal = null, timeoutMs = CALL_LLM_DEADLINE_MS } = {}) {
+async function withDeadline(task, { signal = null, timeoutMs = CALL_LLM_DEADLINE_MS, onExpire = null } = {}) {
   if (signal?.aborted) throw Object.assign(new Error('generation-cancelled'), { code: 'generation-cancelled' });
   let timer = null;
   let abortListener = null;
+  const expire = code => {
+    try { onExpire?.(code); } catch {}
+    return Object.assign(new Error(code), { code });
+  };
   const deadline = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(Object.assign(new Error('generation-timeout'), { code: 'generation-timeout' })), Math.max(100, Number(timeoutMs) || CALL_LLM_DEADLINE_MS));
+    timer = setTimeout(() => reject(expire('generation-timeout')), Math.max(100, Number(timeoutMs) || CALL_LLM_DEADLINE_MS));
     if (signal) {
-      abortListener = () => reject(Object.assign(new Error('generation-cancelled'), { code: 'generation-cancelled' }));
+      abortListener = () => reject(expire('generation-cancelled'));
       signal.addEventListener('abort', abortListener, { once: true });
     }
   });
-  try { return await Promise.race([promise, deadline]); }
+  const work = Promise.resolve().then(() => typeof task === 'function' ? task() : task);
+  try { return await Promise.race([work, deadline]); }
   finally {
     clearTimeout(timer);
     if (signal && abortListener) signal.removeEventListener('abort', abortListener);
@@ -129,6 +134,10 @@ export class CallBotReplyCoordinator {
     return removed;
   }
 
+  #stopGeneration(reason) {
+    try { this.#getContext()?.stopGeneration?.(reason); } catch {}
+  }
+
   async prepareReplyToCommittedUserTranscript({ scope: inputScope, playerInstanceId, commit, signal = null, timeoutMs = CALL_LLM_DEADLINE_MS }) {
     const scope = requireEventScope(inputScope);
     const userTranscript = committedTranscript(commit);
@@ -137,7 +146,14 @@ export class CallBotReplyCoordinator {
     if (!key) return generationFailure('missing-transcript-id');
     if (this.#prepared.has(key)) return this.#prepared.get(key);
     if (this.#inflight.has(key)) return this.#inflight.get(key);
-    const promise = this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal, timeoutMs }).then(result => {
+    const promise = withDeadline(
+      () => this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal }),
+      { signal, timeoutMs, onExpire: reason => this.#stopGeneration(reason) },
+    ).catch(error => {
+      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
+      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error);
+      return generationFailure('generation-failed', error);
+    }).then(result => {
       if (result?.status === 'prepared') {
         this.#prepared.set(key, result);
         while (this.#prepared.size > 256) this.#prepared.delete(this.#prepared.keys().next().value);
@@ -181,7 +197,7 @@ export class CallBotReplyCoordinator {
     return this.commitPreparedReply({ scope: input.scope, prepared });
   }
 
-  async #prepare({ scope, playerInstanceId, commit, userTranscript, signal, timeoutMs }) {
+  async #prepare({ scope, playerInstanceId, commit, userTranscript, signal }) {
     const session = await this.#calls.getSession({ scope, callSessionId: userTranscript.callSessionId });
     if (!session || session.state !== CALL_STATE.ACTIVE) return generationFailure('call-not-active');
     if (!session.participantAccountIds.includes(userTranscript.speakerAccountId)) return generationFailure('speaker-not-participant');
@@ -202,7 +218,7 @@ export class CallBotReplyCoordinator {
     const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim() });
     const forceChId = Number.isInteger(context.characterId) ? context.characterId : null;
     try {
-      const generated = await withDeadline(Promise.resolve(context.generateQuietPrompt({
+      const generated = await context.generateQuietPrompt({
         quietPrompt: prompt,
         quietToLoud: false,
         skipWIAN: false,
@@ -211,8 +227,18 @@ export class CallBotReplyCoordinator {
         forceChId,
         removeReasoning: true,
         trimToSentence: false,
-        signal,
-      })), { signal, timeoutMs });
+        jsonSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['segments'],
+          properties: {
+            segments: {
+              type: 'array', minItems: 1, maxItems: MAX_REPLY_SEGMENTS,
+              items: { type: 'object', additionalProperties: false, required: ['subtitle_th', 'spoken_text'], properties: { subtitle_th: { type: 'string' }, spoken_text: { type: 'string' } } },
+            },
+          },
+        },
+      });
       if (signal?.aborted) return generationFailure('generation-cancelled');
       const reply = parseGeneratedReply(generated);
       if (!reply) return generationFailure('invalid-structured-model-response');

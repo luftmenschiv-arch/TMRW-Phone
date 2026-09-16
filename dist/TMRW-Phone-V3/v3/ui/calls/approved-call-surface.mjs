@@ -106,6 +106,8 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
   const latest = (island.transcript || []).at(-1) || null;
   const stage = el(document, 'div', 'tmrw-call-authority-turn-stage');
   if (turnState?.phase && turnState.phase !== 'completed') {
+    const latestIsCaller = latest && latest.speakerAccountId !== island.counterpartAccountId;
+    if (latestIsCaller) stage.append(el(document, 'div', 'tmrw-call-authority-user-message-bubble', latest.text));
     const card = el(document, 'div', `tmrw-call-authority-subtitle-card tmrw-call-authority-turn-${turnState.phase}`);
     const statusText = turnState.phase === 'thinking' ? 'กำลังคิด…' : turnState.phase === 'synthesizing' ? 'กำลังสร้างเสียง…' : turnState.phase === 'retrying-voice' ? 'กำลังลองสร้างเสียงอีกครั้ง…' : turnState.phase === 'speaking' ? (captionsVisible ? turnState.subtitleThai : 'กำลังพูด…') : (turnState.message || 'ตอบไม่สำเร็จ');
     card.append(el(document, 'div', 'tmrw-call-authority-subtitle-text', statusText));

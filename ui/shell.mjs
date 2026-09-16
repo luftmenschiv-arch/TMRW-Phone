@@ -483,13 +483,24 @@ export class TmrwPhoneShell {
     const prior = this.#callTurnControllers.get(callSessionId); if (prior) { try { prior.abort('replaced'); } catch { prior.abort(); } }
     const controller = new AbortController(); this.#callTurnControllers.set(callSessionId, controller); this.#callTurnRetries.delete(callSessionId);
     this.#setCallTurnState(callSessionId, { phase: 'thinking', locked: true });
-    const prepared = await this.#callBotReply.prepareReplyToCommittedUserTranscript({ scope: this.#scope, playerInstanceId: this.#player.instanceId, commit: userCommit, signal: controller.signal, timeoutMs: 30000 });
-    if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
-    if (prepared?.status !== 'prepared') {
-      const message = prepared?.reason === 'generation-timeout' ? 'บอทใช้เวลาตอบเกิน 30 วินาที' : 'สร้างคำตอบไม่สำเร็จ';
-      this.#failCallTurn(callSessionId, message, 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit)); return false;
-    }
-    return this.#runPreparedVoice(call, prepared, { controller, committed: null, startIndex: 0 });
+    const failSafe = setTimeout(() => {
+      if (this.#callTurnControllers.get(callSessionId) !== controller || controller.signal.aborted) return;
+      try { controller.abort('shell-generation-timeout'); } catch { controller.abort(); }
+      this.#failCallTurn(callSessionId, 'บอทใช้เวลาตอบเกิน 30 วินาที', 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit));
+    }, 32000);
+    try {
+      const prepared = await this.#callBotReply.prepareReplyToCommittedUserTranscript({ scope: this.#scope, playerInstanceId: this.#player.instanceId, commit: userCommit, signal: controller.signal, timeoutMs: 30000 });
+      if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
+      if (prepared?.status !== 'prepared') {
+        const message = prepared?.reason === 'generation-timeout' ? 'บอทใช้เวลาตอบเกิน 30 วินาที' : 'สร้างคำตอบไม่สำเร็จ';
+        this.#failCallTurn(callSessionId, message, 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit)); return false;
+      }
+      return this.#runPreparedVoice(call, prepared, { controller, committed: null, startIndex: 0 });
+    } catch (error) {
+      if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
+      this.#failCallTurn(callSessionId, 'สร้างคำตอบไม่สำเร็จ', 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit));
+      return false;
+    } finally { clearTimeout(failSafe); }
   }
   async #runPreparedVoice(call, prepared, { controller = null, committed = null, startIndex = 0 } = {}) {
     const callSessionId = call.callSessionId;

@@ -32,11 +32,11 @@ function callServiceHarness() {
   };
 }
 
-function coordinatorHarness(generateQuietPrompt) {
+function coordinatorHarness(generateQuietPrompt, { callService = null, stopGeneration = null } = {}) {
   const calls = callServiceHarness();
   const prompts = [];
   const coordinator = new CallBotReplyCoordinator({
-    callService: calls.service,
+    callService: callService || calls.service,
     voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: null, language: 'auto', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
     settingsService: { get: async () => ({ voiceLanguagePreference: 'ja' }) },
     bindingResolver: async () => ({ actorBinding: botBinding }),
@@ -45,6 +45,7 @@ function coordinatorHarness(generateQuietPrompt) {
       characterId: 7,
       name2: 'Kaelan Vance',
       generateQuietPrompt: options => { prompts.push(options); return generateQuietPrompt(options); },
+      stopGeneration,
     }),
   });
   return { coordinator, prompts, writes: calls.writes };
@@ -67,6 +68,8 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.match(h.prompts[0].quietPrompt, /strict JSON/i);
   assert.match(h.prompts[0].quietPrompt, /natural Japanese/);
   assert.match(h.prompts[0].quietPrompt, /Never answer as a different character/);
+  assert.equal(h.prompts[0].jsonSchema.properties.segments.maxItems, 3);
+  assert.deepEqual(h.prompts[0].jsonSchema.properties.segments.items.required, ['subtitle_th', 'spoken_text']);
 
   const committed = await h.coordinator.commitPreparedReply({ scope, prepared });
   assert.equal(committed.committed, true);
@@ -85,14 +88,41 @@ test('invalid one-language model output fails closed instead of being spoken or 
 });
 
 test('generation cancellation exits without a late transcript commit', async () => {
-  const h = coordinatorHarness(() => new Promise(() => {}));
+  const stopped = [];
+  const h = coordinatorHarness(() => new Promise(() => {}), { stopGeneration: reason => stopped.push(reason) });
   const controller = new AbortController();
   const pending = h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: { ...userCommit, event: { ...userCommit.event, id: 'event:user:cancel' }, transcript: { ...userTranscript, transcriptEntryId: 'transcript:user:cancel' } }, signal: controller.signal });
   controller.abort('hangup');
   const result = await pending;
   assert.equal(result.status, 'cancelled');
   assert.equal(result.reason, 'generation-cancelled');
+  assert.deepEqual(stopped, ['generation-cancelled']);
   assert.equal(h.writes.length, 0);
+});
+
+test('the reply deadline covers canonical preparation before LLM generation and cancels SillyTavern deterministically', async () => {
+  const stopped = [];
+  const h = coordinatorHarness(
+    async () => { throw new Error('LLM must not be reached'); },
+    {
+      callService: {
+        getSession: () => new Promise(() => {}),
+        listTranscript: async () => [userTranscript],
+        addTranscript: async () => { throw new Error('must not commit'); },
+      },
+      stopGeneration: reason => stopped.push(reason),
+    },
+  );
+  const result = await h.coordinator.prepareReplyToCommittedUserTranscript({
+    scope,
+    playerInstanceId: 'character-instance:user',
+    commit: { ...userCommit, event: { ...userCommit.event, id: 'event:user:timeout' }, transcript: { ...userTranscript, transcriptEntryId: 'transcript:user:timeout' } },
+    timeoutMs: 100,
+  });
+  assert.equal(result.status, 'failed');
+  assert.equal(result.reason, 'generation-timeout');
+  assert.deepEqual(stopped, ['generation-timeout']);
+  assert.equal(h.prompts.length, 0);
 });
 
 test('Puzzle multi-segment turn sends selected-language speech plus paired Thai subtitles and fetches each audio chunk', async () => {
@@ -232,6 +262,8 @@ test('active Call UI locks typing during work, keeps hangup available, and expos
     actions: Object.freeze([{ id: 'end', enabled: true }]), transcript: Object.freeze([userTranscript]),
   });
   const failed = renderApprovedCallSurface({ document, island, turnState: { phase: 'failed', locked: true, message: 'สร้างเสียงไม่สำเร็จ', retryLabel: 'ลองตอบใหม่' }, captionsVisible: true, onRetry: () => { retried += 1; } });
+  assert.match(allText(failed), /อรุณสวัสดิ์/);
+  assert.match(allText(failed), /สร้างเสียงไม่สำเร็จ/);
   assert.equal(find(failed, node => node.attributes?.get?.('aria-label') === 'Call text').disabled, true);
   assert.equal(find(failed, node => node.dataset?.callAction === 'end').disabled, false);
   const retry = find(failed, node => node.dataset?.callAction === 'retry-reply');
@@ -239,6 +271,10 @@ test('active Call UI locks typing during work, keeps hangup available, and expos
   retry.click();
   await Promise.resolve();
   assert.equal(retried, 1);
+
+  const thinking = renderApprovedCallSurface({ document, island, turnState: { phase: 'thinking', locked: true }, captionsVisible: true });
+  assert.match(allText(thinking), /อรุณสวัสดิ์/);
+  assert.match(allText(thinking), /กำลังคิด/);
 
   const speaking = renderApprovedCallSurface({ document, island, turnState: { phase: 'speaking', locked: true, subtitleThai: 'อรุณสวัสดิ์ครับ' }, captionsVisible: false });
   assert.match(allText(speaking), /กำลังพูด/);
