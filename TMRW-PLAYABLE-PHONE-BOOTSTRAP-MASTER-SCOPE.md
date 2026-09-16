@@ -33,8 +33,8 @@ This document is the durable implementation authority for turning the current TM
 | 2 | Cast Manifest and bounded RP history reader | COMPLETE | `54b1e9a` | 2 focused tests passed |
 | 3 | Quick Start plus resumable Deep Backfill orchestration | COMPLETE | `58b027b` | 4 focused tests passed |
 | 4 | One-click Settings bootstrap/update experience | COMPLETE | `798e579` | 15 focused tests passed; package verified |
-| 5 | Initial Phone Seed and shared living UI states | COMPLETE | pending commit | 13 focused tests passed |
-| 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | NOT STARTED | — | pending |
+| 5 | Initial Phone Seed and shared living UI states | COMPLETE | `beb23b4` | 13 focused tests passed; package verified |
+| 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | COMPLETE | pending commit | 30 focused tests passed |
 | 7 | App wiring, provider capability settings, and production package closure | NOT STARTED | — | pending |
 
 ## Checkpoint 1 — stable Phone Shell
@@ -177,6 +177,24 @@ Result:
 
 - focused tests: 15 passed, 0 failed
 - Settings action state and production construction order verified
+- production package built and verified
+
+### Checkpoint 6 — 2026-09-17
+
+Added an Adaptive World Pulse with six stable Thai-netizen voices that stay outside the Character Card cast and therefore never appear as Their Phone devices. Bootstrap primes six readable posts. Each manual refresh commits three more posts from a nine-item in-memory batch and refills only by batch, so the player never reaches a dead end and a gesture is not tied to an LLM request. Added conservative RP Wallet evidence: explicit amounts such as receiving, paying, buying, or spending update My Phone automatically, replay once, revise the same transaction on edited source text, and ignore vague money prose.
+
+Commands:
+
+```powershell
+node --test tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/wallet-rp-evidence.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/instant-connect.test.mjs tests/production-composition/composition-root.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused tests: 30 passed, 0 failed
+- Feed prime/refresh, hidden ambient identities, Wallet replay/revision, Calls and production graph verified
 - production package built and verified
 
 ### Checkpoint 5 — 2026-09-17

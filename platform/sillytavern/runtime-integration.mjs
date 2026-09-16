@@ -16,13 +16,14 @@ export class SillyTavernV3RuntimeIntegration {
   #phoneContext;
   #callStoryIntegration;
   #smartContactDiscovery;
+  #walletRpEvidence;
   #discardPartialAssistant;
   #authoringEnabled;
   #listeners = [];
   #registered = false;
   #metrics = { processed: 0, skipped: 0, duplicateRegistrations: 0, abortCalls: 0, roleCallsIntercepted: 0, activeCallGenerationBlocks: 0, smartContactEvaluations: 0, smartContactDiscoveries: 0, smartContactErrors: 0, lastSmartContactError: null };
 
-  constructor({ eventSource, eventTypes, getContext, scopeResolver, bindingResolver, handoffCoordinator, phoneContextBuilder, callStoryIntegration = null, smartContactDiscovery = null, discardPartialAssistant = null, authoringEnabled = () => false }) {
+  constructor({ eventSource, eventTypes, getContext, scopeResolver, bindingResolver, handoffCoordinator, phoneContextBuilder, callStoryIntegration = null, smartContactDiscovery = null, walletRpEvidence = null, discardPartialAssistant = null, authoringEnabled = () => false }) {
     if (!eventSource?.on || !eventSource?.removeListener) throw new TypeError('Real SillyTavern eventSource API is required');
     this.#eventSource = eventSource;
     this.#types = eventTypes || {};
@@ -33,6 +34,7 @@ export class SillyTavernV3RuntimeIntegration {
     this.#phoneContext = phoneContextBuilder;
     this.#callStoryIntegration = callStoryIntegration;
     this.#smartContactDiscovery = smartContactDiscovery;
+    this.#walletRpEvidence = walletRpEvidence;
     if (smartContactDiscovery && (typeof smartContactDiscovery.evaluate !== 'function' || typeof smartContactDiscovery.couldContainEvidence !== 'function')) throw new TypeError('Smart Contact discovery integration requires evaluate/couldContainEvidence');
     this.#discardPartialAssistant = typeof discardPartialAssistant === 'function' ? discardPartialAssistant : async ({ afterSourceOrdinal } = {}) => {
       const chat = this.#getContext()?.chat;
@@ -197,6 +199,7 @@ export class SillyTavernV3RuntimeIntegration {
     }
 
     const result = await this.#handoff.processSource(input);
+    try { await this.#walletRpEvidence?.evaluate?.(input); } catch {}
     this.#metrics.processed += 1;
     return result;
   }
@@ -207,6 +210,7 @@ export class SillyTavernV3RuntimeIntegration {
     const scope = await this.#scopeResolver(context);
     const chatKey = String(context.chatId ?? context.getCurrentChatId?.() ?? context.groupId ?? 'unscoped');
     const result = await this.#handoff.retractSource({ scope, sourceAuthority: 'sillytavern-main-rp', sourceMessageId: `${chatKey}:${Number(index)}`, reason: 'SillyTavern source message deleted' });
+    try { await this.#walletRpEvidence?.retractSource?.({ scope, sourceMessageId: `${chatKey}:${Number(index)}` }); } catch {}
     this.#metrics.processed += 1;
     return result;
   }
