@@ -649,7 +649,7 @@ async function buildRuntime(options, entry) {
     activation.addResource('generation-interceptor-owner', () => generationOwner.dispose());
     await activation.mark('generation-interceptor-owner');
 
-    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, playableBootstrapService: playableBootstrap, adaptiveWorldPulseService: adaptiveWorldPulse, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, phoneWorldService: phoneWorld, calendarService: calendar, commerceService: commerce, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability, voiceAdapter, callTimingDiagnostics });
+    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, playableBootstrapService: playableBootstrap, adaptiveWorldPulseService: adaptiveWorldPulse, imageProviderService: imageAssets, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, phoneWorldService: phoneWorld, calendarService: calendar, commerceService: commerce, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability, voiceAdapter, callTimingDiagnostics });
     await activation.mark('phone-shell-view-models');
     const phoneController = new PhoneController({ phoneStateService: phones, playerAccessOverrides: overrides });
     activation.addResource('phone-controller', () => phoneController.disableBeta());

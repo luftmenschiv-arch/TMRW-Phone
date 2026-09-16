@@ -25,9 +25,9 @@ function presentationDisplayName(...candidates) {
 }
 
 export class PhoneShellViewModels {
-  #unitOfWork; #phones; #contacts; #settings; #playableBootstrap; #worldPulse; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
-  constructor({ database, phoneStateService, contactService, settingsService, playableBootstrapService = null, adaptiveWorldPulseService = null, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null, callTimingDiagnostics = null }) {
-    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#playableBootstrap = playableBootstrapService; this.#worldPulse = adaptiveWorldPulseService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState(); this.#voiceAdapter = voiceAdapter; this.#callTimingDiagnostics = callTimingDiagnostics;
+  #unitOfWork; #phones; #contacts; #settings; #playableBootstrap; #worldPulse; #imageProvider; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
+  constructor({ database, phoneStateService, contactService, settingsService, playableBootstrapService = null, adaptiveWorldPulseService = null, imageProviderService = null, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null, callTimingDiagnostics = null }) {
+    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#playableBootstrap = playableBootstrapService; this.#worldPulse = adaptiveWorldPulseService; this.#imageProvider = imageProviderService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState(); this.#voiceAdapter = voiceAdapter; this.#callTimingDiagnostics = callTimingDiagnostics;
   }
   get messagingEnabled() { return Boolean(this.#messaging); }
   get callsEnabled() { return Boolean(this.#callCoordinator); }
@@ -35,6 +35,7 @@ export class PhoneShellViewModels {
   get voiceProfiles() { return this.#voiceProfiles; }
   get voiceAudioHistory() { return this.#voiceAudio; }
   get voiceCapability() { return this.#voiceCapability; }
+  get imageCapability() { return this.#imageProvider?.capability?.() || Object.freeze({ providerId: 'pixabay', configured: false, available: false, search: true, safeSearch: true }); }
   get callTimingDiagnostics() { return this.#callTimingDiagnostics; }
   setPreset({ scope, playerInstanceId, preset }) { return this.#settings.setPreset({ scope, playerInstanceId, preset }); }
   setPhoneNumberDiscovery({ scope, playerInstanceId, value }) { return this.#settings.setPhoneNumberDiscovery({ scope, playerInstanceId, value }); }
@@ -45,6 +46,7 @@ export class PhoneShellViewModels {
   getPlayableBootstrapStatus({ scope, playerInstanceId }) { return this.#playableBootstrap ? this.#playableBootstrap.status({ scope, playerInstanceId }) : this.#settings.get({ scope, playerInstanceId }).then(row => row.playableBootstrap); }
   runPlayableBootstrap(input) { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.run(input); }
   refreshFeed({ scope, count = 3 }) { if (!this.#worldPulse) throw new Error('Adaptive Feed is unavailable'); return this.#worldPulse.refresh({ scope, count }); }
+  async setImageApiKey({ scope, playerInstanceId, apiKey }) { const settings = await this.#settings.setImageApiKey({ scope, playerInstanceId, apiKey }); this.#imageProvider?.configureApiKey?.(settings.imageApiKey); return settings; }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCalls({ scope, playerInstanceId, enabled }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
   setVoiceCaptions({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCaptions({ scope, playerInstanceId, enabled }); }
@@ -122,6 +124,7 @@ export class PhoneShellViewModels {
   async previewOverview({ scope: inputScope, deviceId, playerActorId, playerInstanceId, controller }) {
     const scope = requireEventScope(inputScope);
     const settings = await this.#settings.get({ scope, playerInstanceId });
+    this.#imageProvider?.configureApiKey?.(settings.imageApiKey);
     const opened = await controller.open({ scope, deviceId, playerActorId, playerInstanceId, settings, appId: 'launcher' });
     const locked = !opened.authorization.granted || !opened.perspective.accountId;
     if (locked) return Object.freeze({ opened, themeId: settings.themeId, status: 'โทรศัพท์ถูกล็อก', badges: Object.freeze({}), unreadTotal: 0, noteText: null, steps: null, lockNotifications: Object.freeze([]) });
@@ -165,7 +168,7 @@ export class PhoneShellViewModels {
     return Object.freeze({ opened, themeId: settings.themeId, status: Number(phoneWorld.unreadTotal || 0) > 0 ? `${phoneWorld.unreadTotal} การแจ้งเตือน` : 'พร้อมใช้งาน', badges: phoneWorld.badges || Object.freeze({}), unreadTotal: Number(phoneWorld.unreadTotal || 0), noteText: note ? (note.title || note.text || null) : null, steps: step ? Number(step.value) : null, lockNotifications });
   }
   async selected({ scope: inputScope, deviceId, playerActorId, playerInstanceId, route, controller, selectedThreadId = null, selectedCallSessionId = null, selectedLiveSessionId = null, activeCharacterDisplayName = null }) {
-    const scope = requireEventScope(inputScope); const settings = await this.#settings.get({ scope, playerInstanceId }); const opened = await controller.open({ scope, deviceId, playerActorId, playerInstanceId, settings, appId: route === 'diagnostics' ? 'diagnostics' : route });
+    const scope = requireEventScope(inputScope); const settings = await this.#settings.get({ scope, playerInstanceId }); this.#imageProvider?.configureApiKey?.(settings.imageApiKey); const opened = await controller.open({ scope, deviceId, playerActorId, playerInstanceId, settings, appId: route === 'diagnostics' ? 'diagnostics' : route });
     let guideState = null; let guideError = null;
     if (route === 'guide') { try { guideState = await this.#guide.get({ scope, playerInstanceId }); } catch (error) { guideError = error instanceof Error ? error.message : String(error); } }
     const contacts = (route === 'contacts' || route === 'calls' || route === 'messages' || route === 'maps' || route === 'calendar' || route === 'search') && opened.authorization.granted && opened.perspective.accountId ? await this.#contacts.listContacts({ scope, ownerAccountId: opened.perspective.accountId }) : Object.freeze([]);

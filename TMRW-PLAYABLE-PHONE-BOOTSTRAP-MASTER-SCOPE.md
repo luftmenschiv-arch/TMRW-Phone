@@ -34,8 +34,8 @@ This document is the durable implementation authority for turning the current TM
 | 3 | Quick Start plus resumable Deep Backfill orchestration | COMPLETE | `58b027b` | 4 focused tests passed |
 | 4 | One-click Settings bootstrap/update experience | COMPLETE | `798e579` | 15 focused tests passed; package verified |
 | 5 | Initial Phone Seed and shared living UI states | COMPLETE | `beb23b4` | 13 focused tests passed; package verified |
-| 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | COMPLETE | pending commit | 30 focused tests passed |
-| 7 | App wiring, provider capability settings, and production package closure | NOT STARTED | — | pending |
+| 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | COMPLETE | `7ff9940` | 30 focused tests passed; package verified |
+| 7 | App wiring, provider capability settings, and production package closure | COMPLETE | pending commit | 58 focused tests passed; package verified |
 
 ## Checkpoint 1 — stable Phone Shell
 
@@ -179,6 +179,24 @@ Result:
 - Settings action state and production construction order verified
 - production package built and verified
 
+### Checkpoint 5 — 2026-09-17
+
+Added an idempotent Initial Phone Seed that runs inside the one-click bootstrap after Quick Start reconciliation. Every active phone receives a pinned current-story note, contextual shop suggestions, a low-impact weather estimate, health estimates, and a reminder. Their Phone receives a plausible non-zero wallet balance using a context-sensitive currency; My Phone intentionally leaves Wallet under explicit user/story control. Every generated record is labeled `plausible-simulation` and is replaced safely by later canon. Added one shared visual language for loading, empty, offline, error, and ready states, and connected it to app loading/errors and Feed.
+
+Commands:
+
+```powershell
+node --test tests/phase23/initial-phone-seed.test.mjs tests/phase23/living-state.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/production-composition/composition-root.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused tests: 13 passed, 0 failed
+- idempotent seed verified across My Phone and two Their Phone devices
+- production package built and verified
+
 ### Checkpoint 6 — 2026-09-17
 
 Added an Adaptive World Pulse with six stable Thai-netizen voices that stay outside the Character Card cast and therefore never appear as Their Phone devices. Bootstrap primes six readable posts. Each manual refresh commits three more posts from a nine-item in-memory batch and refills only by batch, so the player never reaches a dead end and a gesture is not tied to an LLM request. Added conservative RP Wallet evidence: explicit amounts such as receiving, paying, buying, or spending update My Phone automatically, replay once, revise the same transaction on edited source text, and ignore vague money prose.
@@ -197,20 +215,22 @@ Result:
 - Feed prime/refresh, hidden ambient identities, Wallet replay/revision, Calls and production graph verified
 - production package built and verified
 
-### Checkpoint 5 — 2026-09-17
+### Checkpoint 7 — 2026-09-17
 
-Added an idempotent Initial Phone Seed that runs inside the one-click bootstrap after Quick Start reconciliation. Every active phone receives a pinned current-story note, contextual shop suggestions, a low-impact weather estimate, health estimates, and a reminder. Their Phone receives a plausible non-zero wallet balance using a context-sensitive currency; My Phone intentionally leaves Wallet under explicit user/story control. Every generated record is labeled `plausible-simulation` and is replaced safely by later canon. Added one shared visual language for loading, empty, offline, error, and ready states, and connected it to app loading/errors and Feed.
+Closed the provider and package wiring for the playable bootstrap. Settings now exposes exactly two optional capability areas: Image API and Voice API. The Image key is remembered globally across chats without being copied into Story/Branch-scoped IndexedDB rows, reconfigures the existing Pixabay selector immediately, and keeps the no-generation, safe-search, no-people-by-default policy explicit. Voice continues through the existing TMRW Voice Companion/runtime setup. The one-click bootstrap outputs, Initial Phone Seed, Adaptive World Pulse, and RP Wallet evidence remain connected to the existing app projections and the production package includes the complete runtime import closure.
 
 Commands:
 
 ```powershell
-node --test tests/phase23/initial-phone-seed.test.mjs tests/phase23/living-state.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/production-composition/composition-root.test.mjs
+node --test tests/phase23/provider-settings.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/wallet-rp-evidence.test.mjs tests/phase23/playable-shell-navigation.test.mjs tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/initial-phone-seed.test.mjs tests/phase23/living-state.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase22/image-provider.test.mjs tests/production-composition/composition-root.test.mjs
 npm run build:production-package
 npm run verify:production-package
+npm run test:p23-f
 ```
 
 Result:
 
-- focused tests: 13 passed, 0 failed
-- idempotent seed verified across My Phone and two Their Phone devices
-- production package built and verified
+- focused closure tests: 58 passed, 0 failed
+- production package: 249 files, 758 import edges
+- package verification: passed; passive import true; protected paths false; retired Preview files not copied
+- the broad legacy `test:p23-f` command reached 80 passed and 7 failed. Six failures are module-load failures from pre-existing missing fixtures (`tests/phase1/test-helpers.mjs` and `tests/phase17/notification-fixtures.mjs`); the seventh is the pre-existing legacy package-script contract expecting an absent `test:production-composition` script. No checkpoint 1–7 focused test failed.

@@ -61,6 +61,8 @@ export class ImageProviderService {
     });
   }
 
+  configureApiKey(apiKey) { if (typeof this.#provider.configure !== 'function') return this.capability(); this.#provider.configure({ apiKey }); return this.capability(); }
+
   async resolveExternalAsset(input = {}) {
     const request = normalizeImageSearchRequest(input);
     const cacheKey = imageSearchCacheKey(this.#provider.id, request);

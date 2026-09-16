@@ -20,6 +20,7 @@ function find(node, predicate) {
   }
   return null;
 }
+function findAll(node, predicate, output = []) { if (predicate(node)) output.push(node); for (const child of node?.children || []) findAll(child, predicate, output); return output; }
 function text(node, output = []) {
   if (node?.textContent) output.push(String(node.textContent));
   for (const child of node?.children || []) text(child, output);
@@ -46,6 +47,7 @@ test('Settings magic action runs bootstrap once and becomes the update action', 
   await waitFor(() => shell.root.dataset?.route === 'settings', 'settings');
   let action = find(shell.root, node => node.dataset?.action === 'playable-bootstrap');
   assert.ok(action);
+  assert.deepEqual(findAll(shell.root, node => Boolean(node.dataset?.providerArea)).map(node => node.dataset.providerArea), ['image', 'voice']);
   assert.match(text(action), /ทำให้มือถือพร้อมเล่น/);
   action.click();
   await waitFor(async () => runs === 1 && (await c.settings.get({ scope: c.scope, playerInstanceId: c.user.instanceId })).playableBootstrap.status === 'ready', 'bootstrap');

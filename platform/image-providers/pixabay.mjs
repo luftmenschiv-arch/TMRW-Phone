@@ -35,6 +35,8 @@ export class PixabayImageProvider extends ImageProvider {
     this.#endpoint = String(endpoint || 'https://pixabay.com/api/');
   }
 
+  configure({ apiKey = null } = {}) { this.#apiKey = String(apiKey || '').trim(); this.available = Boolean(this.#apiKey && this.#fetch); return this.capabilities(); }
+
   capabilities() {
     return Object.freeze({
       providerId: this.id,
