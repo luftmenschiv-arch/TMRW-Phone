@@ -3,6 +3,7 @@ const requireId = (value, field) => { const id = String(value || '').trim(); if 
 export class CallVoicePlaybackController {
   #audioFactory;
   #active = null;
+  #paused = false;
   #played = new Set();
 
   constructor({ audioFactory = source => globalThis.Audio ? new globalThis.Audio(source) : null } = {}) {
@@ -15,6 +16,7 @@ export class CallVoicePlaybackController {
       callSessionId: this.#active?.callSessionId || null,
       transcriptEntryId: this.#active?.transcriptEntryId || null,
       playedCount: this.#played.size,
+      paused: this.#paused,
     });
   }
 
@@ -24,6 +26,7 @@ export class CallVoicePlaybackController {
     const ref = requireId(audioArtifactRef, 'audioArtifactRef');
     if (this.#played.has(transcriptId)) return Object.freeze({ status: 'duplicate', callSessionId: callId, transcriptEntryId: transcriptId });
     this.cancelActive('replaced');
+    this.#paused = false;
     if (!this.#audioFactory) return Object.freeze({ status: 'unavailable', callSessionId: callId, transcriptEntryId: transcriptId });
     const audio = this.#audioFactory(ref);
     if (!audio || typeof audio.play !== 'function') return Object.freeze({ status: 'unavailable', callSessionId: callId, transcriptEntryId: transcriptId });
@@ -56,8 +59,19 @@ export class CallVoicePlaybackController {
     if (!active) return false;
     try { active.audio.pause?.(); } catch {}
     try { active.audio.currentTime = 0; } catch {}
+    this.#paused = false;
     active.settle(reason === 'replaced' ? 'replaced' : 'cancelled');
     return true;
+  }
+
+  pauseActive() {
+    if (!this.#active || this.#paused) return false;
+    try { this.#active.audio.pause?.(); this.#paused = true; return true; } catch { return false; }
+  }
+
+  resumeActive() {
+    if (!this.#active || !this.#paused) return false;
+    try { const resumed = this.#active.audio.play?.(); this.#paused = false; if (resumed?.catch) resumed.catch(() => this.cancelActive('failed')); return true; } catch { return false; }
   }
 
   cancelCall(callSessionId) {

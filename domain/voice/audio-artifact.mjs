@@ -11,6 +11,11 @@ export function normalizeVoiceAudioArtifact(input) {
   if (!LANGUAGES.has(language)) throw new TypeError(`Unsupported voice audio language: ${language}`);
   const durationMs = Number(input?.durationMs || 0);
   if (!Number.isFinite(durationMs) || durationMs < 0) throw new TypeError('voice audio durationMs must be non-negative');
+  const segmentIndex = Number(input?.segmentIndex || 0);
+  if (!Number.isSafeInteger(segmentIndex) || segmentIndex < 0) throw new TypeError('voice audio segmentIndex must be a non-negative integer');
+  const audioBlob = input?.audioBlob || null;
+  const byteLength = Number(audioBlob?.size ?? input?.byteLength ?? 0);
+  if (!Number.isSafeInteger(byteLength) || byteLength < 0) throw new TypeError('voice audio byteLength must be a non-negative integer');
   return Object.freeze({
     id: requireText(input?.id, 'voice audio artifact id'),
     storyId: requireText(input?.storyId, 'voice audio storyId'),
@@ -21,6 +26,14 @@ export function normalizeVoiceAudioArtifact(input) {
     instanceId: requireText(input?.instanceId, 'voice audio instanceId'),
     language,
     artifactRef: requireText(input?.artifactRef, 'voice audio artifactRef'),
+    audioBlob,
+    mimeType: input?.mimeType == null ? (audioBlob?.type || 'audio/wav') : requireText(input.mimeType, 'voice audio mimeType'),
+    byteLength,
+    segmentIndex,
+    subtitleThai: input?.subtitleThai == null ? null : requireText(input.subtitleThai, 'voice audio subtitleThai'),
+    spokenText: input?.spokenText == null ? null : requireText(input.spokenText, 'voice audio spokenText'),
+    filename: input?.filename == null ? null : requireText(input.filename, 'voice audio filename'),
+    recoverable: Boolean(audioBlob && byteLength > 0),
     durationMs,
     retention,
     createdAt: requireText(input?.createdAt, 'voice audio createdAt'),

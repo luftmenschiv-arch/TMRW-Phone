@@ -48,6 +48,8 @@ export class PhoneShellViewModels {
   setVoiceLanguagePreference({ scope, playerInstanceId, language }) { return this.#settings.setVoiceLanguagePreference({ scope, playerInstanceId, language }); }
   setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }) { return this.#settings.setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }); }
   setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }) { return this.#settings.setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }); }
+  setCallAudioKept({ scope, callSessionId, kept }) { return this.#voiceAudio.setCallKept({ scope, callSessionId, kept }); }
+  deleteTemporaryCallAudio({ scope }) { return this.#voiceAudio.deleteTemporary({ scope }); }
   async testVoiceRuntime({ scope, playerInstanceId }) { const settings = await this.#settings.get({ scope, playerInstanceId }); if (!this.#voiceAdapter?.health) return Object.freeze({ ok: false, ready: false, endpoint: settings.voiceRuntimeBaseUrl, reason: 'voice-adapter-unavailable' }); return this.#voiceAdapter.health({ baseUrl: settings.voiceRuntimeBaseUrl }); }
   activateDetectedVoice({ scope, playerInstanceId, language = 'en' }) { return this.#settings.activateDetectedVoice({ scope, playerInstanceId, language }); }
   setTheme({ scope, playerInstanceId, themeId }) { return this.#settings.setTheme({ scope, playerInstanceId, themeId }); }
@@ -186,9 +188,10 @@ export class PhoneShellViewModels {
     const selectedCall = selectedCallSessionId ? calls.find(row => row.callSessionId === selectedCallSessionId) || null : null;
     const selectedHistoryItem = selectedCall ? callUi.history.find(row => row.callSessionId === selectedCall.callSessionId) || null : null;
     let selectedCallAudio = Object.freeze([]);
-    if (selectedCall && ['ended', 'declined', 'cancelled', 'missed'].includes(selectedCall.state)) { try { selectedCallAudio = await this.#voiceAudio.listByCall({ scope, callSessionId: selectedCall.callSessionId }); } catch {} }
+    let selectedCallAudioStorage = null;
+    if (selectedCall && ['ended', 'declined', 'cancelled', 'missed'].includes(selectedCall.state)) { try { [selectedCallAudio, selectedCallAudioStorage] = await Promise.all([this.#voiceAudio.listByCall({ scope, callSessionId: selectedCall.callSessionId }), this.#voiceAudio.storageSummary({ scope })]); } catch {} }
     const callbackTarget = selectedHistoryItem ? callUi.dialTargets.find(row => row.accountId === selectedHistoryItem.counterpartAccountId) || null : null;
-    const callDetails = callDetailsViewModel({ session: selectedCall, historyItem: selectedHistoryItem, transcript: transcripts, audioArtifacts: selectedCallAudio, viewerAccountId: opened.perspective.accountId, callbackTarget });
+    const callDetails = callDetailsViewModel({ session: selectedCall, historyItem: selectedHistoryItem, transcript: transcripts, audioArtifacts: selectedCallAudio, audioStorage: selectedCallAudioStorage, viewerAccountId: opened.perspective.accountId, callbackTarget });
     callUi = Object.freeze({ ...callUi, details: callDetails });
     let feed = Object.freeze({ items: Object.freeze([]), nextCursor: null }); let feedAccountLabels = Object.freeze({}); let insungramThreads = Object.freeze([]); let socialProfile = null; let socialError = null;
     if ((route === 'feed' || route === 'insungram') && opened.authorization.granted && opened.perspective.accountId) {

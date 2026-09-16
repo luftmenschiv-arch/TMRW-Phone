@@ -29,6 +29,8 @@ export function normalizeVoiceRenderResult(input) {
     contractVersion: VOICE_ADAPTER_CONTRACT_VERSION,
     status,
     audioArtifactRef: input?.audioArtifactRef == null ? null : requireText(input.audioArtifactRef, 'voice result audioArtifactRef'),
+    audioBlob: input?.audioBlob || null,
+    mimeType: input?.mimeType == null ? null : requireText(input.mimeType, 'voice result mimeType'),
     durationMs,
     capabilityState: input?.capabilityState ? Object.freeze({ ...input.capabilityState }) : null,
     errorCode: input?.errorCode == null ? null : requireText(input.errorCode, 'voice result errorCode'),

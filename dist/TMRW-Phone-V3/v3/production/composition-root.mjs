@@ -601,7 +601,7 @@ async function buildRuntime(options, entry) {
       audioFactory: source => typeof globalObject.Audio === 'function' ? new globalObject.Audio(source) : null,
     });
     const callTimingDiagnostics = new CallTimingDiagnostics();
-    const callVoicePresenter = new CallVoicePresenter({ voiceProfileService: voiceProfiles, settingsService: settings, adapter: voiceAdapter, playbackController: voicePlayback, timingDiagnostics: callTimingDiagnostics });
+    const callVoicePresenter = new CallVoicePresenter({ voiceProfileService: voiceProfiles, settingsService: settings, adapter: voiceAdapter, playbackController: voicePlayback, timingDiagnostics: callTimingDiagnostics, voiceAudioHistoryService: voiceAudioHistory });
     const callBotReply = new CallBotReplyCoordinator({ callService: calls, voiceProfileService: voiceProfiles, settingsService: settings, bindingResolver, getContext, timingDiagnostics: callTimingDiagnostics });
     activation.addResource('voice-presenter', () => callVoicePresenter.dispose());
     await activation.mark('voice-runtime-configured', voiceCapability);

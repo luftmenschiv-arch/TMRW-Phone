@@ -189,7 +189,7 @@ export class PuzzleLocalRuntimeVoiceAdapter {
         const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
         emitTiming(onTiming, 'synthesis-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
         emitTiming(onTiming, 'audio-fetch-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
-        return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
+        return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, audioBlob: blob, mimeType: blob.type || contentType || 'audio/wav', durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
       } catch (error) {
         if (!signal?.aborted) this.invalidateCall(requests[index].callSessionId);
         emitTiming(onTiming, 'audio-fetch-end', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, outcome: signal?.aborted ? 'cancelled' : (error?.code || 'runtime-error') });
@@ -226,6 +226,14 @@ export class PuzzleLocalRuntimeVoiceAdapter {
       if (error?.code === 'voice-timeout') return failedResult('runtime-timeout');
       return failedResult(error?.code || 'runtime-error');
     }
+  }
+
+  materializeStoredBlob(blob, { durationMs = null, mimeType = null } = {}) {
+    if (!blob || Number(blob.size || 0) < 1 || !this.#createObjectURL) return failedResult('stored-audio-unavailable');
+    const audioArtifactRef = this.#createObjectURL(blob);
+    if (!audioArtifactRef) return failedResult('audio-url-failed');
+    this.#refs.add(audioArtifactRef);
+    return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, audioBlob: blob, mimeType: mimeType || blob.type || 'audio/wav', durationMs });
   }
 
   release(resultOrRef) {

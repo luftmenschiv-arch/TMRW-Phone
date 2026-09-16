@@ -1834,3 +1834,9 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-call-detail-turn strong{font-size:9px;color:#77706c}
 .tmrw-phone-call-detail-turn p{margin-top:4px;font-size:12px;white-space:pre-wrap}
 .tmrw-phone-call-detail-turn small{margin-top:6px;color:#77706c;font-size:9px}
+.tmrw-phone-call-audio-archive,.tmrw-phone-call-audio-storage{padding:12px;border:1px solid rgba(108,80,68,.09);border-radius:17px;background:rgba(255,255,255,.86)}
+.tmrw-phone-call-audio-archive h3,.tmrw-phone-call-audio-storage p{margin:0}
+.tmrw-phone-call-audio-actions,.tmrw-phone-call-segment-audio{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.tmrw-phone-call-audio-actions button,.tmrw-phone-call-segment-audio button,.tmrw-phone-call-audio-storage button{border:1px solid rgba(61,55,52,.14);border-radius:999px;padding:7px 10px;background:#f7f4ef;color:#292624;font-size:10px;font-weight:700}
+.tmrw-phone-call-audio-storage p{margin-top:5px;color:#77706c;font-size:10px}
+.tmrw-phone-call-audio-storage button{margin-top:9px}

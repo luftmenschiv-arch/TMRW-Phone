@@ -38,12 +38,14 @@ export class CallVoicePresenter {
   #adapter;
   #playback;
   #timing;
+  #audioHistory;
   #processed = new Set();
   #activeByCall = new Map();
   #warmByCall = new Map();
   #lastResult = null;
+  #archivePlaybackSequence = 0;
 
-  constructor({ voiceProfileService, settingsService, adapter, playbackController, timingDiagnostics = null }) {
+  constructor({ voiceProfileService, settingsService, adapter, playbackController, timingDiagnostics = null, voiceAudioHistoryService = null }) {
     if (!voiceProfileService?.resolve) throw new TypeError('CallVoicePresenter requires VoiceProfileService');
     if (!settingsService?.get) throw new TypeError('CallVoicePresenter requires settings');
     if (!adapter?.render) throw new TypeError('CallVoicePresenter requires a Voice adapter');
@@ -53,6 +55,7 @@ export class CallVoicePresenter {
     this.#adapter = adapter;
     this.#playback = playbackController;
     this.#timing = timingDiagnostics;
+    this.#audioHistory = voiceAudioHistoryService;
   }
 
   get status() {
@@ -144,6 +147,30 @@ export class CallVoicePresenter {
 
         onUpdate?.(Object.freeze({ phase: 'speaking', segmentIndex: absoluteIndex, segmentCount: segments.length, subtitleThai: segment.subtitleThai }));
         const transcriptEntryId = String(currentCommit.transcript?.transcriptEntryId || prepared.preparedId || callSessionId);
+        if (renderResult.audioBlob && this.#audioHistory?.registerDerivedArtifact) {
+          const artifactId = `${transcriptEntryId}:audio:${absoluteIndex}`;
+          try {
+            await this.#audioHistory.registerDerivedArtifact({ scope, artifact: {
+              id: artifactId,
+              callSessionId,
+              transcriptEntryId,
+              actorId: prepared.botBinding.actorId,
+              instanceId: prepared.botBinding.instanceId,
+              language,
+              artifactRef: artifactId,
+              audioBlob: renderResult.audioBlob,
+              mimeType: renderResult.mimeType || renderResult.audioBlob.type || 'audio/wav',
+              byteLength: Number(renderResult.audioBlob.size || 0),
+              segmentIndex: absoluteIndex,
+              subtitleThai: segment.subtitleThai,
+              spokenText: segment.spokenText,
+              filename: `tmrw-call-${callSessionId.replace(/[^a-z0-9_-]+/gi, '-')}-${String(absoluteIndex + 1).padStart(2, '0')}.wav`,
+              durationMs: Number(renderResult.durationMs || 0),
+              retention: 'temporary',
+              sourceKind: 'puzzle-local-runtime',
+            } });
+          } catch (error) { this.#timing?.mark?.(timingTurnId, 'audio-history-failed', { segmentIndex: absoluteIndex, outcome: error?.code || 'storage-failed' }); }
+        }
         this.#timing?.mark?.(timingTurnId, 'playback-start', { segmentIndex: absoluteIndex, segmentCount: segments.length, durationMs: renderResult.durationMs, language });
         const playback = await this.#playback.play({ callSessionId, transcriptEntryId: `${transcriptEntryId}:segment:${absoluteIndex}`, audioArtifactRef: renderResult.audioArtifactRef });
         this.#timing?.mark?.(timingTurnId, 'playback-end', { segmentIndex: absoluteIndex, segmentCount: segments.length, outcome: playback.status, language });
@@ -186,6 +213,34 @@ export class CallVoicePresenter {
     if (result.status === 'cancelled') return this.#record({ status: 'text-only', reason: 'voice-cancelled', transcriptEntryId: key, language: result.language });
     return this.#record({ status: 'text-only', reason: result.reason, transcriptEntryId: key, language: result.language, failedIndex: result.failedIndex });
   }
+
+  async playArchivedArtifacts({ callSessionId, artifacts = [] }) {
+    const id = String(callSessionId || '').trim();
+    const rows = artifacts.filter(row => row?.recoverable && row?.audioBlob).sort((left, right) => Number(left.segmentIndex || 0) - Number(right.segmentIndex || 0));
+    if (!id || !rows.length || typeof this.#adapter.materializeStoredBlob !== 'function') return Object.freeze({ status: 'unavailable', played: 0 });
+    this.#playback.cancelActive?.('replaced');
+    const sequence = ++this.#archivePlaybackSequence;
+    let played = 0;
+    for (const row of rows) {
+      if (sequence !== this.#archivePlaybackSequence) return Object.freeze({ status: 'cancelled', played });
+      const renderResult = this.#adapter.materializeStoredBlob(row.audioBlob, { durationMs: row.durationMs, mimeType: row.mimeType });
+      if (renderResult.status !== VOICE_RENDER_STATUS.READY) return Object.freeze({ status: 'failed', played });
+      const playbackId = `archive:${row.id}:${sequence}`;
+      const result = await this.#playback.play({ callSessionId: id, transcriptEntryId: playbackId, audioArtifactRef: renderResult.audioArtifactRef });
+      try { this.#adapter.release?.(renderResult); } catch {}
+      if (result.status !== 'completed' && result.status !== 'duplicate') return Object.freeze({ status: result.status, played });
+      played += 1;
+    }
+    return Object.freeze({ status: 'completed', played });
+  }
+
+  stopArchivedPlayback(callSessionId) {
+    this.#archivePlaybackSequence += 1;
+    return this.#playback.cancelCall(String(callSessionId || '').trim());
+  }
+
+  pauseArchivedPlayback() { return this.#playback.pauseActive?.() || false; }
+  resumeArchivedPlayback() { return this.#playback.resumeActive?.() || false; }
 
   cancelCall(callSessionId, reason = 'end-call', { invalidateRuntime = true } = {}) {
     const id = String(callSessionId || '').trim();

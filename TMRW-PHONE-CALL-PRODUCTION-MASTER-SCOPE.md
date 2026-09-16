@@ -43,8 +43,8 @@ These behaviors are already verified and must remain working:
 | 1 | Timing Diagnostics | COMPLETE | `3ea2677` | 31 focused tests passed; package verified |
 | 2 | Safe speedups: warmup, health cache, connection/turn reuse | COMPLETE | `29042b2` | 33 focused tests passed; package verified |
 | 3 | Real Call History dates and measured duration | COMPLETE | `de2c57b` | 36 focused tests passed; package verified |
-| 4 | Call Details and ordered transcript | COMPLETE | this checkpoint commit | 35 focused tests passed; package verified |
-| 5 | Persistent audio replay, download, retention, and Kept archive | NOT STARTED | pending | pending |
+| 4 | Call Details and ordered transcript | COMPLETE | `391102d` | 35 focused tests passed; package verified |
+| 5 | Persistent audio replay, download, retention, and Kept archive | COMPLETE | this checkpoint commit | 41 focused tests passed; package verified |
 | 6 | Incremental LLM first segment to TTS | NOT STARTED | pending | pending |
 | 7 | Truthful, non-duplicated language/settings behavior | NOT STARTED | pending | pending |
 | 8 | One-click Runtime/Model installation | DEFERRED | — | later approval required |
@@ -268,3 +268,25 @@ Recorded result:
 - production package: 241 files, 731 import edges
 - package verification: passed
 - checkpoint 4 Android deployment: pending checkpoint commit
+
+### Checkpoint 5 — Persistent audio replay, download, retention, and Kept archive — 2026-09-17
+
+Persisted the actual runtime WAV Blob before its temporary playback URL is released, bound to the exact Story/Branch, call, transcript, character Actor/Instance, language, segment order, duration, Thai subtitle, spoken text, MIME type, size, and stable filename. Call Details now supports sequential whole-call replay, non-overlapping per-segment replay, pause/resume, stop, per-segment download, `เก็บสายนี้ไว้`, storage totals, and explicit temporary cleanup. Temporary retention keeps the newest 20 calls or 200 MB and evicts the oldest unkept call audio first; Kept audio is protected. Audio cleanup does not touch canonical call transcript/history. Historical rows without actual Blob bytes are truthfully non-recoverable.
+
+Commands:
+
+```powershell
+node --test tests/phase23/persistent-call-audio.test.mjs tests/phase23/call-history-production.test.mjs tests/phase23/call-timing-diagnostics.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/context-identity.test.mjs
+npm test
+npm run test:p23-f
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused production-call tests: 41 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
+- full legacy aggregate gate: could not start affected files because tracked test imports reference absent fixture files (`tests/phase17/notification-fixtures.mjs`, `tests/phase8/messaging-fixtures.mjs`, `tests/phase7/ui-fixtures.mjs`, and `tests/phase1/test-helpers.mjs`); independent production-composition files that could load reported 80 passes before the missing-fixture/package-script baseline failures
+- checkpoint 5 Android deployment: pending checkpoint commit

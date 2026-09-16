@@ -3,7 +3,7 @@ const TERMINAL = new Set(['ended', 'declined', 'cancelled', 'missed']);
 const directionLabel = direction => direction === 'outgoing' ? 'สายโทรออก' : 'สายเรียกเข้า';
 const languageLabel = language => language === 'ja' ? 'Japanese' : language === 'en' ? 'English' : null;
 
-export function callDetailsViewModel({ session, historyItem, transcript = [], audioArtifacts = [], viewerAccountId, callbackTarget = null }) {
+export function callDetailsViewModel({ session, historyItem, transcript = [], audioArtifacts = [], audioStorage = null, viewerAccountId, callbackTarget = null }) {
   if (!session || !TERMINAL.has(session.state) || !historyItem) return null;
   const artifactsByTranscript = new Map();
   for (const artifact of audioArtifacts) {
@@ -30,6 +30,11 @@ export function callDetailsViewModel({ session, historyItem, transcript = [], au
         segmentIndex: Number(artifact.segmentIndex || 0),
         durationMs: Number(artifact.durationMs || 0),
         retention: artifact.retention || 'temporary',
+        audioBlob: artifact.audioBlob || null,
+        mimeType: artifact.mimeType || artifact.audioBlob?.type || 'audio/wav',
+        byteLength: Number(artifact.byteLength || artifact.audioBlob?.size || 0),
+        filename: artifact.filename || `tmrw-call-${session.callSessionId}-${Number(artifact.segmentIndex || 0) + 1}.wav`,
+        recoverable: artifact.recoverable === true && Boolean(artifact.audioBlob),
       }))),
     });
   });
@@ -50,6 +55,9 @@ export function callDetailsViewModel({ session, historyItem, transcript = [], au
     languages: Object.freeze(languages),
     languageSummary: languages.length ? languages.join(' + ') : 'ยังไม่มีเสียงที่บันทึกไว้',
     transcript: Object.freeze(entries),
+    audioArtifacts: Object.freeze(entries.flatMap(entry => entry.audioSegments).filter(row => row.recoverable)),
+    audioKept: audioArtifacts.length > 0 && audioArtifacts.every(row => row.retention === 'kept'),
+    audioStorage: audioStorage ? Object.freeze({ ...audioStorage }) : null,
     callbackTarget: callbackTarget ? Object.freeze({ ...callbackTarget }) : null,
   });
 }
