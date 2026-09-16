@@ -3,15 +3,13 @@ import { CALL_EVENT_TYPES } from '../domain/calls/call-event-types.mjs';
 import { normalizeVoiceRenderRequest, VOICE_RENDER_STATUS } from '../domain/voice/voice-adapter-contract.mjs';
 import { VOICE_LANGUAGE } from '../domain/voice/voice-profile.mjs';
 
-const PUZZLE_PROFILE = 'puzzle';
-
 function committedTranscript(commit) {
   if (!commit || commit.event?.eventType !== CALL_EVENT_TYPES.TRANSCRIPT_ADDED) return null;
   return commit.transcript || commit.event?.payload?.transcript || null;
 }
 
-function profileIsPuzzle(profile) {
-  return String(profile?.profileName || '').trim().toLowerCase() === PUZZLE_PROFILE;
+function profileIsConfigured(profile) {
+  return Boolean(String(profile?.profileName || '').trim());
 }
 
 function resolveLanguage(profile, settings) {
@@ -57,7 +55,7 @@ export class CallVoicePresenter {
     const settings = await this.#settings.get({ scope, playerInstanceId });
     if (!settings.voiceCallsEnabled || !settings.botCallsWithVoice) return this.#record({ status: 'text-only', reason: 'voice-disabled', transcriptEntryId: key });
     const profile = await this.#profiles.resolve({ scope, actorId: transcript.actualAuthorActorId, instanceId: transcript.actualAuthorInstanceId });
-    if (!profileIsPuzzle(profile)) return this.#record({ status: 'text-only', reason: 'puzzle-profile-required', transcriptEntryId: key });
+    if (!profileIsConfigured(profile)) return this.#record({ status: 'text-only', reason: 'voice-profile-required', transcriptEntryId: key });
     const language = resolveLanguage(profile, settings);
     if (!language) return this.#record({ status: 'text-only', reason: 'language-unresolved', transcriptEntryId: key });
 

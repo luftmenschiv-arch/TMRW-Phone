@@ -96,7 +96,7 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     let request;
     try { request = normalizeVoiceRenderRequest(input); } catch { return failedResult('invalid-render-request'); }
     if (signal?.aborted) return cancelledResult();
-    if (String(request.resolvedProfile?.profileName || '').trim().toLowerCase() !== PUZZLE_VOICE_PROFILE_NAME.toLowerCase()) return unavailableResult('puzzle-profile-required');
+    if (!String(request.resolvedProfile?.profileName || '').trim()) return unavailableResult('voice-profile-required');
     const runtimeLanguage = LANGUAGE_MAP[request.language];
     if (!runtimeLanguage) return unavailableResult('unsupported-language');
     if (!this.#fetch || !this.#createObjectURL) return unavailableResult('runtime-client-unavailable');

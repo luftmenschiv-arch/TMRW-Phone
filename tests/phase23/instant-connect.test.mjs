@@ -76,7 +76,7 @@ test('a persisted legacy Simple preference reads as the current Instant contract
   assert.equal(normalized.phoneNumberDiscovery, PHONE_NUMBER_DISCOVERY.ON);
 });
 
-test('Windows Voice Runtime endpoint is explicit, validated, and preserved across Experience changes', async () => {
+test('Local Voice Runtime endpoint is explicit, validated, and preserved across Experience changes', async () => {
   const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-runtime-url' });
   assert.equal((await context.settings.get({ scope: context.scope, playerInstanceId: context.user.instanceId })).voiceRuntimeBaseUrl, DEFAULT_VOICE_RUNTIME_BASE_URL);
   await context.settings.setVoiceRuntimeBaseUrl({ scope: context.scope, playerInstanceId: context.user.instanceId, baseUrl: 'http://192.168.1.20:18769/' });
@@ -85,7 +85,7 @@ test('Windows Voice Runtime endpoint is explicit, validated, and preserved acros
   await assert.rejects(() => context.settings.setVoiceRuntimeBaseUrl({ scope: context.scope, playerInstanceId: context.user.instanceId, baseUrl: 'http://192.168.1.20:18769/private/path' }), /origin only/);
 });
 
-test('Puzzle adapter uses the saved per-call Windows origin instead of Android localhost', async () => {
+test('Puzzle adapter uses the saved per-call runtime origin', async () => {
   const urls = [];
   const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl: async url => { urls.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) }; } });
   const health = await adapter.health({ baseUrl: 'http://192.168.1.20:18769' });
@@ -94,10 +94,32 @@ test('Puzzle adapter uses the saved per-call Windows origin instead of Android l
   assert.deepEqual(urls, ['http://192.168.1.20:18769/health']);
 });
 
-test('Call Voice presentation forwards the saved Windows origin without changing canonical text', async () => {
+test('Puzzle adapter treats a configured user profile name as a label while keeping the qualified Puzzle runtime', async () => {
+  const calls = [];
+  const adapter = new PuzzleLocalRuntimeVoiceAdapter({
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+      if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn:test' }) };
+      if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      return { ok: true, status: 200, headers: { get: name => name === 'Content-Type' ? 'audio/wav' : null }, blob: async () => ({ size: 128 }) };
+    },
+    createObjectURL: () => 'blob:tmrw-test',
+    revokeObjectURL: () => {},
+  });
+  const result = await adapter.render({
+    actorId: 'actor:bot', instanceId: 'instance:bot', callSessionId: 'call:test', canonicalText: 'です。', language: 'ja',
+    resolvedProfile: { profileName: 'เคลันเทส', language: 'ja', defaultDelivery: 'natural', providerNeutral: true },
+  });
+  assert.equal(result.status, 'ready');
+  assert.equal(result.capabilityState.voice, 'Puzzle');
+  assert.equal(JSON.parse(calls.find(call => call.url.endsWith('/turn/push')).options.body).text, 'です。');
+});
+
+test('Call Voice presentation accepts a user-named configured profile without changing canonical text', async () => {
   const calls = [];
   const presenter = new CallVoicePresenter({
-    voiceProfileService: { resolve: async () => ({ profileName: 'Puzzle', language: 'ja', defaultDelivery: 'natural', providerNeutral: true }) },
+    voiceProfileService: { resolve: async () => ({ profileName: 'เคลันเทส', language: 'ja', defaultDelivery: 'natural', providerNeutral: true }) },
     settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'ja', voiceRuntimeBaseUrl: 'http://192.168.1.20:18769' }) },
     adapter: { render: async (request, options) => { calls.push({ request, options }); return { status: 'unavailable', audioArtifactRef: null, errorCode: 'test-stop' }; }, release() {}, dispose() {} },
     playbackController: { play: async () => ({ status: 'completed' }), cancelCall: () => false, dispose() {} },
