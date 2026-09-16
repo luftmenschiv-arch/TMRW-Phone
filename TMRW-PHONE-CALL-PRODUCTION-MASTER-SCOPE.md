@@ -46,7 +46,7 @@ These behaviors are already verified and must remain working:
 | 4 | Call Details and ordered transcript | COMPLETE | `391102d` | 35 focused tests passed; package verified |
 | 5 | Persistent audio replay, download, retention, and Kept archive | COMPLETE | `da98929` | 41 focused tests passed; package verified |
 | 6 | Incremental LLM first segment to TTS | COMPLETE (safe provider fallback) | `614fcc2` | 16 focused tests passed; package verified |
-| 7 | Truthful, non-duplicated language/settings behavior | COMPLETE | this checkpoint commit | 35 focused tests passed; package verified |
+| 7 | Truthful, non-duplicated language/settings behavior | COMPLETE | `13ca624` | 35 focused tests passed; package verified; Android deployed |
 | 8 | One-click Runtime/Model installation | DEFERRED | — | later approval required |
 | 9 | TMRW Voice Companion | DEFERRED | — | later approval required |
 | 10 | Contextual incoming character calls | DEFERRED | — | later approval required |
@@ -289,7 +289,7 @@ Recorded result:
 - production package: 241 files, 731 import edges
 - package verification: passed
 - full legacy aggregate gate: could not start affected files because tracked test imports reference absent fixture files (`tests/phase17/notification-fixtures.mjs`, `tests/phase8/messaging-fixtures.mjs`, `tests/phase7/ui-fixtures.mjs`, and `tests/phase1/test-helpers.mjs`); independent production-composition files that could load reported 80 passes before the missing-fixture/package-script baseline failures
-- checkpoint 5 Android deployment: pending checkpoint commit
+- checkpoint 5 Android deployment: included in final checkpoint 7 deployment
 
 ### Checkpoint 6 — Safe incremental LLM capability boundary — 2026-09-17
 
@@ -312,7 +312,7 @@ Recorded result:
 - focused tests: 16 passed, 0 failed
 - production package: 241 files, 731 import edges
 - package verification: passed
-- checkpoint 6 Android deployment: pending checkpoint 7
+- checkpoint 6 Android deployment: included in final checkpoint 7 deployment
 
 ### Checkpoint 7 — Truthful language/settings behavior — 2026-09-17
 
@@ -331,4 +331,14 @@ Recorded result:
 - focused settings/call tests: 35 passed, 0 failed
 - production package: 241 files, 731 import edges
 - package verification: passed
-- Android deployment: pending final branch deployment and on-device smoke check
+- Android deployment: fast-forwarded clean Termux worktree from `3ea2677` to `13ca624`
+- deployed-file smoke check: authoritative language label found in the live extension tree
+
+Deployment commands:
+
+```powershell
+git bundle create C:\ai\tmrw-phone-checkpoints-1-7.bundle codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 push C:\ai\tmrw-phone-checkpoints-1-7.bundle /data/local/tmp/tmrw-phone-checkpoints-1-7.bundle
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 fetch /data/local/tmp/tmrw-phone-checkpoints-1-7.bundle codex/phone-instant-connect-ui:refs/remotes/local-deploy/codex/phone-instant-connect-ui
+adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 merge --ff-only refs/remotes/local-deploy/codex/phone-instant-connect-ui
+```
