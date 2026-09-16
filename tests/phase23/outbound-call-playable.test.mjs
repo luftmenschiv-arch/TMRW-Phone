@@ -161,6 +161,35 @@ test('Puzzle multi-segment turn sends selected-language speech plus paired Thai 
   assert.equal(requests.filter(row => row.url.includes('/turn/audio?')).length, 2);
 });
 
+test('active-call warmup caches readiness by endpoint and language until invalidated', async () => {
+  const requests = [];
+  const fetchImpl = async (url, options = {}) => {
+    requests.push({ url, options });
+    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+    if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: `turn:${requests.length}` }) };
+    if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    if (url.includes('/turn/audio?')) return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'audio/wav' : null }, blob: async () => ({ size: 128 }) };
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:warm-cache', revokeObjectURL: () => {} });
+  const profile = Object.freeze({ profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
+  const input = language => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:warm', canonicalText: language === 'ja' ? 'はい。' : 'Yes.', subtitleText: 'ครับ', language, resolvedProfile: profile });
+
+  const warmed = await adapter.warm({ callSessionId: 'call:warm', language: 'en' });
+  assert.equal(warmed.ready, true);
+  await adapter.openSequence([input('en')]);
+  assert.equal(requests.filter(row => row.url.endsWith('/health')).length, 1, 'first reply reuses call-start readiness');
+
+  await adapter.warm({ callSessionId: 'call:warm', language: 'ja' });
+  assert.equal(requests.filter(row => row.url.endsWith('/health')).length, 2, 'hot language switch gets fresh readiness');
+  await adapter.openSequence([input('ja')]);
+  assert.equal(requests.filter(row => row.url.endsWith('/health')).length, 2, 'reply reuses switched-language readiness');
+
+  adapter.invalidateCall('call:warm');
+  await adapter.openSequence([input('ja')]);
+  assert.equal(requests.filter(row => row.url.endsWith('/health')).length, 3, 'hangup/runtime invalidation forces a fresh check');
+});
+
 test('Puzzle sequence can resume the same runtime turn after the first audio wait times out', async () => {
   const requests = [];
   let audioFetches = 0;
@@ -245,7 +274,32 @@ test('presenter uses Puzzle fallback, retries one failed segment automatically, 
   assert.equal(requestSets[0][0].subtitleText, 'สวัสดีครับ');
   assert.ok(events.indexOf('retry:Good morning.') < events.indexOf('commit'));
   assert.ok(events.indexOf('commit') < events.findIndex(value => value.startsWith('play:')));
+  assert.ok(events.indexOf('sequence:1') < events.findIndex(value => value.startsWith('play:')), 'segment 2 begins rendering before segment 1 playback');
   assert.equal(events.filter(value => value.startsWith('play:')).length, 2);
+});
+
+test('hangup aborts active runtime warmup and invalidates its call cache', async () => {
+  let warmSignal = null;
+  const invalidated = [];
+  const presenter = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({}) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en', voiceRuntimeBaseUrl: 'http://127.0.0.1:18769' }) },
+    adapter: {
+      render: async () => ({ status: 'failed' }),
+      warm: ({ signal }) => new Promise(resolve => { warmSignal = signal; signal.addEventListener('abort', () => resolve({ ready: false, reason: 'cancelled' }), { once: true }); }),
+      invalidateCall: id => { invalidated.push(id); return true; },
+      dispose() {},
+    },
+    playbackController: { status: Object.freeze({ active: false }), play: async () => ({ status: 'completed' }), cancelCall: () => false, dispose() {} },
+  });
+  const warming = presenter.warmCall({ scope, playerInstanceId: 'character-instance:user', callSessionId: 'call:warm-cancel' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(warmSignal?.aborted, false);
+  presenter.cancelCall('call:warm-cancel', 'hangup');
+  const result = await warming;
+  assert.equal(warmSignal.aborted, true);
+  assert.equal(result.ready, false);
+  assert.deepEqual(invalidated, ['call:warm-cancel']);
 });
 
 test('presenter resumes a timed-out runtime turn instead of synthesizing the segment again', async () => {

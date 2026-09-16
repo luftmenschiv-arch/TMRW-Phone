@@ -32,7 +32,7 @@ const createActionNonce = () => typeof globalThis.crypto?.randomUUID === 'functi
   : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 export class TmrwPhoneShell {
-  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
+  #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #callWarmKey = null; #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
 
   #renderedRoute = null;
   #renderRevision = 0;
@@ -285,6 +285,7 @@ export class TmrwPhoneShell {
     if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
       const call = view.calls.find(row => row.callSessionId === island.callSessionId);
       this.#restoreInterruptedCallTurn(island, call);
+      if (island.kind === 'active') this.#warmActiveCall(view, island.callSessionId);
       return renderApprovedCallSurface({
         document: this.#document,
         island,
@@ -311,6 +312,16 @@ export class TmrwPhoneShell {
       if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } main.append(empty);
     }
     return base;
+  }
+
+  #warmActiveCall(view, callSessionId) {
+    const language = String(view?.settings?.voiceLanguagePreference || 'en');
+    const endpoint = String(view?.settings?.voiceRuntimeBaseUrl || '');
+    const key = `${callSessionId}|${language}|${endpoint}`;
+    if (!this.#callVoicePresenter?.warmCall || this.#callWarmKey === key) return false;
+    this.#callWarmKey = key;
+    void this.#callVoicePresenter.warmCall({ scope: this.#scope, playerInstanceId: this.#player.instanceId, callSessionId });
+    return true;
   }
 
   async #renderContent(view) {
@@ -500,6 +511,7 @@ export class TmrwPhoneShell {
     this.#callTurnControllers.delete(id); this.#callTurnRetries.delete(id); this.#callTurnStates.delete(id);
     try { this.#callBotReply?.cancelCall?.(id); } catch {}
     try { this.#callVoicePresenter?.cancelCall?.(id, reason); } catch {}
+    if (this.#callWarmKey?.startsWith(`${id}|`)) this.#callWarmKey = null;
     return Boolean(controller);
   }
   #failCallTurn(callSessionId, message, retryLabel, retry) {
@@ -580,9 +592,9 @@ export class TmrwPhoneShell {
   #setVoiceCalls(enabled) { return this.#runSettingsMutation(() => this.#models.setVoiceCalls({ scope: this.#scope, playerInstanceId: this.#player.instanceId, enabled })); }
   #setBotCallsWithVoice(enabled) { return this.#runSettingsMutation(() => this.#models.setBotCallsWithVoice({ scope: this.#scope, playerInstanceId: this.#player.instanceId, enabled })); }
   #setVoiceCaptions(enabled) { return this.#runSettingsMutation(() => this.#models.setVoiceCaptions({ scope: this.#scope, playerInstanceId: this.#player.instanceId, enabled })); }
-  #setVoiceLanguagePreference(language) { return this.#runSettingsMutation(() => this.#models.setVoiceLanguagePreference({ scope: this.#scope, playerInstanceId: this.#player.instanceId, language })); }
+  async #setVoiceLanguagePreference(language) { const changed = await this.#runSettingsMutation(() => this.#models.setVoiceLanguagePreference({ scope: this.#scope, playerInstanceId: this.#player.instanceId, language })); this.#callWarmKey = null; if (changed && this.#selectedCallSessionId) void this.#callVoicePresenter?.warmCall?.({ scope: this.#scope, playerInstanceId: this.#player.instanceId, callSessionId: this.#selectedCallSessionId }); return changed; }
   #setVoiceDefaultDelivery(delivery) { return this.#runSettingsMutation(() => this.#models.setVoiceDefaultDelivery({ scope: this.#scope, playerInstanceId: this.#player.instanceId, delivery })); }
-  async #setVoiceRuntimeBaseUrl(baseUrl) { this.#voiceRuntimeHealth = null; return this.#runSettingsMutation(() => this.#models.setVoiceRuntimeBaseUrl({ scope: this.#scope, playerInstanceId: this.#player.instanceId, baseUrl })); }
+  async #setVoiceRuntimeBaseUrl(baseUrl) { this.#voiceRuntimeHealth = null; const changed = await this.#runSettingsMutation(() => this.#models.setVoiceRuntimeBaseUrl({ scope: this.#scope, playerInstanceId: this.#player.instanceId, baseUrl })); this.#callWarmKey = null; if (changed && this.#selectedCallSessionId) void this.#callVoicePresenter?.warmCall?.({ scope: this.#scope, playerInstanceId: this.#player.instanceId, callSessionId: this.#selectedCallSessionId }); return changed; }
   async #testVoiceRuntime() {
     if (this.#voiceRuntimeBusy) return false;
     this.#voiceRuntimeBusy = true; this.#voiceRuntimeHealth = null; await this.renderActive();

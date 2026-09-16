@@ -41,7 +41,7 @@ These behaviors are already verified and must remain working:
 | --- | --- | --- | --- | --- |
 | 0 | Durable master scope and baseline | COMPLETE | this checkpoint commit | baseline below |
 | 1 | Timing Diagnostics | COMPLETE | this checkpoint commit | 31 focused tests passed; package verified |
-| 2 | Safe speedups: warmup, health cache, connection/turn reuse | NOT STARTED | pending | pending |
+| 2 | Safe speedups: warmup, health cache, connection/turn reuse | COMPLETE | this checkpoint commit | 33 focused tests passed; package verified |
 | 3 | Real Call History dates and measured duration | NOT STARTED | pending | pending |
 | 4 | Call Details and ordered transcript | NOT STARTED | pending | pending |
 | 5 | Persistent audio replay, download, retention, and Kept archive | NOT STARTED | pending | pending |
@@ -209,3 +209,23 @@ Recorded result:
 - production package: 240 files, 730 import edges
 - package verification: passed
 - deployment: pending checkpoint commit
+
+### Checkpoint 2 — Safe speedups — 2026-09-17
+
+Implemented active-call readiness warmup against the selected endpoint/language, per-call readiness caching, hot-language-switch invalidation, endpoint-change invalidation, runtime-failure invalidation, and hangup cancellation. The runtime's resident engine/model readiness is warmed without manufacturing dummy speech. The existing single-turn multi-segment runtime contract is preserved, and segment N+1 starts rendering before playback of segment N.
+
+Commands:
+
+```powershell
+node --test tests/phase23/call-timing-diagnostics.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/context-identity.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused tests: 33 passed, 0 failed
+- production package: 240 files, 730 import edges
+- package verification: passed
+- checkpoint 1 Android deployment: `3ea26778ed1b26c6e04422ad462f7867b8dfc708`
+- checkpoint 2 Android deployment: pending checkpoint commit

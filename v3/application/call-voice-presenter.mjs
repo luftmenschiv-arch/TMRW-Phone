@@ -40,6 +40,7 @@ export class CallVoicePresenter {
   #timing;
   #processed = new Set();
   #activeByCall = new Map();
+  #warmByCall = new Map();
   #lastResult = null;
 
   constructor({ voiceProfileService, settingsService, adapter, playbackController, timingDiagnostics = null }) {
@@ -55,7 +56,23 @@ export class CallVoicePresenter {
   }
 
   get status() {
-    return Object.freeze({ processedCount: this.#processed.size, activeCalls: Object.freeze([...this.#activeByCall.keys()]), playback: this.#playback.status, lastResult: this.#lastResult });
+    return Object.freeze({ processedCount: this.#processed.size, activeCalls: Object.freeze([...this.#activeByCall.keys()]), warmingCalls: Object.freeze([...this.#warmByCall.keys()]), playback: this.#playback.status, lastResult: this.#lastResult });
+  }
+
+  async warmCall({ scope: inputScope, playerInstanceId, callSessionId }) {
+    const scope = requireEventScope(inputScope);
+    const callId = String(callSessionId || '').trim();
+    if (!callId || typeof this.#adapter.warm !== 'function') return Object.freeze({ ready: false, reason: 'runtime-warmup-unavailable' });
+    const settings = await this.#settings.get({ scope, playerInstanceId });
+    if (!settings.voiceCallsEnabled || !settings.botCallsWithVoice) return Object.freeze({ ready: false, reason: 'voice-disabled' });
+    const language = resolveLanguage(null, settings, null);
+    const prior = this.#warmByCall.get(callId);
+    if (prior) { try { prior.abort('warmup-replaced'); } catch { prior.abort(); } }
+    const controller = new AbortController();
+    this.#warmByCall.set(callId, controller);
+    try { return await this.#adapter.warm({ callSessionId: callId, language, signal: controller.signal, baseUrl: settings.voiceRuntimeBaseUrl || null }); }
+    catch (error) { return Object.freeze({ ready: false, reason: controller.signal.aborted ? 'warmup-cancelled' : (error?.code || 'warmup-failed') }); }
+    finally { if (this.#warmByCall.get(callId) === controller) this.#warmByCall.delete(callId); }
   }
 
   async presentPreparedBotReply({ scope: inputScope, playerInstanceId, prepared, commit = null, committed = null, startIndex = 0, onUpdate = null }) {
@@ -86,7 +103,7 @@ export class CallVoicePresenter {
       delivery: { preset: settings.voiceDefaultDelivery || profile.defaultDelivery || 'natural' },
     }));
 
-    this.cancelCall(callSessionId, 'replaced');
+    this.cancelCall(callSessionId, 'replaced', { invalidateRuntime: false });
     const controller = new AbortController();
     this.#activeByCall.set(callSessionId, controller);
     let sequence = null;
@@ -170,7 +187,7 @@ export class CallVoicePresenter {
     return this.#record({ status: 'text-only', reason: result.reason, transcriptEntryId: key, language: result.language, failedIndex: result.failedIndex });
   }
 
-  cancelCall(callSessionId, reason = 'end-call') {
+  cancelCall(callSessionId, reason = 'end-call', { invalidateRuntime = true } = {}) {
     const id = String(callSessionId || '').trim();
     if (!id) return false;
     const controller = this.#activeByCall.get(id);
@@ -178,9 +195,15 @@ export class CallVoicePresenter {
       try { controller.abort(reason); } catch { controller.abort(); }
       this.#activeByCall.delete(id);
     }
+    const warmController = this.#warmByCall.get(id);
+    if (warmController) {
+      try { warmController.abort(reason); } catch { warmController.abort(); }
+      this.#warmByCall.delete(id);
+    }
+    if (invalidateRuntime) { try { this.#adapter.invalidateCall?.(id); } catch {} }
     let playback = false;
     try { playback = this.#playback.cancelCall(id); } catch {}
-    return Boolean(controller || playback);
+    return Boolean(controller || warmController || playback);
   }
 
   dispose() {
