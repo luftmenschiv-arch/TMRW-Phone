@@ -61,6 +61,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   const prepared = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });
   assert.equal(prepared.status, 'prepared');
   assert.equal(h.bindingInputs[0].canonicalAccountId, botBinding.accountId);
+  assert.equal(h.bindingInputs[0].allowLegacySingleCharacterPlaceholder, true);
   assert.equal(prepared.language, 'ja');
   assert.deepEqual(prepared.segments.map(row => [row.subtitleThai, row.spokenText]), [
     ['อรุณสวัสดิ์ครับ', 'おはようございます。'],

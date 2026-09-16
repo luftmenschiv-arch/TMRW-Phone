@@ -118,7 +118,7 @@ function createRuntimeBindingResolver({ identityResolver, messageIdentityResolve
     const actorBinding = actor.player === true
       ? await identityResolver.resolvePlayerIdentity({ scope: input.scope, accountId: actor.accountId, accountKey: actor.accountKey, deviceId: actor.deviceId, deviceKey: actor.deviceKey })
       : input.canonicalAccountId
-        ? await identityResolver.resolveCanonicalAccountBinding({ scope: input.scope, accountId: input.canonicalAccountId, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId })
+        ? await identityResolver.resolveCanonicalAccountBinding({ scope: input.scope, accountId: input.canonicalAccountId, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId, allowLegacySingleCharacterPlaceholder: input.allowLegacySingleCharacterPlaceholder === true })
         : await identityResolver.resolveActorBinding({ scope: input.scope, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId, sourceType: actor.sourceType || 'actor', accountId: actor.accountId, accountKey: actor.accountKey, deviceId: actor.deviceId, deviceKey: actor.deviceKey });
     const mentionBindings = await identityResolver.resolveMentionBindings({ scope: input.scope, labels: exact.mentionLabels || [], accountKey: exact.mentionAccountKey || null, deviceKey: exact.mentionDeviceKey || null });
     return Object.freeze({ actorBinding, mentionBindings, explicitPhoneActions: Object.freeze(exact.explicitPhoneActions || []) });

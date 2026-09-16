@@ -232,6 +232,39 @@ test('an existing Actor record cannot bypass a missing exact scoped Character In
   assert.deepEqual(callCounterpart, canonicalBeforeRemoval, 'an exact canonical Call participant may resolve without the obsolete scoped source mapping');
 });
 
+test('legacy single-character placeholder Accounts may bridge to the active direct character, but ordinary mismatches still fail closed', async () => {
+  const placeholder = await seedIdentity({
+    castSize: 1,
+    manifestId: 's06-legacy-character-placeholder',
+    cardSourceId: 's06-placeholder-card',
+    storySourceId: 's06-placeholder-story',
+    routeSourceId: 's06-placeholder-route',
+    cast: [{ sourceActorId: 'character:Character card:actor_abc123', displayName: 'Character card', aliases: [] }],
+  });
+  const resolver = new ProductionIdentityBindingResolver({ identityKernel: placeholder.kernel, database: placeholder.database });
+  const canonical = await resolver.resolveActorBinding({ scope: placeholder.scope, sourceAuthority: 'sillytavern', sourceActorId: 'character:Character card:actor_abc123' });
+  await assert.rejects(
+    () => resolver.resolveCanonicalAccountBinding({ scope: placeholder.scope, accountId: canonical.accountId, sourceAuthority: 'sillytavern', sourceActorId: 'character:Kaelan.png:actor_real' }),
+    /active character does not match/i,
+  );
+  const bridged = await resolver.resolveCanonicalAccountBinding({
+    scope: placeholder.scope,
+    accountId: canonical.accountId,
+    sourceAuthority: 'sillytavern',
+    sourceActorId: 'character:Kaelan.png:actor_real',
+    allowLegacySingleCharacterPlaceholder: true,
+  });
+  assert.deepEqual(bridged, canonical);
+
+  const ordinary = await seedIdentity({ castSize: 1, manifestId: 's06-ordinary-mismatch', cardSourceId: 's06-ordinary-card', storySourceId: 's06-ordinary-story', routeSourceId: 's06-ordinary-route' });
+  const ordinaryResolver = new ProductionIdentityBindingResolver({ identityKernel: ordinary.kernel, database: ordinary.database });
+  const ordinaryBinding = await ordinaryResolver.resolveActorBinding({ scope: ordinary.scope, sourceActorId: ordinary.seed.cast[0].sourceActorId });
+  await assert.rejects(
+    () => ordinaryResolver.resolveCanonicalAccountBinding({ scope: ordinary.scope, accountId: ordinaryBinding.accountId, sourceAuthority: 'sillytavern', sourceActorId: 'different-real-character', allowLegacySingleCharacterPlaceholder: true }),
+    /active character does not match/i,
+  );
+});
+
 test('S06 source remains adapter-only and contains no listener/interceptor/mount/launcher/composition-root ownership', async () => {
   const fs = await import('node:fs/promises');
   for (const relative of ['production/context-source-adapter.mjs', 'production/identity-binding-resolver.mjs']) {
