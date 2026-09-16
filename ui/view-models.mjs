@@ -7,6 +7,7 @@ import { VoiceAudioHistoryService } from '../application/voice-audio-history-ser
 import { createPhase19VoiceCapabilityState } from '../domain/voice/voice-capability.mjs';
 import { GuideStateService } from './guide.mjs';
 import { PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
+import { callDetailsViewModel } from './calls/details.mjs';
 
 const emptyCallUi = () => Object.freeze({ sessions: Object.freeze([]), history: Object.freeze([]), transcript: Object.freeze([]), selectedCallSessionId: null, island: Object.freeze({ kind: 'empty', title: 'No calls yet', callSessionId: null, actions: Object.freeze([]) }), dialTargets: Object.freeze([]), owner: Object.freeze({ available: false, canAct: false, inspectionOnly: true, reason: 'unavailable' }), metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: 0, transcriptLoaded: 0, timers: 0, pollers: 0 }) });
 
@@ -178,10 +179,17 @@ export class PhoneShellViewModels {
       const latest = latestMessages.at(-1) || null;
       return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', participantCount: thread.participantAccountIds.length });
     }))) : Object.freeze([]);
-    const callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts, directTargets: communicationTargets }) : emptyCallUi();
+    let callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts, directTargets: communicationTargets }) : emptyCallUi();
     const calls = callUi.sessions;
     const activeCallSessionId = callUi.selectedCallSessionId;
     const transcripts = callUi.transcript;
+    const selectedCall = selectedCallSessionId ? calls.find(row => row.callSessionId === selectedCallSessionId) || null : null;
+    const selectedHistoryItem = selectedCall ? callUi.history.find(row => row.callSessionId === selectedCall.callSessionId) || null : null;
+    let selectedCallAudio = Object.freeze([]);
+    if (selectedCall && ['ended', 'declined', 'cancelled', 'missed'].includes(selectedCall.state)) { try { selectedCallAudio = await this.#voiceAudio.listByCall({ scope, callSessionId: selectedCall.callSessionId }); } catch {} }
+    const callbackTarget = selectedHistoryItem ? callUi.dialTargets.find(row => row.accountId === selectedHistoryItem.counterpartAccountId) || null : null;
+    const callDetails = callDetailsViewModel({ session: selectedCall, historyItem: selectedHistoryItem, transcript: transcripts, audioArtifacts: selectedCallAudio, viewerAccountId: opened.perspective.accountId, callbackTarget });
+    callUi = Object.freeze({ ...callUi, details: callDetails });
     let feed = Object.freeze({ items: Object.freeze([]), nextCursor: null }); let feedAccountLabels = Object.freeze({}); let insungramThreads = Object.freeze([]); let socialProfile = null; let socialError = null;
     if ((route === 'feed' || route === 'insungram') && opened.authorization.granted && opened.perspective.accountId) {
       if (!this.#social) socialError = 'Feed service is unavailable.';

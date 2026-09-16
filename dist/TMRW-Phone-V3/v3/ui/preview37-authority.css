@@ -1815,3 +1815,22 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
     font-weight: 750;
 }
 .tmrw-phone-feed-load-more:active { transform: scale(.985); }
+.tmrw-phone-call-details{display:flex;flex-direction:column;gap:14px;padding-bottom:26px}
+.tmrw-phone-call-details-hero{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 0 2px;text-align:center}
+.tmrw-phone-call-details-hero h2,.tmrw-phone-call-details-hero p{margin:0}
+.tmrw-phone-call-details-hero h2{font-size:21px}
+.tmrw-phone-call-details-hero p{color:#7c7571;font-size:11px}
+.tmrw-phone-call-details-summary{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;margin:0;padding:14px;border:1px solid rgba(108,80,68,.09);border-radius:18px;background:rgba(255,255,255,.88)}
+.tmrw-phone-call-details-summary dt,.tmrw-phone-call-details-summary dd{margin:0;font-size:11px}
+.tmrw-phone-call-details-summary dt{color:#817a76}
+.tmrw-phone-call-details-summary dd{text-align:right;font-weight:650}
+.tmrw-phone-call-details-callback{align-self:center;min-width:132px;border:0;border-radius:999px;padding:11px 18px;background:#252429;color:#fff;font-weight:700}
+.tmrw-phone-call-details-transcript{display:flex;flex-direction:column;gap:9px}
+.tmrw-phone-call-details-transcript>h3{margin:4px 2px 0;font-size:15px}
+.tmrw-phone-call-detail-turn{max-width:88%;padding:10px 12px;border-radius:16px;background:#fff;box-shadow:0 5px 18px rgba(54,45,42,.06)}
+.tmrw-phone-call-detail-turn.is-player{align-self:flex-end;background:#dff0fa}
+.tmrw-phone-call-detail-turn.is-character{align-self:flex-start}
+.tmrw-phone-call-detail-turn strong,.tmrw-phone-call-detail-turn p,.tmrw-phone-call-detail-turn small{display:block;margin:0}
+.tmrw-phone-call-detail-turn strong{font-size:9px;color:#77706c}
+.tmrw-phone-call-detail-turn p{margin-top:4px;font-size:12px;white-space:pre-wrap}
+.tmrw-phone-call-detail-turn small{margin-top:6px;color:#77706c;font-size:9px}

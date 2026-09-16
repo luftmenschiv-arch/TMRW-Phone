@@ -42,8 +42,8 @@ These behaviors are already verified and must remain working:
 | 0 | Durable master scope and baseline | COMPLETE | this checkpoint commit | baseline below |
 | 1 | Timing Diagnostics | COMPLETE | `3ea2677` | 31 focused tests passed; package verified |
 | 2 | Safe speedups: warmup, health cache, connection/turn reuse | COMPLETE | `29042b2` | 33 focused tests passed; package verified |
-| 3 | Real Call History dates and measured duration | COMPLETE | this checkpoint commit | 36 focused tests passed; package verified |
-| 4 | Call Details and ordered transcript | NOT STARTED | pending | pending |
+| 3 | Real Call History dates and measured duration | COMPLETE | `de2c57b` | 36 focused tests passed; package verified |
+| 4 | Call Details and ordered transcript | COMPLETE | this checkpoint commit | 35 focused tests passed; package verified |
 | 5 | Persistent audio replay, download, retention, and Kept archive | NOT STARTED | pending | pending |
 | 6 | Incremental LLM first segment to TTS | NOT STARTED | pending | pending |
 | 7 | Truthful, non-duplicated language/settings behavior | NOT STARTED | pending | pending |
@@ -249,3 +249,22 @@ Recorded result:
 - package verification: passed
 - checkpoint 2 Android deployment: pending
 - checkpoint 3 Android deployment: pending checkpoint commit
+
+### Checkpoint 4 — Call Details and ordered transcript — 2026-09-17
+
+Added a dedicated Call Details route-state so tapping terminal history no longer presents the ended-call control surface. Details shows the counterpart/avatar, direction, local date and start time, terminal state, measured duration, available voice-language metadata, canonical player/character turns in source-event order, and a scoped callback action when the counterpart is currently callable. Queries remain fenced to the exact Story/Branch; the transcript is not written into the visible main RP chat.
+
+Commands:
+
+```powershell
+node --test tests/phase23/call-history-production.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/outbound-call-playable.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused tests: 35 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
+- checkpoint 4 Android deployment: pending checkpoint commit
