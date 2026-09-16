@@ -29,8 +29,8 @@ This document is the durable implementation authority for turning the current TM
 | # | Scope | Status | Commit | Verification |
 |---|---|---|---|---|
 | 0 | Durable scope and baseline | COMPLETE | `2d22fe8` | scope committed and pushed |
-| 1 | Stable Phone Shell navigation and home-page restoration | COMPLETE | pending commit | 33 focused tests passed; package verified |
-| 2 | Cast Manifest and bounded RP history reader | NOT STARTED | — | pending |
+| 1 | Stable Phone Shell navigation and home-page restoration | COMPLETE | `3043042` | 33 focused tests passed; package verified |
+| 2 | Cast Manifest and bounded RP history reader | COMPLETE | pending commit | 2 focused tests passed |
 | 3 | Quick Start plus resumable Deep Backfill orchestration | NOT STARTED | — | pending |
 | 4 | One-click Settings bootstrap/update experience | NOT STARTED | — | pending |
 | 5 | Initial Phone Seed and shared living UI states | NOT STARTED | — | pending |
@@ -128,3 +128,19 @@ Result:
 - focused tests: 33 passed, 0 failed
 - production package: 241 files, 731 import edges
 - package verification: passed
+
+### Checkpoint 2 — 2026-09-17
+
+Added a Preview-independent Cast Manifest extractor for declared card casts, SillyTavern groups, active single-character cards, structured card text, and recurring dialogue speakers. Candidate confidence prevents incidental names from automatically receiving phones. Added a bounded RP history reader with stable source ordinals, revision fingerprints, character/message chunk limits, and a recent-history window for Quick Start.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-cast-history.test.mjs
+```
+
+Result:
+
+- focused tests: 2 passed, 0 failed
+- 205-message history fixture split into bounded stable chunks
+- no Preview37 input or storage dependency
