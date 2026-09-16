@@ -35,7 +35,7 @@ This document is the durable implementation authority for turning the current TM
 | 4 | One-click Settings bootstrap/update experience | COMPLETE | `798e579` | 15 focused tests passed; package verified |
 | 5 | Initial Phone Seed and shared living UI states | COMPLETE | `beb23b4` | 13 focused tests passed; package verified |
 | 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | COMPLETE | `7ff9940` | 30 focused tests passed; package verified |
-| 7 | App wiring, provider capability settings, and production package closure | COMPLETE | pending commit | 58 focused tests passed; package verified |
+| 7 | App wiring, provider capability settings, and production package closure | COMPLETE | `92fea77` | 58 focused tests passed; package verified |
 
 ## Checkpoint 1 — stable Phone Shell
 
