@@ -92,6 +92,27 @@ export class ProductionIdentityBindingResolver {
     return Object.freeze({ actorId: actor.id, instanceId: instance.id, accountId: account.id, deviceId: device.id });
   }
 
+  async resolveCanonicalAccountBinding({ scope: inputScope, accountId, sourceAuthority = null, sourceActorId = null }) {
+    const scope = requireScope(inputScope);
+    const canonicalAccountId = requireText(accountId, 'accountId');
+    const chain = await this.#unitOfWork.readonly({ stores: ['accounts', 'instances', 'actors'], scope }, async repositories => {
+      const account = await repositories.accounts.get(canonicalAccountId);
+      const instance = account && await repositories.instances.get(account.ownerInstanceId);
+      const actor = instance && await repositories.actors.get(instance.actorId);
+      return account && instance && actor ? { account, instance, actor } : null;
+    });
+    if (!chain || chain.account.storyId !== scope.storyId || chain.account.branchId !== scope.branchId || chain.instance.storyId !== scope.storyId || chain.instance.branchId !== scope.branchId) {
+      throw new Error(`Production identity unresolved: canonical Account ${canonicalAccountId} is unavailable in this Story/Branch`);
+    }
+    if (sourceAuthority != null && chain.actor.sourceAuthority !== requireText(sourceAuthority, 'sourceAuthority')) {
+      throw new Error('Production identity unresolved: active character authority does not match the Call counterpart');
+    }
+    if (sourceActorId != null && chain.actor.sourceActorId !== requireText(sourceActorId, 'sourceActorId')) {
+      throw new Error('Production identity unresolved: active character does not match the Call counterpart');
+    }
+    return this.#bindingForCanonical({ actor: chain.actor, instance: chain.instance, scope, accountId: chain.account.id });
+  }
+
   async resolveActorBinding({ scope: inputScope, sourceAuthority = 'sillytavern', sourceActorId, sourceType = 'actor', accountId = null, accountKey = null, deviceId = null, deviceKey = null }) {
     const scope = requireScope(inputScope);
     const authority = requireText(sourceAuthority, 'sourceAuthority');

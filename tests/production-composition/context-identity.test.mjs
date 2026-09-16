@@ -219,14 +219,17 @@ test('stable Actor source identity survives a display-name rename without creati
 test('an existing Actor record cannot bypass a missing exact scoped Character Instance mapping', async () => {
   const setup = await seedIdentity({ castSize: 1, manifestId: 's06-missing-instance', cardSourceId: 's06-mi-card', storySourceId: 's06-mi-story', routeSourceId: 's06-mi-route' });
   const sourceActorId = setup.seed.cast[0].sourceActorId;
+  const resolver = new ProductionIdentityBindingResolver({ identityKernel: setup.kernel, database: setup.database });
+  const canonicalBeforeRemoval = await resolver.resolveActorBinding({ scope: setup.scope, sourceActorId });
   await setup.database.transaction(['identityMappings'], 'readwrite', async transaction => {
     const store = transaction.store('identityMappings');
     const mapping = await store.getByIndex('by_source_identity', ['sillytavern', 'character-instance', sourceActorId, identityScopeKey(setup.scope.storyId, setup.scope.branchId)]);
     assert.ok(mapping);
     await store.delete(mapping.id);
   });
-  const resolver = new ProductionIdentityBindingResolver({ identityKernel: setup.kernel, database: setup.database });
   await assert.rejects(() => resolver.resolveActorBinding({ scope: setup.scope, sourceActorId }), /missing active character-instance mapping/i);
+  const callCounterpart = await resolver.resolveCanonicalAccountBinding({ scope: setup.scope, accountId: canonicalBeforeRemoval.accountId, sourceAuthority: 'sillytavern', sourceActorId });
+  assert.deepEqual(callCounterpart, canonicalBeforeRemoval, 'an exact canonical Call participant may resolve without the obsolete scoped source mapping');
 });
 
 test('S06 source remains adapter-only and contains no listener/interceptor/mount/launcher/composition-root ownership', async () => {

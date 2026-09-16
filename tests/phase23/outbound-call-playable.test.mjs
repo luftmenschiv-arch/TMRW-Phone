@@ -35,11 +35,12 @@ function callServiceHarness() {
 function coordinatorHarness(generateQuietPrompt, { callService = null, stopGeneration = null } = {}) {
   const calls = callServiceHarness();
   const prompts = [];
+  const bindingInputs = [];
   const coordinator = new CallBotReplyCoordinator({
     callService: callService || calls.service,
     voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: null, language: 'auto', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
     settingsService: { get: async () => ({ voiceLanguagePreference: 'ja' }) },
-    bindingResolver: async () => ({ actorBinding: botBinding }),
+    bindingResolver: async input => { bindingInputs.push(input); return { actorBinding: botBinding }; },
     getContext: () => ({
       groupId: null,
       characterId: 7,
@@ -48,7 +49,7 @@ function coordinatorHarness(generateQuietPrompt, { callService = null, stopGener
       stopGeneration,
     }),
   });
-  return { coordinator, prompts, writes: calls.writes };
+  return { coordinator, prompts, bindingInputs, writes: calls.writes };
 }
 
 test('outbound reply stays uncommitted until bilingual Thai/Japanese segments are prepared for Voice', async () => {
@@ -59,6 +60,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   const h = coordinatorHarness(async () => response);
   const prepared = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });
   assert.equal(prepared.status, 'prepared');
+  assert.equal(h.bindingInputs[0].canonicalAccountId, botBinding.accountId);
   assert.equal(prepared.language, 'ja');
   assert.deepEqual(prepared.segments.map(row => [row.subtitleThai, row.spokenText]), [
     ['อรุณสวัสดิ์ครับ', 'おはようございます。'],

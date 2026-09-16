@@ -207,9 +207,12 @@ export class CallBotReplyCoordinator {
     if (context.groupId) return generationFailure('v1-direct-character-only');
     if (typeof context.generateQuietPrompt !== 'function') return generationFailure('quiet-generation-unavailable');
 
-    const resolved = await this.#bindingResolver({ scope, role: 'assistant', context, message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }) });
+    const counterpartAccountIds = session.participantAccountIds.filter(accountId => accountId !== userTranscript.speakerAccountId);
+    if (counterpartAccountIds.length !== 1) return generationFailure('call-counterpart-not-exact');
+    const counterpartAccountId = counterpartAccountIds[0];
+    const resolved = await this.#bindingResolver({ scope, role: 'assistant', context, canonicalAccountId: counterpartAccountId, message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }) });
     const bot = resolved?.actorBinding || null;
-    if (!bot || !session.participantAccountIds.includes(bot.accountId) || bot.accountId === userTranscript.speakerAccountId) return generationFailure('current-character-not-call-counterpart');
+    if (!bot || bot.accountId !== counterpartAccountId) return generationFailure('current-character-not-call-counterpart');
 
     const profile = await this.#voiceProfiles.resolve({ scope, actorId: bot.actorId, instanceId: bot.instanceId });
     const settings = await this.#settings.get({ scope, playerInstanceId });

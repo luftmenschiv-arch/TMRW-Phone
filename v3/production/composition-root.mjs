@@ -117,7 +117,9 @@ function createRuntimeBindingResolver({ identityResolver, messageIdentityResolve
     if (!actor || typeof actor !== 'object') return Object.freeze({ actorBinding: null, mentionBindings: Object.freeze({}), explicitPhoneActions: Object.freeze(exact.explicitPhoneActions || []) });
     const actorBinding = actor.player === true
       ? await identityResolver.resolvePlayerIdentity({ scope: input.scope, accountId: actor.accountId, accountKey: actor.accountKey, deviceId: actor.deviceId, deviceKey: actor.deviceKey })
-      : await identityResolver.resolveActorBinding({ scope: input.scope, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId, sourceType: actor.sourceType || 'actor', accountId: actor.accountId, accountKey: actor.accountKey, deviceId: actor.deviceId, deviceKey: actor.deviceKey });
+      : input.canonicalAccountId
+        ? await identityResolver.resolveCanonicalAccountBinding({ scope: input.scope, accountId: input.canonicalAccountId, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId })
+        : await identityResolver.resolveActorBinding({ scope: input.scope, sourceAuthority: actor.sourceAuthority, sourceActorId: actor.sourceActorId, sourceType: actor.sourceType || 'actor', accountId: actor.accountId, accountKey: actor.accountKey, deviceId: actor.deviceId, deviceKey: actor.deviceKey });
     const mentionBindings = await identityResolver.resolveMentionBindings({ scope: input.scope, labels: exact.mentionLabels || [], accountKey: exact.mentionAccountKey || null, deviceKey: exact.mentionDeviceKey || null });
     return Object.freeze({ actorBinding, mentionBindings, explicitPhoneActions: Object.freeze(exact.explicitPhoneActions || []) });
   };
