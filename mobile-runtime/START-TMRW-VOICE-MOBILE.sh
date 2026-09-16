@@ -46,6 +46,8 @@ if [[ -f "$PID_FILE" ]]; then
 fi
 
 if [[ ! -f "$PID_FILE" ]]; then
+  export PREFIX="$TERMUX_PREFIX"
+  export PATH="$TERMUX_PREFIX/bin:${PATH:-/system/bin}"
   export GENIE_DATA_DIR="$WORKSPACE/GenieData"
   export PYTHONPATH="$TERMUX_HOME/genie-onnx-private/site-packages"
   export LD_LIBRARY_PATH="$TERMUX_HOME/genie-python313/data/data/com.termux/files/usr/lib:$TERMUX_HOME/genie-onnx-private/lib:$WORKSPACE/venv/lib:$TERMUX_PREFIX/lib"
