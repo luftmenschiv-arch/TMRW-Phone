@@ -34,6 +34,29 @@ test('call history groups local dates once and renders real start times', () => 
   assert.deepEqual(history.map(row => row.durationLabel), ['1:23', '1:23', '1:23']);
 });
 
+test('call history collapses terminal evidence into Ended, Missed, and Cancelled filters', () => {
+  const base = { callingAccountId: 'account:user', calledAccountId: 'account:bot', startedAt: '2026-09-17T03:00:00.000Z', durationEvidence: null };
+  const history = callHistoryViewModel({
+    sessions: [
+      { ...base, callSessionId: 'ended', state: 'ended' },
+      { ...base, callSessionId: 'cancelled', state: 'cancelled' },
+      { ...base, callSessionId: 'outgoing-declined', state: 'declined' },
+      { ...base, callSessionId: 'incoming-declined', state: 'declined', callingAccountId: 'account:bot', calledAccountId: 'account:user' },
+      { ...base, callSessionId: 'missed', state: 'missed', callingAccountId: 'account:bot', calledAccountId: 'account:user' },
+    ],
+    viewerAccountId: 'account:user',
+    identities: new Map([['account:bot', { displayName: 'Kaelan' }]]),
+    now: new Date('2026-09-17T12:00:00.000Z'),
+  });
+  assert.deepEqual(history.map(row => [row.callSessionId, row.statusCategory, row.statusLabel]), [
+    ['ended', 'ended', 'Ended'],
+    ['cancelled', 'cancelled', 'Cancelled'],
+    ['outgoing-declined', 'cancelled', 'Cancelled'],
+    ['incoming-declined', 'missed', 'Missed'],
+    ['missed', 'missed', 'Missed'],
+  ]);
+});
+
 test('canonical call projection persists start, connected, end, and measured duration evidence', async () => {
   const c = await setupPhase9({ manifestId: 'p23-call-history-time' });
   const started = await startCall(c, { key: 'history-time' });
@@ -53,6 +76,9 @@ test('production shell no longer hardcodes zero duration or one Today heading pe
   assert.doesNotMatch(source, /element\(this\.#document,'h3','Today'\)/);
   assert.match(source, /#measuredCallDuration\(call\)/);
   assert.match(source, /sections\.get\(call\.dateGroupKey\)/);
+  assert.match(source, /\['all','All'\],\['ended','Ended'\],\['missed','Missed'\],\['cancelled','Cancelled'\]/);
+  assert.doesNotMatch(source, /\['All','Missed','Outgoing','Voice'/);
+  assert.match(source, /tmrw-phone-dialpad-launcher/);
 });
 
 test('selected terminal history exposes scoped Call Details with ordered player and character turns', async () => {

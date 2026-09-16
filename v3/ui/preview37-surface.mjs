@@ -5,10 +5,12 @@ const appendIcon = (document, node, name, size) => { node.append(createPreviewIc
 export const previewClock = () => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 export const previewDate = () => new Intl.DateTimeFormat('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
-export function createPreviewAvatar({ document, label = '?', size = 'md' }) {
+export function createPreviewAvatar({ document, label = '?', size = 'md', imageUrl = null }) {
   const avatar = el(document, 'span'); avatar.className = `tmrw-phone-avatar tmrw-phone-avatar--${size}`;
   const initials = String(label || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || '?';
-  avatar.append(el(document, 'b', initials)); return avatar;
+  avatar.append(el(document, 'b', initials));
+  if (imageUrl) { const image = el(document, 'img'); image.src = imageUrl; image.alt = ''; image.addEventListener?.('error', () => image.remove?.(), { once: true }); avatar.append(image); }
+  return avatar;
 }
 
 export function createPreviewStatusBar({ document }) {

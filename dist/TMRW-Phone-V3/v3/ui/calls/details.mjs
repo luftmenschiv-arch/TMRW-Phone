@@ -43,7 +43,9 @@ export function callDetailsViewModel({ session, historyItem, transcript = [], au
   return Object.freeze({
     callSessionId: session.callSessionId,
     counterpartAccountId: historyItem.counterpartAccountId,
+    counterpartInstanceId: historyItem.counterpartInstanceId || null,
     counterpartLabel: historyItem.displayLabel,
+    counterpartDisplayName: historyItem.displayName || historyItem.displayLabel,
     direction: historyItem.direction,
     directionLabel: directionLabel(historyItem.direction),
     state: historyItem.state,

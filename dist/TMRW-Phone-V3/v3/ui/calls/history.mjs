@@ -1,5 +1,10 @@
 const TERMINAL = new Set(['ended', 'declined', 'cancelled', 'missed']);
-const stateLabel = state => ({ ringing: 'Ringing', active: 'Active', ended: 'Ended', declined: 'Declined', cancelled: 'Cancelled', missed: 'Missed' }[state] || String(state || 'Unknown'));
+const terminalPresentation = (state, outgoing) => {
+  if (state === 'ended') return Object.freeze({ statusCategory: 'ended', statusLabel: 'Ended' });
+  if (state === 'cancelled' || (state === 'declined' && outgoing)) return Object.freeze({ statusCategory: 'cancelled', statusLabel: 'Cancelled' });
+  if (state === 'missed' || state === 'declined') return Object.freeze({ statusCategory: 'missed', statusLabel: 'Missed' });
+  return Object.freeze({ statusCategory: String(state || 'unknown'), statusLabel: ({ ringing: 'Ringing', active: 'Active' }[state] || String(state || 'Unknown')) });
+};
 
 function parseTimestamp(value) {
   const parsed = value ? new Date(value) : null;
@@ -54,16 +59,21 @@ export function callHistoryViewModel({ sessions = [], viewerAccountId, identitie
   return Object.freeze(base.map(row => {
     const startedAt = row.session.startedAt || row.session.updatedAt || null;
     const presentation = datePresentation(startedAt, currentTime);
+    const terminal = terminalPresentation(row.session.state, row.outgoing);
     return Object.freeze({
     callSessionId: row.session.callSessionId,
     state: row.session.state,
     direction: row.outgoing ? 'outgoing' : 'incoming',
     counterpartAccountId: row.counterpartAccountId,
+    counterpartActorId: row.identity.actorId || null,
+    counterpartInstanceId: row.identity.instanceId || null,
+    counterpartNumber: row.identity.number || null,
     displayLabel: duplicates.get(row.displayLabel).size > 1 ? row.displayLabel + ' · ' + row.counterpartAccountId.slice(-8) : row.displayLabel,
     displayName: row.identity.displayName || row.displayLabel,
     savedName: row.identity.savedName || null,
     aliases: Object.freeze([...(row.identity.aliases || [])]),
-    statusLabel: stateLabel(row.session.state),
+    statusCategory: terminal.statusCategory,
+    statusLabel: terminal.statusLabel,
     terminal: TERMINAL.has(row.session.state),
     canonicalDurationMs: Number.isSafeInteger(row.session.durationEvidence?.durationMs) ? row.session.durationEvidence.durationMs : null,
     durationLabel: formatCanonicalDuration(row.session.durationEvidence?.durationMs),

@@ -7,6 +7,16 @@ const el = (document, tag, className = '', text = '') => {
 
 const initials = label => String(label || '?').trim().slice(0, 1).toUpperCase() || '?';
 
+function loadingWave(document, text) {
+  const wave = el(document, 'div', 'tmrw-call-authority-loading-wave');
+  wave.setAttribute('role', 'status'); wave.setAttribute('aria-label', text);
+  const graphemes = typeof Intl?.Segmenter === 'function'
+    ? [...new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(text)].map(row => row.segment)
+    : Array.from(text);
+  graphemes.forEach((grapheme, index) => { const span = el(document, 'span', '', grapheme); span.setAttribute('aria-hidden', 'true'); span.setAttribute('style', `--tmrw-wave-index:${index}`); wave.append(span); });
+  return wave;
+}
+
 const SVG = Object.freeze({
   phone: '<path d="M3 5.5C3 4.7 3.7 4 4.5 4h3.3c.7 0 1.3.5 1.5 1.1l1.1 3.2c.2.6 0 1.3-.5 1.7l-1.7 1.3c1.1 2.3 2.9 4.2 5.2 5.3l1.3-1.7c.4-.5 1.1-.7 1.7-.5l3.2 1.1c.6.2 1.1.8 1.1 1.5v3.3c0 .8-.7 1.5-1.5 1.5C10.3 21.5 3.3 14.5 3 5.5Z" fill="currentColor"/>',
   send: '<path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -110,8 +120,9 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
     const latestIsCaller = latest && latest.speakerAccountId !== island.counterpartAccountId;
     if (latestIsCaller) stage.append(el(document, 'div', 'tmrw-call-authority-user-message-bubble', latest.text));
     const card = el(document, 'div', `tmrw-call-authority-subtitle-card tmrw-call-authority-turn-${turnState.phase}`);
-    const statusText = turnState.phase === 'thinking' ? 'กำลังคิด…' : turnState.phase === 'synthesizing' ? 'กำลังสร้างเสียง…' : turnState.phase === 'retrying-voice' ? 'กำลังลองสร้างเสียงอีกครั้ง…' : turnState.phase === 'speaking' ? (captionsVisible ? turnState.subtitleThai : 'กำลังพูด…') : (turnState.message || 'ตอบไม่สำเร็จ');
-    card.append(el(document, 'div', 'tmrw-call-authority-subtitle-text', statusText));
+    const statusText = turnState.phase === 'thinking' ? 'กำลังคิด…' : turnState.phase === 'synthesizing' ? 'กำลังเตรียมเสียง…' : turnState.phase === 'retrying-voice' ? 'กำลังเตรียมเสียงอีกครั้ง…' : turnState.phase === 'speaking' ? (captionsVisible ? turnState.subtitleThai : '') : (turnState.message || 'ตอบไม่สำเร็จ');
+    if (['thinking', 'synthesizing', 'retrying-voice'].includes(turnState.phase)) card.append(loadingWave(document, statusText));
+    else card.append(el(document, 'div', 'tmrw-call-authority-subtitle-text', statusText));
     if (turnState.phase === 'failed' && typeof onRetry === 'function') { const retry = el(document, 'button', 'tmrw-call-authority-retry', turnState.retryLabel || 'ลองตอบใหม่'); retry.type = 'button'; retry.dataset.callAction = 'retry-reply'; bindOneShot(retry, onRetry); card.append(retry); }
     stage.append(card);
   } else if (latest) {
@@ -131,9 +142,6 @@ function renderActive({ document, root, island, inspectionOnly, onAction, onSend
   const input = el(document, 'input', 'tmrw-call-authority-input'); input.type = 'text'; input.setAttribute('aria-label', 'Call text'); input.placeholder = turnLocked ? 'รอให้อีกฝ่ายพูดจบ…' : 'พิมพ์ข้อความ...'; input.disabled = composerLocked;
   const send = el(document, 'button', 'tmrw-call-authority-send'); send.type = 'button'; send.dataset.callAction = 'send-text'; send.setAttribute('aria-label', 'ส่ง'); send.append(icon(document, 'send', 18));
   const syncSend = () => { send.disabled = composerLocked || !String(input.value || '').trim(); }; input.addEventListener('input', syncSend); syncSend();
-  input.addEventListener('pointerdown', () => root.classList?.add?.('is-keyboard-open'));
-  input.addEventListener('focus', () => root.classList?.add?.('is-keyboard-open'));
-  input.addEventListener('blur', () => root.classList?.remove?.('is-keyboard-open'));
   let sendBusy = false; send.addEventListener('click', () => { if (sendBusy || send.disabled) return; sendBusy = true; send.disabled = true; input.blur?.(); void Promise.resolve(onSend?.(input)).catch(() => {}).finally(() => { sendBusy = false; syncSend(); }); });
   composer.append(input, send); composerWrap.append(composer); root.append(composerWrap);
 

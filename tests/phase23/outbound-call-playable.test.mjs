@@ -426,10 +426,12 @@ test('active Call UI locks typing during work, keeps hangup available, and expos
 
   const thinking = renderApprovedCallSurface({ document, island, turnState: { phase: 'thinking', locked: true }, captionsVisible: true });
   assert.match(allText(thinking), /อรุณสวัสดิ์/);
-  assert.match(allText(thinking), /กำลังคิด/);
+  assert.equal(find(thinking, node => node.attributes?.get?.('aria-label') === 'กำลังคิด…')?.className, 'tmrw-call-authority-loading-wave');
+  const synthesizing = renderApprovedCallSurface({ document, island, turnState: { phase: 'synthesizing', locked: true }, captionsVisible: true });
+  assert.equal(find(synthesizing, node => node.attributes?.get?.('aria-label') === 'กำลังเตรียมเสียง…')?.className, 'tmrw-call-authority-loading-wave');
 
   const speaking = renderApprovedCallSurface({ document, island, turnState: { phase: 'speaking', locked: true, subtitleThai: 'อรุณสวัสดิ์ครับ' }, captionsVisible: false });
-  assert.match(allText(speaking), /กำลังพูด/);
+  assert.doesNotMatch(allText(speaking), /กำลังพูด/);
   assert.doesNotMatch(allText(speaking), /อรุณสวัสดิ์ครับ/);
 });
 

@@ -294,7 +294,9 @@ test('Instant Calls auto-answers the exact current Character, creates one canoni
   const shell = shellFor(context);
   await shell.mount(context.target);
   const panel = await open(shell, 'calls');
-  const target = find(panel, node => node.dataset?.callTargetAccountId === context.alice.accountId);
+  find(panel, node => node.dataset?.callAction === 'open-dialpad').click();
+  await waitFor(() => Boolean(find(shell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId)), 'dialpad recommendation');
+  const target = find(shell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId);
   assert.ok(target);
   target.click();
   target.click();
@@ -351,7 +353,9 @@ test('a fresh shell can start another Call after reload without replaying the en
   const firstShell = shellFor(context);
   await firstShell.mount(context.target);
   const firstPanel = await open(firstShell, 'calls');
-  find(firstPanel, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
+  find(firstPanel, node => node.dataset?.callAction === 'open-dialpad').click();
+  await waitFor(() => Boolean(find(firstShell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId)), 'first dialpad recommendation');
+  find(firstShell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
   await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId }))[0]?.state === 'active', 'first active Call');
   find(firstShell.root, node => node.dataset?.callAction === 'end').click();
   await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId }))[0]?.state === 'ended', 'first ended Call');
@@ -360,7 +364,9 @@ test('a fresh shell can start another Call after reload without replaying the en
   const reloadedShell = shellFor(context);
   await reloadedShell.mount(context.target);
   const reloadedPanel = await open(reloadedShell, 'calls');
-  find(reloadedPanel, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
+  find(reloadedPanel, node => node.dataset?.callAction === 'open-dialpad').click();
+  await waitFor(() => Boolean(find(reloadedShell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId)), 'reloaded dialpad recommendation');
+  find(reloadedShell.root, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
   await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).some(call => call.state === 'active'), 'active Call after reload');
   const calls = await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId });
   assert.equal(calls.length, 2);

@@ -36,7 +36,7 @@ export class CallCoordinator {
         if (!account || !instance || !actor) continue;
         const contact = contactByInstance.get(instance.id);
         const direct = directByInstance.get(instance.id);
-        output.set(accountId, Object.freeze({ accountId, actorId: actor.id, instanceId: instance.id, displayName: direct?.label || instance.displayNameOverride || actor.displayName, savedName: contact?.savedName || null, aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]) }));
+        output.set(accountId, Object.freeze({ accountId, actorId: actor.id, instanceId: instance.id, displayName: direct?.label || instance.displayNameOverride || actor.displayName, savedName: contact?.savedName || null, number: contact?.number || null, aliases: Object.freeze([...new Set([...(actor.aliases || []), ...(instance.aliases || [])])]) }));
       }
       return output;
     });
@@ -92,11 +92,11 @@ export class CallCoordinator {
     for (const contact of contacts) {
       if (!contact.targetInstanceId) continue;
       const account = await this.#accountForInstance(scope, contact.targetInstanceId); if (!account || account.id === perspective.accountId || dialTargets.some(row => row.accountId === account.id)) continue;
-      dialTargets.push(Object.freeze({ accountId: account.id, actorId: contact.targetActorId, instanceId: contact.targetInstanceId, label: contact.savedName || contact.number || 'Contact', aliases: Object.freeze([]) }));
+      dialTargets.push(Object.freeze({ accountId: account.id, actorId: contact.targetActorId, instanceId: contact.targetInstanceId, label: contact.savedName || contact.number || 'Contact', number: contact.number || null, aliases: Object.freeze([]) }));
     }
     for (const target of directTargets) {
       if (!target?.accountId || target.accountId === perspective.accountId || dialTargets.some(row => row.accountId === target.accountId)) continue;
-      dialTargets.push(Object.freeze({ accountId: target.accountId, actorId: target.actorId, instanceId: target.instanceId, label: target.label || 'Contact', aliases: Object.freeze(target.aliases || []), availability: target.availability || null, autoAnswerEligible: target.autoAnswerEligible === true }));
+      dialTargets.push(Object.freeze({ accountId: target.accountId, actorId: target.actorId, instanceId: target.instanceId, label: target.label || 'Contact', number: target.number || null, aliases: Object.freeze(target.aliases || []), availability: target.availability || null, autoAnswerEligible: target.autoAnswerEligible === true }));
     }
     return Object.freeze({ sessions, history, transcript, selectedCallSessionId: selected?.callSessionId || null, island, dialTargets: Object.freeze(dialTargets), owner, metrics: Object.freeze({ eventHistoryScans: 0, callsLoaded: sessions.length, transcriptLoaded: transcript.length, timers: 0, pollers: 0, maxHistory: MAX_CALLS, maxTranscript: MAX_TRANSCRIPT }) });
   }

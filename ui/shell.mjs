@@ -24,6 +24,8 @@ import { createPreviewRootChrome, createPreviewLockScreen, createPreviewHome, cr
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const formatBytes = value => { const bytes = Math.max(0, Number(value) || 0); if (bytes < 1024) return `${bytes} B`; if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`; return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; };
+const normalizeDialNumber = value => String(value || '').replace(/[^0-9+*#]/gu, '');
+const DIAL_KEYS = Object.freeze([['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ'],['*',''],['0','+'],['#','']]);
 const firstDescendant = (node, predicate) => { if (!node) return null; if (predicate(node)) return node; for (const child of node.children || []) { const found = firstDescendant(child, predicate); if (found) return found; } return null; };
 const APP_TITLES = Object.freeze({ contacts: 'Phone', messages: 'Messages', calls: 'Phone', feed: 'Insungram', insungram: 'Insungram', live: 'Live', notifications: 'กิจกรรม', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
 const appKind = route => ['feed','insungram','live','messages','notifications'].includes(route) ? 'social' : ['wallet','shop'].includes(route) ? 'commerce' : ['maps','calendar','weather','health'].includes(route) ? 'lifestyle' : ['notes','search','calls','contacts'].includes(route) ? 'personal' : 'utility';
@@ -35,6 +37,10 @@ const createActionNonce = () => typeof globalThis.crypto?.randomUUID === 'functi
 export class TmrwPhoneShell {
   #callDetailsSessionId = null;
   #activeCharacterAvatarUrl = null;
+  #callHistoryFilter = 'all';
+  #dialpadOpen = false;
+  #dialpadDigits = '';
+  #dialpadMessage = null;
   #document; #models; #controller; #messaging; #calls; #callCoordinator; #callStoryIntegration; #callBotReply; #callVoicePresenter; #storyContinuation; #social; #notifications; #scope; #player; #playerDisplayName; #activeCharacterDisplayName; #selectedDeviceId; #selectedThreadId = null; #selectedLiveSessionId = null; #selectedCallSessionId = null; #selectedGalleryRecordId = null; #selectedFileRecordId = null; #locationDraftLabel = ''; #selectedLocationAudienceIds = new Set(); #calendarFormMode = null; #calendarViewTab = 'today'; #healthViewTab = 'summary'; #calendarSequence = 0; #lastCalendarError = null; #selectedWalletRecordId = null; #selectedShopRecordId = null; #checkoutConfirmationRecordId = null; #checkoutResult = null; #shopStaleRecordId = null; #checkoutBusy = false; #commerceSequence = 0; #lastCommerceError = null; #selectedNoteRecordId = null; #noteFormMode = null; #pendingNoteDeleteId = null; #noteSequence = 0; #searchQuery = ''; #submittedSearchQuery = ''; #searchSequence = 0; #searchClearBusy = false; #lastPersonalError = null; #pendingRemoval = null; #closedCallSurfaceId = null; #selectedVoiceActorId = null; #voiceRuntimeHealth = null; #voiceRuntimeBusy = false; #selectedPerspectiveLabel = 'My Phone'; #selectedPerspectiveKind = 'my-phone'; #selectedGuideTopic = GUIDE_TOPICS[0]; #guideBusy = false; #lastGuideError = null; #settingsBusy = false; #lastSettingsError = null; #settingsChoice = null; #socialBusy = false; #lastSocialActionError = null; #messageSequence = 0; #directThreadBusy = false; #callSequence = 0; #callActionNonce = createActionNonce(); #callTurnStates = new Map(); #callTurnControllers = new Map(); #callTurnRetries = new Map(); #callWarmKey = null; #callConnectedAt = new Map(); #outgoingCallBusy = false; #socialSequence = 0; #utilitySequence = 0; #lastMessageError = null; #lastCallError = null; #lastNotificationError = null; #lastUtilityError = null; #router; #root; #screen; #sheetLayer; #toast; #onClose; #presentationView = 'lock'; #homePage = 0; #homePagerTimer = null; #metrics = { shellMounts: 0, appRegionUpdates: 0, wholeShellReplacements: 0, layoutReads: 0, eventHistoryScans: 0 };
 
   #renderedRoute = null;
@@ -232,15 +238,59 @@ export class TmrwPhoneShell {
     return this.#socialShell('insungram', this.#selectedPerspectiveLabel, body);
   }
 
+  #avatarUrlFor(label, instanceId = null, view = null) {
+    if (!this.#activeCharacterAvatarUrl) return null;
+    const expected = String(this.#activeCharacterDisplayName || '').trim().toLocaleLowerCase();
+    const actual = String(label || '').trim().toLocaleLowerCase();
+    if (expected && actual && (actual === expected || actual.includes(expected) || expected.includes(actual))) return this.#activeCharacterAvatarUrl;
+    const targets = [...(view?.communicationTargets || []), ...(view?.callUi?.dialTargets || [])];
+    if (instanceId && targets.some(target => target.instanceId === instanceId && (!expected || String(target.label || '').trim().toLocaleLowerCase() === expected))) return this.#activeCharacterAvatarUrl;
+    if (targets.length === 1 && (!instanceId || targets[0].instanceId === instanceId)) return this.#activeCharacterAvatarUrl;
+    return null;
+  }
+
+  #attachDialpadLauncher(page, view) {
+    const button = element(this.#document, 'button'); button.type = 'button'; button.className = 'tmrw-phone-dialpad-launcher'; button.dataset.callAction = 'open-dialpad'; button.disabled = view.callUi?.owner?.canAct === false;
+    button.append(createPreviewIcon({ document: this.#document, name: 'phone', size: 19 }), element(this.#document, 'span', 'โทร'));
+    button.addEventListener('click', () => { this.#dialpadOpen = true; this.#dialpadMessage = null; if (this.#router.route !== 'calls') this.#router.navigate('calls'); else void this.renderActive(); }); page.append(button); return page;
+  }
+
+  #renderDialpad(view) {
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-dialpad';
+    const recommended = element(this.#document, 'section'); recommended.className = 'tmrw-phone-dialpad-recommended'; recommended.append(element(this.#document, 'h3', 'แนะนำ'));
+    for (const target of (view.callUi?.dialTargets || []).slice(0, 3)) {
+      const row = element(this.#document, 'button'); row.type = 'button'; row.dataset.callTargetAccountId = target.accountId;
+      row.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'md', imageUrl: this.#avatarUrlFor(target.label, target.instanceId, view) }));
+      const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', target.label), element(this.#document, 'small', target.number || 'โทรได้ทันที')); row.append(copy, createPreviewIcon({ document: this.#document, name: 'phone', size: 20 }));
+      row.addEventListener('click', () => { this.#dialpadOpen = false; void this.#startOutgoing(view, target); }); recommended.append(row);
+    }
+    if ((view.callUi?.dialTargets || []).length) body.append(recommended);
+    const display = element(this.#document, 'div', this.#dialpadDigits || 'กดหมายเลข'); display.className = `tmrw-phone-dialpad-display${this.#dialpadDigits ? '' : ' is-empty'}`; body.append(display);
+    const message = element(this.#document, 'p', this.#dialpadMessage || ''); message.className = 'tmrw-phone-dialpad-message'; message.hidden = !this.#dialpadMessage; body.append(message);
+    const pad = element(this.#document, 'div'); pad.className = 'tmrw-phone-dialpad-grid';
+    const call = element(this.#document, 'button'); call.type = 'button'; call.className = 'tmrw-phone-dialpad-call'; call.dataset.callAction = 'dial-number'; call.append(createPreviewIcon({ document: this.#document, name: 'phone', size: 23 }), element(this.#document, 'span', 'โทร'));
+    const update = () => { display.textContent = this.#dialpadDigits || 'กดหมายเลข'; display.className = `tmrw-phone-dialpad-display${this.#dialpadDigits ? '' : ' is-empty'}`; message.hidden = true; message.textContent = ''; call.disabled = !this.#dialpadDigits; };
+    for (const [digit, letters] of DIAL_KEYS) { const key = element(this.#document, 'button'); key.type = 'button'; key.className = 'tmrw-phone-dialpad-key'; key.dataset.dialKey = digit; key.append(element(this.#document, 'strong', digit), element(this.#document, 'small', letters)); key.addEventListener('click', () => { if (this.#dialpadDigits.length >= 24) return; this.#dialpadDigits += digit; update(); }); pad.append(key); }
+    const deleteButton = element(this.#document, 'button', '⌫'); deleteButton.type = 'button'; deleteButton.className = 'tmrw-phone-dialpad-delete'; deleteButton.setAttribute('aria-label', 'ลบหมายเลข'); deleteButton.addEventListener('click', () => { this.#dialpadDigits = this.#dialpadDigits.slice(0, -1); update(); });
+    const actions = element(this.#document, 'div'); actions.className = 'tmrw-phone-dialpad-actions'; actions.append(call, deleteButton); body.append(pad, actions); update();
+    call.addEventListener('click', () => { const number = normalizeDialNumber(this.#dialpadDigits); const target = (view.callUi?.dialTargets || []).find(row => normalizeDialNumber(row.number) === number); if (target) { this.#dialpadOpen = false; void this.#startOutgoing(view, target); return; } message.textContent = 'ยังไม่พบหมายเลขนี้ใน Story/Branch ปัจจุบัน'; message.hidden = false; });
+    return wrapPreviewApp({ document: this.#document, kind: 'personal', app: 'calls', title: 'ปุ่มกด', subtitle: 'โทรด้วยหมายเลข', body, onBack: () => { this.#dialpadOpen = false; this.#dialpadDigits = ''; this.#dialpadMessage = null; void this.renderActive(); } });
+  }
+
   #renderCallsBase(view) {
-    const body=element(this.#document,'section');body.className='tmrw-phone-personal-app tmrw-phone-phone-app';const tabs=element(this.#document,'div');tabs.className='tmrw-phone-phone-tabs';const historyTab=element(this.#document,'button','Call History');historyTab.className='is-active';const contactsTab=element(this.#document,'button','Saved Names');contactsTab.addEventListener('click',()=>this.#router.navigate('contacts'));tabs.append(historyTab,contactsTab);body.append(tabs);const filters=element(this.#document,'div');filters.className='tmrw-phone-filter-chips tmrw-phone-soft-chips tmrw-phone-call-filters';for(const label of ['All','Missed','Outgoing','Voice','Video']){const b=element(this.#document,'button',label);b.disabled=true;if(label==='All')b.className='is-active';filters.append(b);}body.append(filters);
-    const groups=element(this.#document,'div');groups.className='tmrw-phone-call-groups';if(!view.callUi.history.length)groups.append(element(this.#document,'p','ยังไม่มี Call History'));
-    const sections=new Map();
-    for(const call of view.callUi.history){let section=sections.get(call.dateGroupKey);if(!section){section=element(this.#document,'section');section.className='tmrw-phone-call-group';section.dataset.dateGroup=call.dateGroupKey;section.append(element(this.#document,'h3',call.dateGroupLabel));sections.set(call.dateGroupKey,section);groups.append(section);}const row=element(this.#document,'button');row.className='tmrw-phone-call-row';row.dataset.callSessionId=call.callSessionId;row.append(createPreviewAvatar({document:this.#document,label:call.displayLabel,size:'sm'}));const copy=element(this.#document,'span');copy.append(element(this.#document,'strong',call.displayLabel),element(this.#document,'small',`${call.statusLabel} · ${call.durationLabel}`));row.append(copy,element(this.#document,'time',call.timeLabel),createPreviewIcon({document:this.#document,name:'more',size:17}));row.addEventListener('click',()=>{this.#selectedCallSessionId=call.callSessionId;this.#callDetailsSessionId=call.callSessionId;this.#closedCallSurfaceId=null;void this.renderActive();});section.append(row);}body.append(groups);return wrapPreviewApp({document:this.#document,kind:'personal',app:'calls',title:'Phone',subtitle:'Call History และ Saved Names ของเครื่องนี้',body,onBack:()=>this.#goHome()});
+    const body = element(this.#document, 'section'); body.className = 'tmrw-phone-personal-app tmrw-phone-phone-app';
+    const tabs = element(this.#document, 'div'); tabs.className = 'tmrw-phone-phone-tabs'; const historyTab = element(this.#document, 'button', 'Call History'); historyTab.className = 'is-active'; const contactsTab = element(this.#document, 'button', 'Saved Names'); contactsTab.addEventListener('click', () => this.#router.navigate('contacts')); tabs.append(historyTab, contactsTab); body.append(tabs);
+    const filters = element(this.#document, 'div'); filters.className = 'tmrw-phone-filter-chips tmrw-phone-soft-chips tmrw-phone-call-filters';
+    for (const [value, label] of [['all','All'],['ended','Ended'],['missed','Missed'],['cancelled','Cancelled']]) { const button = element(this.#document, 'button', label); button.type = 'button'; button.dataset.callFilter = value; if (this.#callHistoryFilter === value) button.className = 'is-active'; button.addEventListener('click', () => { this.#callHistoryFilter = value; void this.renderActive(); }); filters.append(button); } body.append(filters);
+    const visible = view.callUi.history.filter(call => this.#callHistoryFilter === 'all' || call.statusCategory === this.#callHistoryFilter);
+    const groups = element(this.#document, 'div'); groups.className = 'tmrw-phone-call-groups'; if (!visible.length) groups.append(element(this.#document, 'p', this.#callHistoryFilter === 'all' ? 'ยังไม่มี Call History' : `ยังไม่มีสาย ${this.#callHistoryFilter}`));
+    const sections = new Map();
+    for (const call of visible) { let section = sections.get(call.dateGroupKey); if (!section) { section = element(this.#document, 'section'); section.className = 'tmrw-phone-call-group'; section.dataset.dateGroup = call.dateGroupKey; section.append(element(this.#document, 'h3', call.dateGroupLabel)); sections.set(call.dateGroupKey, section); groups.append(section); } const row = element(this.#document, 'button'); row.className = 'tmrw-phone-call-row'; row.dataset.callSessionId = call.callSessionId; row.append(createPreviewAvatar({ document:this.#document, label:call.displayLabel, size:'sm', imageUrl:this.#avatarUrlFor(call.displayName, call.counterpartInstanceId, view) })); const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', call.displayLabel), element(this.#document, 'small', `${call.statusLabel} · ${call.durationLabel}`)); row.append(copy, element(this.#document, 'time', call.timeLabel), createPreviewIcon({ document:this.#document, name:'more', size:17 })); row.addEventListener('click', () => { this.#selectedCallSessionId = call.callSessionId; this.#callDetailsSessionId = call.callSessionId; this.#closedCallSurfaceId = null; void this.renderActive(); }); section.append(row); }
+    body.append(groups); const page = wrapPreviewApp({ document:this.#document, kind:'personal', app:'calls', title:'Phone', subtitle:'Call History และ Saved Names ของเครื่องนี้', body, onBack:()=>this.#goHome() }); return this.#attachDialpadLauncher(page, view);
   }
   #renderCallDetails(view, detail) {
     const body=element(this.#document,'section');body.className='tmrw-phone-call-details';
-    const hero=element(this.#document,'div');hero.className='tmrw-phone-call-details-hero';hero.append(createPreviewAvatar({document:this.#document,label:detail.counterpartLabel,size:'lg'}),element(this.#document,'h2',detail.counterpartLabel),element(this.#document,'p',detail.directionLabel));
+    const hero=element(this.#document,'div');hero.className='tmrw-phone-call-details-hero';hero.append(createPreviewAvatar({document:this.#document,label:detail.counterpartLabel,size:'xl',imageUrl:this.#avatarUrlFor(detail.counterpartDisplayName,detail.counterpartInstanceId,view)}),element(this.#document,'h2',detail.counterpartLabel),element(this.#document,'p',detail.directionLabel));
     const summary=element(this.#document,'dl');summary.className='tmrw-phone-call-details-summary';
     for(const [label,value] of [['วันที่',detail.dateLabel],['เวลาเริ่ม',detail.timeLabel],['สถานะ',detail.statusLabel],['ระยะเวลา',detail.durationLabel],['ภาษาของเสียง',detail.languageSummary]])summary.append(element(this.#document,'dt',label),element(this.#document,'dd',value));
     body.append(hero,summary);
@@ -265,6 +315,7 @@ export class TmrwPhoneShell {
   #utilityWrap(route, body, title=APP_TITLES[route]) { const bottom=['wallet','shop'].includes(route)?this.#commerceNav(route):['calendar','health'].includes(route)?this.#lifestyleNav(route):null; const subtitles={notes:'บันทึกทุกไอเดีย สำคัญทุกวัน',search:'สิ่งที่เคยค้น เปิด และกลับไปดู',wallet:'เงินและรายการของเครื่องนี้',shop:'สินค้าและคำสั่งซื้อของเครื่องนี้',gallery:'อัลบั้มและภาพที่บันทึกไว้',files:'ไฟล์และเอกสาร',theme:'ธีมโทรศัพท์',guide:'คู่มือการใช้งาน',settings:'ตั้งค่าโทรศัพท์',diagnostics:'ข้อมูลระบบแบบอ่านอย่างเดียว'}; return wrapPreviewApp({document:this.#document,kind:appKind(route),app:route,title,subtitle:subtitles[route]||'',body,onBack:()=>this.#goHome(),bottom,ownerLabel:this.#selectedPerspectiveLabel}); }
 
   #renderContactsWithConnectivity(view) {
+    if (this.#dialpadOpen) return this.#renderDialpad(view);
     const body = element(this.#document, 'section'); body.className = 'tmrw-phone-personal-app tmrw-phone-phone-app';
     const tabs = element(this.#document, 'div'); tabs.className = 'tmrw-phone-phone-tabs';
     const history = element(this.#document, 'button', 'Call History'); history.addEventListener('click', () => this.#router.navigate('calls'));
@@ -273,13 +324,13 @@ export class TmrwPhoneShell {
     const input = element(this.#document, 'input'); input.placeholder = 'ค้นหาชื่อหรือตัวละคร'; input.disabled = !(view.contacts.length || view.communicationTargets.length); search.append(input); body.append(search);
     const list = element(this.#document, 'div'); list.className = 'tmrw-phone-saved-list'; const searchable = [];
     for (const contact of contactsViewModel(view.contacts)) {
-      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row'; row.dataset.contactPointId = contact.id; row.append(createPreviewAvatar({ document: this.#document, label: contact.primary, size: 'md' }));
+      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row'; row.dataset.contactPointId = contact.id; row.append(createPreviewAvatar({ document: this.#document, label: contact.primary, size: 'md', imageUrl: this.#avatarUrlFor(contact.primary, contact.targetInstanceId, view) }));
       const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', contact.primary), element(this.#document, 'small', contact.secondary)); row.append(copy); const icon = element(this.#document, 'b'); addIcon(this.#document, icon, 'phone', 18); row.append(icon); list.append(row); searchable.push({ row, text: `${contact.primary} ${contact.secondary}` });
     }
     const savedInstances = new Set((view.contacts || []).map(contact => contact.targetInstanceId).filter(Boolean));
     for (const target of view.communicationTargets || []) {
       if (savedInstances.has(target.instanceId)) continue;
-      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row tmrw-phone-instant-contact'; row.dataset.instantContactAccountId = target.accountId; row.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'md' }));
+      const row = element(this.#document, 'div'); row.className = 'tmrw-phone-contact-row tmrw-phone-instant-contact'; row.dataset.instantContactAccountId = target.accountId; row.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'md', imageUrl: this.#avatarUrlFor(target.label, target.instanceId, view) }));
       const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', target.label), element(this.#document, 'small', 'พร้อมติดต่อทันที • ไม่ต้องใช้เบอร์')); row.append(copy);
       const actions = element(this.#document, 'span'); actions.className = 'tmrw-phone-contact-actions'; const message = element(this.#document, 'button'); message.type = 'button'; message.setAttribute('aria-label', `เริ่มแชทกับ ${target.label}`); addIcon(this.#document, message, 'comment', 17); message.addEventListener('click', () => { this.#selectedThreadId = null; void this.#startDirectThread(view, target); }); const call = element(this.#document, 'button'); call.type = 'button'; call.setAttribute('aria-label', `โทรหา ${target.label}`); addIcon(this.#document, call, 'phone', 17); call.addEventListener('click', () => void this.#startDirectCall(view, target)); actions.append(message, call); row.append(actions); list.append(row); searchable.push({ row, text: target.label });
     }
@@ -290,7 +341,7 @@ export class TmrwPhoneShell {
     }
     input.addEventListener('input', () => { const query = String(input.value || '').trim().toLocaleLowerCase(); for (const item of searchable) item.row.hidden = Boolean(query) && !item.text.toLocaleLowerCase().includes(query); });
     if (this.#lastCallError) { const alert = element(this.#document, 'p', 'เริ่มสายไม่สำเร็จ กรุณาลองอีกครั้ง'); alert.className = 'tmrw-phone-call-start-error'; alert.setAttribute('role', 'alert'); body.append(alert); }
-    body.append(list); return wrapPreviewApp({ document: this.#document, kind: 'personal', app: 'contacts', title: 'Phone', subtitle: view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.ON ? 'Instant contacts ของเครื่องนี้' : 'Saved Names ของเครื่องนี้', body, onBack: () => this.#goHome() });
+    body.append(list); const page = wrapPreviewApp({ document: this.#document, kind: 'personal', app: 'contacts', title: 'Phone', subtitle: view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.ON ? 'Instant contacts ของเครื่องนี้' : 'Saved Names ของเครื่องนี้', body, onBack: () => this.#goHome() }); return this.#attachDialpadLauncher(page, view);
   }
 
   #restoreInterruptedCallTurn(island, call) {
@@ -310,6 +361,7 @@ export class TmrwPhoneShell {
   }
 
   #renderCallsWithConnectivity(view) {
+    if (this.#dialpadOpen) return this.#renderDialpad(view);
     if (this.#callDetailsSessionId && view.callUi.details?.callSessionId === this.#callDetailsSessionId) return this.#renderCallDetails(view, view.callUi.details);
     const island = view.callUi.island;
     if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
@@ -333,11 +385,7 @@ export class TmrwPhoneShell {
       });
     }
     const base = this.#renderCallsBase(view); const main = firstDescendant(base, node => String(node.tagName || '').toLowerCase() === 'main'); if (!main) return base;
-    if (view.callUi.dialTargets.length) {
-      const dial = element(this.#document, 'div'); dial.className = 'tmrw-phone-call-favorites';
-      for (const target of view.callUi.dialTargets) { const button = element(this.#document, 'button'); button.dataset.callTargetAccountId = target.accountId; button.append(createPreviewAvatar({ document: this.#document, label: target.label, size: 'lg' }), element(this.#document, 'strong', target.label), element(this.#document, 'small', 'โทรได้ทันที')); button.disabled = !view.callUi.owner.canAct; button.addEventListener('click', () => { this.#closedCallSurfaceId = null; void this.#startOutgoing(view, target); }); dial.append(button); }
-      main.append(dial);
-    } else if (!view.callUi.history.length) {
+    if (!view.callUi.dialTargets.length && !view.callUi.history.length) {
       const empty = element(this.#document, 'div'); empty.className = 'tmrw-phone-empty-state tmrw-phone-connect-empty'; const storyMode = view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.SMART;
       empty.append(element(this.#document, 'strong', 'ยังไม่มีคนที่โทรได้'), element(this.#document, 'p', !view.instantEligible ? 'โทรศัพท์ของตัวละครเปิดดูอย่างเดียวจากมุมมองนี้' : storyMode ? 'Story mode กำลังรอให้ค้นพบเบอร์ของตัวละครในเนื้อเรื่อง' : 'การเชื่อมต่อตัวละครอัตโนมัติปิดอยู่'));
       if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } main.append(empty);

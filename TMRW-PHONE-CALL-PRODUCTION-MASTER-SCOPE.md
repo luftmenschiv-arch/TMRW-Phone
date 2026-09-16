@@ -373,3 +373,27 @@ adb -s 192.168.100.125:41429 push C:\ai\tmrw-phone-da00f1d.bundle /data/local/tm
 adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 fetch /data/local/tmp/tmrw-phone-da00f1d.bundle codex/phone-instant-connect-ui:refs/remotes/local-deploy/codex/phone-instant-connect-ui
 adb -s 192.168.100.125:41429 shell run-as com.termux files/usr/bin/git -C files/home/SillyTavern/data/default-user/extensions/TMRW-Phone-V3 merge --ff-only refs/remotes/local-deploy/codex/phone-instant-connect-ui
 ```
+
+### Post-checkpoint 7 — Stable composer, complete phone identity, terminal filters, and keypad — 2026-09-17
+
+Removed the focus-time compact Call layout that moved the composer before the browser could finish focusing it. The active-call text field now keeps one stable layout, uses a mobile-safe 16px input size, and dismisses the keyboard only after Send. Waiting states use a grapheme-safe left-to-right wave for `กำลังคิด…`, `กำลังเตรียมเสียง…`, and the automatic voice retry; the speaking phase never shows a redundant `กำลังพูด` label because the Thai caption already carries that moment.
+
+Character Card artwork now flows through the shared Preview avatar component and appears in active Calls, Call Details, Call History, Saved Names, and keypad recommendations, with initials underneath as the load-error fallback. Call History exposes the exact filters `All / Ended / Missed / Cancelled`; incoming declined/missed evidence maps to Missed while outgoing declined/cancelled evidence maps to Cancelled. The old non-functional Voice/Video/Outgoing filter set was removed.
+
+The sinking instant-contact strip was replaced with one black, device-anchored Call button. It opens a full dial pad with recommendations, number display, backspace, `1–9`, `*`, `0`, `#`, and a black Call action. Known canonical Contact Point numbers resolve to the exact scoped Account; unknown numbers fail truthfully without fabricating a character, while leaving the UI ready for future evidence-discovered mystery numbers.
+
+Commands:
+
+```powershell
+node --test tests/phase23/persistent-call-audio.test.mjs tests/phase23/presentation-correction.test.mjs tests/phase23/production-home-presentation.test.mjs tests/phase23/outbound-call-playable.test.mjs tests/phase23/call-history-production.test.mjs tests/phase23/instant-connect.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Recorded result:
+
+- focused files that loaded: 46 passed, 0 failed
+- the unrelated `production-home-presentation.test.mjs` aggregate could not load because the tracked baseline still references absent `tests/phase17/notification-fixtures.mjs`
+- production package: 241 files, 731 import edges
+- package verification: passed
+- Android deployment: pending this checkpoint commit
