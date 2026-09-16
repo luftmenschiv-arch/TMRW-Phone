@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
 import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { CallVoicePlaybackController } from '../../ui/calls/call-voice-playback.mjs';
 import { BetaSettingsService, GLOBAL_VOICE_SETTINGS_KEY } from '../../ui/settings-beta.mjs';
 import { renderApprovedCallSurface } from '../../ui/calls/approved-call-surface.mjs';
 import { CALL_EVENT_TYPES } from '../../domain/calls/call-event-types.mjs';
@@ -276,6 +277,34 @@ test('presenter resumes a timed-out runtime turn instead of synthesizing the seg
   assert.equal(result.status, 'played');
   assert.equal(fallbackRenders, 0, 'a timed-out wait must not start a duplicate synthesis turn');
   assert.deepEqual(events.slice(0, 4), ['state:synthesizing', 'wait:0', 'state:retrying-voice', 'resume:0']);
+});
+
+test('a rejected browser playback stays retryable and becomes duplicate-safe only after audio ends', async () => {
+  let attempts = 0;
+  const controller = new CallVoicePlaybackController({ audioFactory: () => {
+    attempts += 1;
+    const listeners = new Map();
+    return {
+      currentTime: 0,
+      addEventListener(type, listener) { listeners.set(type, listener); },
+      removeEventListener(type, listener) { if (listeners.get(type) === listener) listeners.delete(type); },
+      pause() {},
+      play() {
+        if (attempts === 1) return Promise.reject(new Error('autoplay-blocked'));
+        queueMicrotask(() => listeners.get('ended')?.());
+        return Promise.resolve();
+      },
+    };
+  } });
+  const request = { callSessionId: 'call:playback-retry', transcriptEntryId: 'transcript:playback-retry:segment:0', audioArtifactRef: 'blob:voice' };
+  const failed = await controller.play(request);
+  const completed = await controller.play(request);
+  const duplicate = await controller.play(request);
+  assert.equal(failed.status, 'failed');
+  assert.equal(completed.status, 'completed');
+  assert.equal(duplicate.status, 'duplicate');
+  assert.equal(attempts, 2);
+  assert.equal(controller.status.playedCount, 1);
 });
 
 class MemoryStorage {

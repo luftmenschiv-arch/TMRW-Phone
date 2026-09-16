@@ -23,7 +23,6 @@ export class CallVoicePlaybackController {
     const transcriptId = requireId(transcriptEntryId, 'transcriptEntryId');
     const ref = requireId(audioArtifactRef, 'audioArtifactRef');
     if (this.#played.has(transcriptId)) return Object.freeze({ status: 'duplicate', callSessionId: callId, transcriptEntryId: transcriptId });
-    this.#played.add(transcriptId);
     this.cancelActive('replaced');
     if (!this.#audioFactory) return Object.freeze({ status: 'unavailable', callSessionId: callId, transcriptEntryId: transcriptId });
     const audio = this.#audioFactory(ref);
@@ -34,6 +33,7 @@ export class CallVoicePlaybackController {
       const settle = status => {
         if (settled) return;
         settled = true;
+        if (status === 'completed') this.#played.add(transcriptId);
         if (this.#active?.transcriptEntryId === transcriptId) this.#active = null;
         try { audio.removeEventListener?.('ended', onEnded); } catch {}
         try { audio.removeEventListener?.('error', onError); } catch {}
