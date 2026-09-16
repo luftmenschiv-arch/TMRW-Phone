@@ -62,6 +62,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.equal(prepared.status, 'prepared');
   assert.equal(h.bindingInputs[0].canonicalAccountId, botBinding.accountId);
   assert.equal(h.bindingInputs[0].allowLegacySingleCharacterPlaceholder, true);
+  assert.equal(h.prompts[0].responseLength, 1024, 'reasoning-capable providers must have enough output budget to close the bilingual JSON object');
   assert.equal(prepared.language, 'ja');
   assert.deepEqual(prepared.segments.map(row => [row.subtitleThai, row.spokenText]), [
     ['อรุณสวัสดิ์ครับ', 'おはようございます。'],
