@@ -265,9 +265,10 @@ export class TmrwPhoneShell {
     if (this.#callTurnStates.has(callSessionId) || this.#callTurnControllers.has(callSessionId) || this.#callTurnRetries.has(callSessionId)) return;
     const latest = (island.transcript || []).at(-1) || null;
     if (!latest?.transcriptEntryId || latest.speakerAccountId === island.counterpartAccountId) return;
+    const transcript = Object.freeze({ ...latest, callSessionId });
     const commit = Object.freeze({
-      event: Object.freeze({ eventType: CALL_EVENT_TYPES.TRANSCRIPT_ADDED, payload: Object.freeze({ transcript: latest }) }),
-      transcript: latest,
+      event: Object.freeze({ eventType: CALL_EVENT_TYPES.TRANSCRIPT_ADDED, payload: Object.freeze({ transcript }) }),
+      transcript,
     });
     const retry = () => this.#runCallReply(call, commit);
     this.#callTurnRetries.set(callSessionId, retry);
