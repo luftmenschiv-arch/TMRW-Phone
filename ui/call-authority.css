@@ -4,3 +4,4 @@
 @media(max-width:430px){.tmrw-call-authority-surface{border-radius:0}}
 .tmrw-call-authority-turn-thinking .tmrw-call-authority-subtitle-text,.tmrw-call-authority-turn-synthesizing .tmrw-call-authority-subtitle-text,.tmrw-call-authority-turn-retrying-voice .tmrw-call-authority-subtitle-text{color:#777780}.tmrw-call-authority-turn-failed{flex-direction:column;gap:10px}.tmrw-call-authority-retry{min-height:34px!important;padding:7px 16px!important;border:0!important;border-radius:999px!important;background:#232326!important;color:#fff!important;font-family:'Noto Sans Thai',sans-serif;font-size:12px;font-weight:650}
 .tmrw-call-authority-turn-stage{display:flex;flex-direction:column;gap:10px}
+.tmrw-phone-call-start-error{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:#fff0f0;color:#9d3030;font-size:13px;text-align:center}

@@ -304,3 +304,66 @@ test('Instant Calls auto-answers the exact current Character, creates one canoni
   await waitFor(() => Boolean(find(shell.root, node => node.dataset?.callAction === 'end')), 'approved active Call surface');
   assert.deepEqual(await context.contacts.listContacts({ scope: context.scope, ownerAccountId: context.user.accountId }), []);
 });
+
+test('opening TMRW Phone releases the SillyTavern text focus so the mobile keyboard does not follow it inside', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-open-dismiss-keyboard' });
+  let blurred = 0;
+  context.document.activeElement = { blur() { blurred += 1; } };
+  const shell = shellFor(context);
+  await shell.mount(context.target);
+  assert.equal(shell.open(), true);
+  assert.equal(blurred, 1);
+});
+
+test('a rejected Instant Call stays on the contact screen instead of falsely navigating to Call History', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-call-rejected' });
+  await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
+  const shell = new TmrwPhoneShell({
+    document: context.document,
+    viewModels: context.viewModels,
+    controller: context.controller,
+    messageService: context.messages,
+    callService: context.calls,
+    callCoordinator: { startOutgoing: async () => { throw new Error('simulated persistent-id collision'); } },
+    scope: context.scope,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    activeCharacterDisplayName: 'Kaelan Vance',
+    selectedDeviceId: context.user.deviceId,
+  });
+  await shell.mount(context.target);
+  const callsPanel = await open(shell, 'calls');
+  const savedNames = find(callsPanel, node => node.tagName === 'button' && node.textContent === 'Saved Names');
+  assert.ok(savedNames);
+  savedNames.click();
+  await waitFor(() => shell.root.dataset?.route === 'contacts', 'Saved Names route');
+  const call = find(shell.root, node => String(node.attributes?.get?.('aria-label') || '').startsWith('โทรหา'));
+  assert.ok(call);
+  call.click();
+  await waitFor(() => /เริ่มสายไม่สำเร็จ/.test(allText(shell.root)), 'rejected Call feedback');
+  assert.equal(shell.root.dataset.route, 'contacts');
+});
+
+test('a fresh shell can start another Call after reload without replaying the ended Call idempotency key', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-instant-call-after-reload' });
+  await context.settings.setPreset({ scope: context.scope, playerInstanceId: context.user.instanceId, preset: EXPERIENCE_PRESET.SIMPLE });
+
+  const firstShell = shellFor(context);
+  await firstShell.mount(context.target);
+  const firstPanel = await open(firstShell, 'calls');
+  find(firstPanel, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
+  await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId }))[0]?.state === 'active', 'first active Call');
+  find(firstShell.root, node => node.dataset?.callAction === 'end').click();
+  await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId }))[0]?.state === 'ended', 'first ended Call');
+  firstShell.dispose();
+
+  const reloadedShell = shellFor(context);
+  await reloadedShell.mount(context.target);
+  const reloadedPanel = await open(reloadedShell, 'calls');
+  find(reloadedPanel, node => node.dataset?.callTargetAccountId === context.alice.accountId).click();
+  await waitFor(async () => (await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId })).some(call => call.state === 'active'), 'active Call after reload');
+  const calls = await context.calls.listCalls({ scope: context.scope, viewerAccountId: context.user.accountId });
+  assert.equal(calls.length, 2);
+  assert.equal(calls.filter(call => call.state === 'active').length, 1);
+  assert.equal(calls.filter(call => call.state === 'ended').length, 1);
+});
