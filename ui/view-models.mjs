@@ -25,9 +25,9 @@ function presentationDisplayName(...candidates) {
 }
 
 export class PhoneShellViewModels {
-  #unitOfWork; #phones; #contacts; #settings; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
-  constructor({ database, phoneStateService, contactService, settingsService, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null, callTimingDiagnostics = null }) {
-    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState(); this.#voiceAdapter = voiceAdapter; this.#callTimingDiagnostics = callTimingDiagnostics;
+  #unitOfWork; #phones; #contacts; #settings; #playableBootstrap; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
+  constructor({ database, phoneStateService, contactService, settingsService, playableBootstrapService = null, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null, callTimingDiagnostics = null }) {
+    this.#unitOfWork = new V3UnitOfWork(database); this.#phones = phoneStateService; this.#contacts = contactService; this.#settings = settingsService; this.#playableBootstrap = playableBootstrapService; this.#guide = guideService || new GuideStateService({ database }); this.#messaging = messageService; this.#calls = callService; this.#callCoordinator = callCoordinator || (callService ? new CallCoordinator({ database, callService, phoneStateService }) : null); this.#social = socialService; this.#insungram = insungramService; this.#live = liveService; this.#notifications = notificationService; this.#phoneWorldUtilities = phoneWorldService; this.#calendar = calendarService; this.#commerce = commerceService; this.#voiceProfiles = voiceProfileService || new VoiceProfileService({ database }); this.#voiceAudio = voiceAudioHistoryService || new VoiceAudioHistoryService({ database }); this.#voiceCapability = voiceCapability || createPhase19VoiceCapabilityState(); this.#voiceAdapter = voiceAdapter; this.#callTimingDiagnostics = callTimingDiagnostics;
   }
   get messagingEnabled() { return Boolean(this.#messaging); }
   get callsEnabled() { return Boolean(this.#callCoordinator); }
@@ -42,6 +42,8 @@ export class PhoneShellViewModels {
   resetGuideTips({ scope, playerInstanceId }) { return this.#guide.resetTips({ scope, playerInstanceId }); }
   replayGuideTutorial({ scope, playerInstanceId }) { return this.#guide.replayTutorial({ scope, playerInstanceId }); }
   setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }); }
+  getPlayableBootstrapStatus({ scope, playerInstanceId }) { return this.#playableBootstrap ? this.#playableBootstrap.status({ scope, playerInstanceId }) : this.#settings.get({ scope, playerInstanceId }).then(row => row.playableBootstrap); }
+  runPlayableBootstrap(input) { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.run(input); }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCalls({ scope, playerInstanceId, enabled }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
   setVoiceCaptions({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCaptions({ scope, playerInstanceId, enabled }); }
@@ -74,12 +76,13 @@ export class PhoneShellViewModels {
   endLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.endLocation(input); }
   async deviceRoster(scopeInput, { playerActorId = null, playerDisplayName = null, activeCharacterDisplayName = null } = {}) {
     const scope = requireEventScope(scopeInput);
-    return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors'], scope }, async repositories => {
+    return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors', 'stories', 'characterCardActors'], scope }, async repositories => {
       const states = await repositories.phoneStates.list(); const roster = [];
+      const story = await repositories.stories.get(scope.storyId); const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : []; const activeActorIds = new Set(memberships.map(row => row.actorId));
       const nonPlayerCount = states.length - 1;
       for (const state of states) {
         const instance = await repositories.instances.get(state.deviceOwnerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId); if (!instance || !actor) continue;
-        const playerOwned = isPlayerControlled(actor);
+        const playerOwned = isPlayerControlled(actor); if (!playerOwned && !activeActorIds.has(actor.id)) continue;
         const liveCharacterName = !playerOwned && nonPlayerCount === 1 ? activeCharacterDisplayName : null;
         const label = presentationDisplayName(instance.displayNameOverride, playerOwned && actor.id === playerActorId ? playerDisplayName : null, liveCharacterName, actor.displayName, ...(actor.aliases || []), playerOwned ? 'เจ้าของเครื่อง' : 'ไม่ทราบชื่อ');
         roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label, kind: playerOwned ? 'my-phone' : 'their-phone', lockState: state.lockState }));

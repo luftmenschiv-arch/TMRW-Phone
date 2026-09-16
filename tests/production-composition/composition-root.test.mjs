@@ -135,6 +135,7 @@ const REQUIRED_ORDER = [
   'voice-presenter',
   'call-bot-reply',
   'runtime-integration',
+  'playable-bootstrap',
   'listener-owner',
   'generation-interceptor-owner',
   'phone-shell-view-models',

@@ -17,6 +17,7 @@ test('Quick Start expands one card into many phones and Deep Backfill checkpoint
   assert.equal(result.state.status, PLAYABLE_BOOTSTRAP_STATUS.READY); assert.equal(result.state.castCount, 3); assert.equal(result.state.processedOrdinal, 130);
   assert.ok(stages.includes('quick-ready')); assert.ok(stages.includes('deep-backfill')); assert.equal(stages.at(-1), 'ready');
   const cast = await c.kernel.listCastInstances(c.identity.cardId, c.scope); assert.equal(cast.length, 3);
+  const roster = await c.viewModels.deviceRoster(c.scope); assert.equal(roster.length, 4); assert.deepEqual(roster.filter(row => row.kind === 'their-phone').map(row => row.label).sort(), ['Alice', 'Bob', 'Character 1']);
   assert.ok(reconciled.some(([start, end]) => start === 90 && end === 130)); assert.ok(reconciled.some(([start, end]) => start === 0 && end <= 90));
   const before = await c.kernel.inspectCounts(); const replay = await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, recentMessages: 40 }); const after = await c.kernel.inspectCounts();
   assert.equal(replay.identityManifestId, result.identityManifestId); assert.equal(after.actors, before.actors); assert.equal(after.devices, before.devices); assert.equal((await service.status({ scope: c.scope, playerInstanceId: c.user.instanceId })).status, PLAYABLE_BOOTSTRAP_STATUS.READY);

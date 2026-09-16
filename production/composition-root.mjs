@@ -63,6 +63,7 @@ import { VoiceAudioHistoryService } from '../application/voice-audio-history-ser
 import { CallBotReplyCoordinator } from '../application/call-bot-reply-coordinator.mjs';
 import { CallVoicePresenter } from '../application/call-voice-presenter.mjs';
 import { CallTimingDiagnostics } from '../application/call-timing-diagnostics.mjs';
+import { PlayableBootstrapService } from '../application/playable-bootstrap/playable-bootstrap-service.mjs';
 import { createPhase19VoiceCapabilityState, createProductionVoiceV1CapabilityState } from '../domain/voice/voice-capability.mjs';
 import { PuzzleLocalRuntimeVoiceAdapter } from '../platform/voice/puzzle-local-runtime-adapter.mjs';
 import { CallVoicePlaybackController } from '../ui/calls/call-voice-playback.mjs';
@@ -623,6 +624,8 @@ async function buildRuntime(options, entry) {
       authoringEnabled: () => gate.allows(AUTHORING_CAPABILITY.NORMAL),
     });
     await activation.mark('runtime-integration');
+    const playableBootstrap = new PlayableBootstrapService({ database: normalDatabase, identityKernel, phoneStateService: phones, settingsService: settings, runtimeIntegration, getContext, now });
+    await activation.mark('playable-bootstrap');
 
     const scopeChange = async (...args) => {
       gate.close('story-branch-scope-change-requires-remount');
@@ -639,7 +642,7 @@ async function buildRuntime(options, entry) {
     activation.addResource('generation-interceptor-owner', () => generationOwner.dispose());
     await activation.mark('generation-interceptor-owner');
 
-    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, phoneWorldService: phoneWorld, calendarService: calendar, commerceService: commerce, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability, voiceAdapter, callTimingDiagnostics });
+    const viewModels = new PhoneShellViewModels({ database: normalDatabase, phoneStateService: phones, contactService: contacts, settingsService: settings, playableBootstrapService: playableBootstrap, messageService: messages, callService: calls, callCoordinator, socialService: social, insungramService: insungram, liveService: live, notificationService: notifications, phoneWorldService: phoneWorld, calendarService: calendar, commerceService: commerce, voiceProfileService: voiceProfiles, voiceAudioHistoryService: voiceAudioHistory, voiceCapability, voiceAdapter, callTimingDiagnostics });
     await activation.mark('phone-shell-view-models');
     const phoneController = new PhoneController({ phoneStateService: phones, playerAccessOverrides: overrides });
     activation.addResource('phone-controller', () => phoneController.disableBeta());
@@ -651,7 +654,7 @@ async function buildRuntime(options, entry) {
     gate.close('s08-awaiting-s09-mount-launcher');
     await activation.mark('s08-ready-without-mount', finalHealth);
 
-    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, voiceAdapter, voicePlayback, callTimingDiagnostics, callVoicePresenter, callBotReply, viewModels, phoneController });
+    const services = Object.freeze({ knowledge, chronology, phones, overrides, contacts, smartContactDiscovery, messages, calls, social, insungram, socialAi, imageAssets, postVisuals, live, liveAi, notifications, phoneWorld, calendar, commerce, settings, playableBootstrap, director, callCoordinator, handoff, phoneContext, continuation, callStoryIntegration, voiceProfiles, voiceAudioHistory, voiceAdapter, voicePlayback, callTimingDiagnostics, callVoicePresenter, callBotReply, viewModels, phoneController });
     const composition = Object.freeze({ normalDatabase, identityKernel, contextAdapter, identityResolver, eventEngine, runtimeIntegration, listenerOwner, generationOwner, heartbeat, authoringGate: gate, runtimeGuard, productionHealth });
 
     const root = Object.freeze({

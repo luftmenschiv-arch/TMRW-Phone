@@ -31,8 +31,8 @@ This document is the durable implementation authority for turning the current TM
 | 0 | Durable scope and baseline | COMPLETE | `2d22fe8` | scope committed and pushed |
 | 1 | Stable Phone Shell navigation and home-page restoration | COMPLETE | `3043042` | 33 focused tests passed; package verified |
 | 2 | Cast Manifest and bounded RP history reader | COMPLETE | `54b1e9a` | 2 focused tests passed |
-| 3 | Quick Start plus resumable Deep Backfill orchestration | COMPLETE | pending commit | 4 focused tests passed |
-| 4 | One-click Settings bootstrap/update experience | NOT STARTED | — | pending |
+| 3 | Quick Start plus resumable Deep Backfill orchestration | COMPLETE | `58b027b` | 4 focused tests passed |
+| 4 | One-click Settings bootstrap/update experience | COMPLETE | pending commit | 15 focused tests passed |
 | 5 | Initial Phone Seed and shared living UI states | NOT STARTED | — | pending |
 | 6 | Adaptive World Pulse and guaranteed Feed buffer refresh | NOT STARTED | — | pending |
 | 7 | App wiring, provider capability settings, and production package closure | NOT STARTED | — | pending |
@@ -160,3 +160,21 @@ Result:
 - focused tests: 4 passed, 0 failed
 - Quick Start/Deep Backfill progress persisted
 - identity expansion replay produced no duplicate Actors or Devices
+
+### Checkpoint 4 — 2026-09-17
+
+Connected the resumable bootstrap to the production composition root and added one prominent Settings action. The action reads `ทำให้มือถือพร้อมเล่น` before the first run and `อัปเดตมือถือให้ทันเรื่อง` afterwards, exposes animated cast/Quick Start/backfill progress, disables duplicate taps while running, and retains a same-button retry after failure. The active Their Phone roster now follows active Character Card membership, so expanding an ensemble card replaces the retired container phone instead of displaying both.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-shell-navigation.test.mjs tests/production-composition/composition-root.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused tests: 15 passed, 0 failed
+- Settings action state and production construction order verified
+- production package built and verified
