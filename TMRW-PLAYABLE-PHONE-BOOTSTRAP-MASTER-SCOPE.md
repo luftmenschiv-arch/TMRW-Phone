@@ -28,8 +28,8 @@ This document is the durable implementation authority for turning the current TM
 
 | # | Scope | Status | Commit | Verification |
 |---|---|---|---|---|
-| 0 | Durable scope and baseline | IN PROGRESS | — | repository clean at `18592f9` |
-| 1 | Stable Phone Shell navigation and home-page restoration | NOT STARTED | — | pending |
+| 0 | Durable scope and baseline | COMPLETE | `2d22fe8` | scope committed and pushed |
+| 1 | Stable Phone Shell navigation and home-page restoration | COMPLETE | pending commit | 33 focused tests passed; package verified |
 | 2 | Cast Manifest and bounded RP history reader | NOT STARTED | — | pending |
 | 3 | Quick Start plus resumable Deep Backfill orchestration | NOT STARTED | — | pending |
 | 4 | One-click Settings bootstrap/update experience | NOT STARTED | — | pending |
@@ -111,3 +111,20 @@ Result:
 - branch synchronized with `origin/codex/phone-instant-connect-ui`
 - HEAD `18592f9 Record dialpad UI deployment`
 
+### Checkpoint 1 — 2026-09-17
+
+Implemented settled-swipe page capture, immediate restored-page presentation, and per-Device Home page memory in the mounted Phone Shell. Opening and closing an app no longer loses the page from which it was launched, and switching phones does not leak one owner's Home page into another owner's phone.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-shell-navigation.test.mjs tests/phase23/instant-connect.test.mjs tests/phase23/outbound-call-playable.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused tests: 33 passed, 0 failed
+- production package: 241 files, 731 import edges
+- package verification: passed
