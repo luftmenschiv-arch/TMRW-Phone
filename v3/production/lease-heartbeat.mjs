@@ -1,5 +1,6 @@
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 10_000;
 const RESUME_EVENTS = Object.freeze(['visibilitychange', 'focus', 'pageshow']);
+const RECOVERABLE_SUSPENSION_REASONS = new Set(['expired', 'missing-lease']);
 
 function statusSnapshot(heartbeat) {
   return Object.freeze({
@@ -132,8 +133,15 @@ export class LeaseHeartbeat {
     try {
       const result = await this.#runtimeGuard.renew();
       if (!result?.renewed) {
+        const recovery = await this.#recoverSuspendedLease(result?.reason);
+        if (recovery.acquired) {
+          this.#renewalCount += 1;
+          this.#lastRenewalReason = `reacquired:${result?.reason || 'unknown'}`;
+          this.#lastFailure = null;
+          return Object.freeze({ renewed: true, reacquired: true, reason: this.#lastRenewalReason, status: this.status });
+        }
         this.#lastRenewalReason = result?.reason || 'renew-unproven';
-        this.#failClosed(`renew-${this.#lastRenewalReason}`);
+        this.#failClosed(`renew-${recovery.reason || this.#lastRenewalReason}`);
         return Object.freeze({ renewed: false, reason: this.#lastRenewalReason, status: this.status });
       }
       this.#renewalCount += 1;
@@ -152,7 +160,13 @@ export class LeaseHeartbeat {
       this.#validationCount += 1;
       this.#lastValidationReason = validation?.reason || (validation?.valid ? 'valid' : 'unproven');
       if (!validation?.valid) {
-        this.#failClosed(`validation-${this.#lastValidationReason}`);
+        const recovery = await this.#recoverSuspendedLease(validation?.reason);
+        if (recovery.acquired) {
+          this.#lastValidationReason = `${reason}:reacquired:${validation?.reason || 'unknown'}`;
+          this.#lastFailure = null;
+          return Object.freeze({ valid: true, reacquired: true, reason: this.#lastValidationReason, status: this.status });
+        }
+        this.#failClosed(`validation-${recovery.reason || this.#lastValidationReason}`);
         return Object.freeze({ valid: false, reason: this.#lastValidationReason, status: this.status });
       }
       this.#lastValidationReason = `${reason}:${this.#lastValidationReason}`;
@@ -162,6 +176,17 @@ export class LeaseHeartbeat {
       this.#lastValidationReason = 'validation-unavailable';
       this.#failClosed('validation-unavailable', error);
       return Object.freeze({ valid: false, reason: 'validation-unavailable', status: this.status });
+    }
+  }
+
+  async #recoverSuspendedLease(reason) {
+    if (!RECOVERABLE_SUSPENSION_REASONS.has(reason)) return Object.freeze({ acquired: false, reason });
+    if (typeof this.#runtimeGuard.acquire !== 'function') return Object.freeze({ acquired: false, reason: 'reacquire-unavailable' });
+    try {
+      const result = await this.#runtimeGuard.acquire();
+      return Object.freeze({ ...result, reason: result?.reason || reason });
+    } catch (error) {
+      return Object.freeze({ acquired: false, reason: 'reacquire-unavailable', error });
     }
   }
 

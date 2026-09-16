@@ -6,7 +6,13 @@ export function renderGallery({ document, items = [], authorizationGranted = tru
   if (error) { const alert = el(document, 'p', `Gallery error: ${error}`); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
   const selected = items.find(item => item.recordId === selectedRecordId) || null;
   if (!selected) {
-    if (items.length === 0) { root.append(el(document, 'p', 'ยังไม่มีรูปที่บันทึกไว้')); return root; }
+    if (items.length === 0) {
+      const empty = el(document, 'section'); empty.className = 'tmrw-v3-gallery-empty'; empty.dataset.state = 'empty';
+      const contactSheet = el(document, 'div'); contactSheet.className = 'tmrw-v3-gallery-empty-sheet'; contactSheet.setAttribute('aria-hidden', 'true');
+      for (const tone of ['warm', 'sky', 'ink', 'mist', 'sun']) { const frame = el(document, 'i'); frame.className = `is-${tone}`; contactSheet.append(frame); }
+      const copy = el(document, 'div'); copy.append(el(document, 'strong', 'อัลบั้มยังว่างอยู่'), el(document, 'p', 'ภาพที่ถูกบันทึกจากเรื่องราวจะค่อย ๆ มาอยู่ตรงนี้'));
+      empty.append(contactSheet, copy); root.append(empty); return root;
+    }
     const list = el(document, 'div'); list.className = 'tmrw-phone-utility-list tmrw-v3-gallery-grid';
     for (const item of items) {
       const button = el(document, 'button'); button.type = 'button'; button.className = 'tmrw-v3-gallery-item'; button.dataset.galleryRecordId = item.recordId; button.setAttribute('aria-label', `Open ${item.label || 'saved asset'}`);
