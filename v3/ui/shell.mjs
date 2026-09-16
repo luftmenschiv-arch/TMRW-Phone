@@ -19,6 +19,7 @@ import { renderNotes } from './notes.mjs';
 import { renderSearch } from './search.mjs';
 import { GUIDE_TOPICS, GUIDE_TOPIC_CONTENT } from './guide.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
+import { CALL_EVENT_TYPES } from '../domain/calls/call-event-types.mjs';
 import { createPreviewRootChrome, createPreviewLockScreen, createPreviewHome, createPreviewOwnerSheet, createPreviewStatusBar, createPreviewAvatar, createPreviewCommerceNav, createPreviewLifestyleNav, wrapPreviewApp } from './preview37-surface.mjs';
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
@@ -258,10 +259,26 @@ export class TmrwPhoneShell {
     body.append(list); return wrapPreviewApp({ document: this.#document, kind: 'personal', app: 'contacts', title: 'Phone', subtitle: view.settings.phoneNumberDiscovery === PHONE_NUMBER_DISCOVERY.ON ? 'Instant contacts ของเครื่องนี้' : 'Saved Names ของเครื่องนี้', body, onBack: () => this.#goHome() });
   }
 
+  #restoreInterruptedCallTurn(island, call) {
+    const callSessionId = String(island?.callSessionId || '').trim();
+    if (!callSessionId || island?.kind !== 'active' || !call || !this.#callBotReply || !this.#callVoicePresenter) return;
+    if (this.#callTurnStates.has(callSessionId) || this.#callTurnControllers.has(callSessionId) || this.#callTurnRetries.has(callSessionId)) return;
+    const latest = (island.transcript || []).at(-1) || null;
+    if (!latest?.transcriptEntryId || latest.speakerAccountId === island.counterpartAccountId) return;
+    const commit = Object.freeze({
+      event: Object.freeze({ eventType: CALL_EVENT_TYPES.TRANSCRIPT_ADDED, payload: Object.freeze({ transcript: latest }) }),
+      transcript: latest,
+    });
+    const retry = () => this.#runCallReply(call, commit);
+    this.#callTurnRetries.set(callSessionId, retry);
+    this.#callTurnStates.set(callSessionId, Object.freeze({ phase: 'failed', message: 'คำตอบก่อนหน้าหยุดชะงัก', retryLabel: 'ลองตอบใหม่', locked: true }));
+  }
+
   #renderCallsWithConnectivity(view) {
     const island = view.callUi.island;
     if (island.kind !== 'empty' && island.callSessionId !== this.#closedCallSurfaceId) {
       const call = view.calls.find(row => row.callSessionId === island.callSessionId);
+      this.#restoreInterruptedCallTurn(island, call);
       return renderApprovedCallSurface({
         document: this.#document,
         island,
