@@ -46,7 +46,8 @@ export class PhoneShellViewModels {
   getPlayableBootstrapStatus({ scope, playerInstanceId }) { return this.#playableBootstrap ? this.#playableBootstrap.status({ scope, playerInstanceId }) : this.#settings.get({ scope, playerInstanceId }).then(row => row.playableBootstrap); }
   previewPlayableCast() { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.preview(); }
   runPlayableBootstrap(input) { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.run(input); }
-  refreshFeed({ scope, count = 3 }) { if (!this.#worldPulse) throw new Error('Adaptive Feed is unavailable'); return this.#worldPulse.refresh({ scope, count }); }
+  refreshFeed({ scope, count = 3, playerInstanceId = null }) { if (!this.#worldPulse) throw new Error('Adaptive Feed is unavailable'); return this.#worldPulse.refresh({ scope, count, playerInstanceId }); }
+  respondToPlayerSocial(input) { if (!this.#worldPulse) throw new Error('Adaptive Feed replies are unavailable'); return this.#worldPulse.respondToPlayerAction(input); }
   async setImageApiKey({ scope, playerInstanceId, apiKey }) { const settings = await this.#settings.setImageApiKey({ scope, playerInstanceId, apiKey }); this.#imageProvider?.configureApiKey?.(settings.imageApiKey); return settings; }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCalls({ scope, playerInstanceId, enabled }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
@@ -96,12 +97,15 @@ export class PhoneShellViewModels {
   }
   async #instantCommunicationTargets(scope, settings, viewerAccountId, activeCharacterDisplayName = null) {
     if (settings.phoneNumberDiscovery !== PHONE_NUMBER_DISCOVERY.ON || !viewerAccountId) return Object.freeze([]);
-    return this.#unitOfWork.readonly({ stores: ['instances', 'actors', 'accounts'], scope }, async repositories => {
+    return this.#unitOfWork.readonly({ stores: ['instances', 'actors', 'accounts', 'stories', 'characterCardActors'], scope }, async repositories => {
+      const story = await repositories.stories.get(scope.storyId);
+      const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : [];
+      const activeActorIds = new Set(memberships.map(row => row.actorId));
       const instances = await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId]);
       const candidates = [];
       for (const instance of instances) {
         const actor = await repositories.actors.get(instance.actorId);
-        if (!actor) continue;
+        if (!actor || (!isPlayerControlled(actor) && !activeActorIds.has(actor.id))) continue;
         const accounts = await repositories.accounts.listByIndex('by_owner_scope', [scope.storyId, scope.branchId, instance.id]);
         const phoneAccounts = accounts.filter(account => account.kind === 'phone');
         const preferred = phoneAccounts.length ? phoneAccounts : accounts;
@@ -175,20 +179,31 @@ export class PhoneShellViewModels {
     const contacts = (route === 'contacts' || route === 'calls' || route === 'messages' || route === 'maps' || route === 'calendar' || route === 'search') && opened.authorization.granted && opened.perspective.accountId ? await this.#contacts.listContacts({ scope, ownerAccountId: opened.perspective.accountId }) : Object.freeze([]);
     const instantEligible = opened.perspective.accountOwnerInstanceId === playerInstanceId;
     const communicationTargets = ['contacts', 'calls', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId && instantEligible ? await this.#instantCommunicationTargets(scope, settings, opened.perspective.accountId, activeCharacterDisplayName) : Object.freeze([]);
-    const threads = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
-    const activeThreadId = threads.some(thread => thread.threadId === selectedThreadId) ? selectedThreadId : (threads[0]?.threadId || null);
-    const messages = route === 'messages' && this.#messaging && activeThreadId && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: activeThreadId }) : Object.freeze([]);
-    const threadRows = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? Object.freeze(await Promise.all(threads.map(async thread => {
+    let threads = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
+    if (threads.length) {
+      threads = await this.#unitOfWork.readonly({ stores: ['stories', 'characterCardActors', 'instances'], scope }, async repositories => {
+        const story = await repositories.stories.get(scope.storyId);
+        const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : [];
+        const activeActorIds = new Set(memberships.map(row => row.actorId));
+        const visibleInstanceIds = new Set([opened.perspective.accountOwnerInstanceId, playerInstanceId]);
+        for (const instance of await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId])) if (activeActorIds.has(instance.actorId)) visibleInstanceIds.add(instance.id);
+        return Object.freeze(threads.filter(thread => (thread.participantInstanceIds || []).every(instanceId => visibleInstanceIds.has(instanceId))));
+      });
+    }
+    let threadRows = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await Promise.all(threads.map(async thread => {
       const matchingContacts = contacts.filter(contact => contact.targetInstanceId && thread.participantInstanceIds.includes(contact.targetInstanceId));
       const matchingInstant = communicationTargets.filter(target => thread.participantInstanceIds.includes(target.instanceId));
       const participantLabels = [...new Set([...matchingContacts.map(contact => contact.savedName || contact.number), ...matchingInstant.map(target => target.label)].filter(Boolean))];
       const label = thread.kind === 'dm' ? (participantLabels[0] || 'ข้อความส่วนตัว') : (participantLabels.length ? participantLabels.join(', ') : `กลุ่ม ${thread.participantInstanceIds.length} คน`);
       const primaryContact = thread.kind === 'dm' ? matchingContacts[0] || null : null;
       const secondary = primaryContact?.savedName ? primaryContact.number : (thread.kind === 'group' ? `${thread.participantAccountIds.length} คน` : '');
-      const latestMessages = thread.threadId === activeThreadId ? messages : await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 1 });
+      const latestMessages = await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 1 });
       const latest = latestMessages.at(-1) || null;
-      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
-    }))) : Object.freeze([]);
+      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', lastActivitySequence: Number(latest?.sourceEventSequence || thread.sourceEventSequence || 0), participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
+    })) : [];
+    threadRows = Object.freeze(threadRows.sort((left, right) => right.lastActivitySequence - left.lastActivitySequence || left.label.localeCompare(right.label) || left.threadId.localeCompare(right.threadId)));
+    const activeThreadId = threadRows.some(thread => thread.threadId === selectedThreadId) ? selectedThreadId : (threadRows[0]?.threadId || null);
+    const messages = route === 'messages' && this.#messaging && activeThreadId && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: activeThreadId }) : Object.freeze([]);
     let callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts, directTargets: communicationTargets }) : emptyCallUi();
     const calls = callUi.sessions;
     const activeCallSessionId = callUi.selectedCallSessionId;
@@ -207,8 +222,9 @@ export class PhoneShellViewModels {
       else { try {
         feed = await this.#social.listFeed({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
         const enrichedItems = await Promise.all((feed.items || []).map(async post => {
-          const [comments, likes] = await Promise.all([this.#social.listComments({ scope, viewerAccountId: opened.perspective.accountId, postId: post.postId, limit: 3 }), this.#social.listEngagements({ scope, targetId: post.postId, limit: 100 })]);
-          return Object.freeze({ ...post, commentPreview: Object.freeze(comments.items || []), commentCount: (comments.items || []).length, likeCount: likes.length });
+          const [comments, likes] = await Promise.all([this.#social.listComments({ scope, viewerAccountId: opened.perspective.accountId, postId: post.postId, limit: 30 }), this.#social.listEngagements({ scope, targetId: post.postId, limit: 100 })]);
+          const roots=comments.items||[];const children=await Promise.all(roots.map(comment=>this.#social.listComments({scope,viewerAccountId:opened.perspective.accountId,postId:post.postId,parentCommentId:comment.commentId,limit:30})));const discussion=roots.flatMap((comment,index)=>[comment,...(children[index]?.items||[])]).slice(0,60);
+          return Object.freeze({ ...post, commentPreview: Object.freeze(discussion), commentCount: discussion.length, likeCount: likes.filter(row => row.activeState === 'active').length, likedByViewer: likes.some(row => row.actorAccountId === opened.perspective.accountId && row.kind === 'like' && row.activeState === 'active') });
         }));
         feed = Object.freeze({ ...feed, items: Object.freeze(enrichedItems) });
         const authorAccountIds = [...new Set((feed.items || []).flatMap(row => [row.authorAccountId, ...(row.commentPreview || []).map(comment => comment.authorAccountId)]).filter(Boolean))];

@@ -376,3 +376,22 @@ test('a fresh shell can start another Call after reload without replaying the en
   assert.equal(calls.filter(call => call.state === 'active').length, 1);
   assert.equal(calls.filter(call => call.state === 'ended').length, 1);
 });
+
+async function createTestDm(context, other, key) {
+  return context.messages.createThread({ scope:context.scope, kind:'dm', participantAccountIds:[context.user.accountId,other.accountId], source:{authority:'p23-message-order',kind:'test',recordId:`thread-${key}`,version:'1'}, idempotencyKey:`thread-${key}` });
+}
+async function sendTestMessage(context, threadId, sender, text, key) {
+  return context.messages.sendMessage({ scope:context.scope, threadId, senderAccountId:sender.accountId, actualAuthorActorId:sender.actorId, actualAuthorInstanceId:sender.instanceId, deviceId:sender.deviceId, text, source:{authority:'p23-message-order',kind:'test',recordId:key,version:'1'}, idempotencyKey:key });
+}
+
+test('Messages hides threads whose Character Card actor is no longer active', async () => {
+  const context=await setupPhase9({castSize:1,manifestId:'p23-message-active-cast'});await context.settings.setPreset({scope:context.scope,playerInstanceId:context.user.instanceId,preset:EXPERIENCE_PRESET.SIMPLE});const dm=await createTestDm(context,context.alice,'alice-removed');await sendTestMessage(context,dm.thread.threadId,context.alice,'ข้อความจากตัวละครเก่า','alice-old-message');
+  await context.overrides.grant({scope:context.scope,deviceId:context.alice.deviceId,action:'inspect',playerActorId:context.user.actorId,playerInstanceId:context.user.instanceId});const theirPhone=await context.viewModels.selected({scope:context.scope,deviceId:context.alice.deviceId,playerActorId:context.user.actorId,playerInstanceId:context.user.instanceId,route:'messages',controller:context.controller});assert.equal(theirPhone.threadRows.length,1,'Their Phone must retain its conversation with the player while the actor is active');
+  await context.database.transaction(['characterCardActors'],'readwrite',async transaction=>{const store=transaction.store('characterCardActors');const memberships=await store.getAll();const membership=memberships.find(row=>row.actorId===context.alice.actorId&&row.status==='active');assert.ok(membership);await store.put({...membership,status:'removed',updatedAt:'2026-09-17T13:00:00.000Z'});});
+  const view=await context.viewModels.selected({scope:context.scope,deviceId:context.user.deviceId,playerActorId:context.user.actorId,playerInstanceId:context.user.instanceId,route:'messages',controller:context.controller});assert.deepEqual(view.threadRows,[]);assert.deepEqual(view.messages,[]);
+});
+
+test('Messages orders conversations by their latest canonical message', async () => {
+  const context=await setupPhase9({castSize:2,manifestId:'p23-message-latest-first'});await context.settings.setPreset({scope:context.scope,playerInstanceId:context.user.instanceId,preset:EXPERIENCE_PRESET.SIMPLE});const alice=await createTestDm(context,context.alice,'alice-order');const bob=await createTestDm(context,context.bob,'bob-order');await sendTestMessage(context,alice.thread.threadId,context.alice,'เก่ากว่า','alice-first');await sendTestMessage(context,bob.thread.threadId,context.bob,'ใหม่กว่า','bob-second');
+  const selected=()=>context.viewModels.selected({scope:context.scope,deviceId:context.user.deviceId,playerActorId:context.user.actorId,playerInstanceId:context.user.instanceId,route:'messages',controller:context.controller});let view=await selected();assert.equal(view.threadRows[0].threadId,bob.thread.threadId);await sendTestMessage(context,alice.thread.threadId,context.alice,'ล่าสุดจริง','alice-latest');view=await selected();assert.equal(view.threadRows[0].threadId,alice.thread.threadId);assert.equal(view.threadRows[0].preview,'ล่าสุดจริง');
+});

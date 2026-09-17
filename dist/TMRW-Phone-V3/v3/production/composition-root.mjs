@@ -630,7 +630,7 @@ async function buildRuntime(options, entry) {
     });
     await activation.mark('runtime-integration');
     const initialPhoneSeed = new InitialPhoneSeedService({ database: normalDatabase, phoneWorldService: phoneWorld, now });
-    const adaptiveWorldPulse = new AdaptiveWorldPulseService({ database: normalDatabase, socialService: social, getContext, now });
+    const adaptiveWorldPulse = new AdaptiveWorldPulseService({ database: normalDatabase, socialService: social, settingsService: settings, getContext, now });
     const playableBootstrap = new PlayableBootstrapService({ database: normalDatabase, identityKernel, phoneStateService: phones, settingsService: settings, runtimeIntegration, initialPhoneSeedService: initialPhoneSeed, adaptiveWorldPulseService: adaptiveWorldPulse, getContext, now });
     await activation.mark('playable-bootstrap');
 

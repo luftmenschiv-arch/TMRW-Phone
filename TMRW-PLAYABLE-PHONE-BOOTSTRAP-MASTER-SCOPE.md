@@ -337,3 +337,25 @@ Result:
 - existing player Phone State is byte-for-byte preserved across the retry
 - legacy seed keys replay as no-ops and unselected historical phones receive no new seed data
 - production package: 250 files, 770 import edges; verification passed
+
+### Checkpoint 13 — 2026-09-17
+
+Closed the live Messages and Feed issues found during device review. Messages now excludes conversations whose non-player participants are no longer active members of the current Character Card cast, so retired false-positive actors cannot remain as phantom contacts, and conversation rows sort by the latest canonical message rather than creation order. Adaptive Feed v3 builds and persists a world-social bible from the active card, lore, and current RP history; generated posts, identities, likes, and comments must follow that world's class system, law, economy, technology, morality, and public-information boundary instead of falling back to a modern generic setting.
+
+My Phone is now a writable social surface: the player can create posts, like or unlike, comment, and reply. The player's canonical action renders first, a moving waiting indicator appears while world-aware NPC responses are generated in the background, and each response is added to the existing discussion without requiring another refeed. Nested replies are loaded and displayed instead of being silently hidden. Their Phone remains inspection-only and exposes none of these write controls. The old canned pulse copy remains filtered from presentation.
+
+Commands:
+
+```powershell
+node --test tests/phase23/instant-connect.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/social-player-interactions.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused Messages/world-feed/player-interaction tests: 21 passed, 0 failed
+- inactive-cast thread filtering and latest-message ordering verified
+- RP-world grounding, persisted world bible, canonical likes/comments/replies, immediate player rendering, automatic NPC updates, and Their Phone read-only boundary verified
+- production package: 250 files, 771 import edges; verification passed
+- authoritative source and repository-installed `v3/` runtime synchronized for every changed runtime file
