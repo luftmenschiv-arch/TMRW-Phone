@@ -181,12 +181,12 @@ export class PhoneShellViewModels {
     const communicationTargets = ['contacts', 'calls', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId && instantEligible ? await this.#instantCommunicationTargets(scope, settings, opened.perspective.accountId, activeCharacterDisplayName) : Object.freeze([]);
     let threads = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
     if (threads.length) {
-      threads = await this.#unitOfWork.readonly({ stores: ['stories', 'characterCardActors', 'instances'], scope }, async repositories => {
+      threads = await this.#unitOfWork.readonly({ stores: ['stories', 'characterCardActors', 'instances', 'actors'], scope }, async repositories => {
         const story = await repositories.stories.get(scope.storyId);
         const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : [];
         const activeActorIds = new Set(memberships.map(row => row.actorId));
         const visibleInstanceIds = new Set([opened.perspective.accountOwnerInstanceId, playerInstanceId]);
-        for (const instance of await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId])) if (activeActorIds.has(instance.actorId)) visibleInstanceIds.add(instance.id);
+        for (const instance of await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId])) { const actor=await repositories.actors.get(instance.actorId); if (activeActorIds.has(instance.actorId)||actor?.sourceAuthority==='tmrw-world-social') visibleInstanceIds.add(instance.id); }
         return Object.freeze(threads.filter(thread => (thread.participantInstanceIds || []).every(instanceId => visibleInstanceIds.has(instanceId))));
       });
     }

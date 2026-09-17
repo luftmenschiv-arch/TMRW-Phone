@@ -147,6 +147,32 @@ test('listener critical scope-transition error closes authoring and never duplic
   owner.unregister();
 });
 
+test('a later CHAT_CHANGED retries a failed scope transition even while authoring remains closed', async () => {
+  const runtime = new FakeRuntimeIntegration();
+  const eventSource = new FakeEventSource();
+  const gate = new FakeGate('open');
+  const routed = [];
+  let fail = true;
+  const owner = new ProductionListenerOwner({
+    runtimeIntegration: runtime,
+    eventSource,
+    eventTypes: EVENT_TYPES,
+    authoringGate: gate,
+    runtimeGuard: { ownsLease: true },
+    onScopeChange: async scope => {
+      routed.push(scope);
+      if (fail) { fail = false; throw new Error('first-remount-failed'); }
+    },
+  });
+  owner.register();
+  await eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'kaelan');
+  assert.equal(gate.state, 'closed');
+  await eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'jaren');
+  assert.deepEqual(routed, ['kaelan', 'jaren']);
+  assert.equal(owner.status.lastError, null);
+  owner.unregister();
+});
+
 test('listener cleanup is idempotent, releases exact ownership, and leaves no stale scope listener', () => {
   const eventSource = new FakeEventSource();
   const gate = new FakeGate();
