@@ -47,6 +47,10 @@ export class TmrwPhoneShell {
   #voiceManager = new TMRWVoiceManagerClient();
   #voiceManagerHealth = null;
   #voiceManagerBusy = false;
+  #voiceManagerProfiles = [];
+  #voiceCloneState = null;
+  #voicePreviewBusyId = null;
+  #voicePreviewAudio = null;
   #activeCharacterAvatarUrl = null;
   #playerAvatarUrl = null;
   #callHistoryFilter = 'all';
@@ -173,6 +177,8 @@ export class TmrwPhoneShell {
     }
 
     const refreshingSameRoute = this.#renderedRoute === route && Boolean(screen.children?.length);
+    const priorScrollContainer = refreshingSameRoute ? firstDescendant(screen, node => String(node.tagName || '').toLowerCase() === 'main') : null;
+    const priorScrollTop = Number(priorScrollContainer?.scrollTop || 0);
     if (!refreshingSameRoute) screen.replaceChildren(this.#loadingScreen(route));
     let view;
     try { view = await this.#models.selected({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, route, controller: this.#controller, selectedThreadId: this.#selectedThreadId, selectedCallSessionId: this.#selectedCallSessionId, selectedLiveSessionId: this.#selectedLiveSessionId, activeCharacterDisplayName: this.#activeCharacterDisplayName }); }
@@ -181,7 +187,12 @@ export class TmrwPhoneShell {
     root.dataset.theme = view.settings?.themeId || 'light-blue';
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
     this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
-    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content); this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return view;
+    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content);
+    if (refreshingSameRoute && priorScrollTop > 0) {
+      const nextScrollContainer = firstDescendant(screen, node => String(node.tagName || '').toLowerCase() === 'main');
+      if (nextScrollContainer) nextScrollContainer.scrollTop = priorScrollTop;
+    }
+    this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return view;
   }
 
   #loadingScreen(route) { const body = element(this.#document, 'section'); body.className = 'tmrw-phone-utility-list'; body.append(renderLivingState({ document:this.#document, state:'loading', title:`กำลังโหลด ${APP_TITLES[route] || route}`, detail:'กำลังหยิบข้อมูลล่าสุดจากมือถือเครื่องนี้…' })); return wrapPreviewApp({ document:this.#document, kind:appKind(route), app:route, title:APP_TITLES[route]||route, body, onBack:()=>this.#goHome() }); }
@@ -589,7 +600,7 @@ export class TmrwPhoneShell {
     body.append(row('Diagnostics','Advanced',view.settings.developerDiagnosticsEnabled?'เปิด':'ปิด',()=>void this.#setDeveloperDiagnostics(!view.settings.developerDiagnosticsEnabled)));
     if(view.settings.developerDiagnosticsEnabled)body.append(row('Open Diagnostics','ข้อมูล runtime แบบอ่านอย่างเดียว',null,()=>this.#router.navigate('diagnostics')));
     body.append(row('Guide','คำแนะนำการใช้งาน',null,()=>this.#router.navigate('guide')));
-    const imageCapability=this.#models.imageCapability;body.append(renderImageProviderSettings({document:this.#document,capability:imageCapability,configured:Boolean(view.settings.imageApiKey),onSave:apiKey=>void this.#setImageApiKey(apiKey)}));body.append(renderVoiceProviderHeading({document:this.#document,configured:Boolean(this.#models.voiceCapability?.configured)}));const voiceRoster=(await this.#deviceRoster()).filter(r=>r.kind==='their-phone');if(!voiceRoster.some(r=>r.actorId===this.#selectedVoiceActorId))this.#selectedVoiceActorId=voiceRoster[0]?.actorId||null;const selectedIdentity=voiceRoster.find(r=>r.actorId===this.#selectedVoiceActorId)||null;let baseProfile=null,instanceOverride=null,resolvedProfile=null;if(selectedIdentity){baseProfile=await this.#models.voiceProfiles.getActorBase({actorId:selectedIdentity.actorId});instanceOverride=await this.#models.voiceProfiles.getInstanceOverride({scope:this.#scope,instanceId:selectedIdentity.instanceId});resolvedProfile=await this.#models.voiceProfiles.resolve({scope:this.#scope,actorId:selectedIdentity.actorId,instanceId:selectedIdentity.instanceId});}const voice=renderVoiceSetup({document:this.#document,settings:view.settings,capability:this.#models.voiceCapability,runtimeHealth:this.#voiceRuntimeHealth,runtimeBusy:this.#voiceRuntimeBusy,managerHealth:this.#voiceManagerHealth,managerBusy:this.#voiceManagerBusy,roster:voiceRoster,selectedActorId:this.#selectedVoiceActorId,selectedIdentity,baseProfile,instanceOverride,resolvedProfile,onToggleVoiceCalls:enabled=>void this.#setVoiceCalls(enabled),onToggleBotVoice:enabled=>void this.#setBotCallsWithVoice(enabled),onToggleCaptions:enabled=>void this.#setVoiceCaptions(enabled),onSetDefaultLanguage:language=>void this.#setVoiceLanguagePreference(language),onSetDefaultDelivery:delivery=>void this.#setVoiceDefaultDelivery(delivery),onSaveRuntimeBaseUrl:baseUrl=>void this.#setVoiceRuntimeBaseUrl(baseUrl),onTestRuntime:()=>void this.#testVoiceRuntime(),onCheckManager:()=>void this.#checkVoiceManager(),onInstallLocalVoice:()=>void this.#installLocalVoice(),onSelectActor:identity=>{this.#selectedVoiceActorId=identity.actorId;void this.renderActive();},onSaveBaseName:profileName=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{profileName});},onSetBaseLanguage:language=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{language});},onToggleBaseLock:lockedByUser=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{lockedByUser});},onToggleOverride:enabled=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{enabled});},onSaveOverrideName:profileName=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{profileName});},onSetOverrideLanguage:language=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{language});},onUploadClone:(file,identity)=>void this.#createVoiceClone(file,identity)});body.append(voice);return this.#utilityWrap('settings',body,'Settings'); }
+    const imageCapability=this.#models.imageCapability;body.append(renderImageProviderSettings({document:this.#document,capability:imageCapability,configured:Boolean(view.settings.imageApiKey),onSave:apiKey=>void this.#setImageApiKey(apiKey)}));body.append(renderVoiceProviderHeading({document:this.#document,configured:Boolean(this.#models.voiceCapability?.configured)}));const voiceRoster=(await this.#deviceRoster()).filter(r=>r.kind==='their-phone');if(!voiceRoster.some(r=>r.actorId===this.#selectedVoiceActorId))this.#selectedVoiceActorId=voiceRoster[0]?.actorId||null;const selectedIdentity=voiceRoster.find(r=>r.actorId===this.#selectedVoiceActorId)||null;let baseProfile=null,instanceOverride=null,resolvedProfile=null;if(selectedIdentity){baseProfile=await this.#models.voiceProfiles.getActorBase({actorId:selectedIdentity.actorId});instanceOverride=await this.#models.voiceProfiles.getInstanceOverride({scope:this.#scope,instanceId:selectedIdentity.instanceId});resolvedProfile=await this.#models.voiceProfiles.resolve({scope:this.#scope,actorId:selectedIdentity.actorId,instanceId:selectedIdentity.instanceId});}const voice=renderVoiceSetup({document:this.#document,settings:view.settings,capability:this.#models.voiceCapability,runtimeHealth:this.#voiceRuntimeHealth,runtimeBusy:this.#voiceRuntimeBusy,managerHealth:this.#voiceManagerHealth,managerBusy:this.#voiceManagerBusy,installedProfiles:this.#voiceManagerProfiles,cloneState:this.#voiceCloneState,previewBusyId:this.#voicePreviewBusyId,roster:voiceRoster,selectedActorId:this.#selectedVoiceActorId,selectedIdentity,baseProfile,instanceOverride,resolvedProfile,onToggleVoiceCalls:enabled=>void this.#setVoiceCalls(enabled),onToggleBotVoice:enabled=>void this.#setBotCallsWithVoice(enabled),onToggleCaptions:enabled=>void this.#setVoiceCaptions(enabled),onSetDefaultLanguage:language=>void this.#setVoiceLanguagePreference(language),onSetDefaultDelivery:delivery=>void this.#setVoiceDefaultDelivery(delivery),onSaveRuntimeBaseUrl:baseUrl=>void this.#setVoiceRuntimeBaseUrl(baseUrl),onTestRuntime:()=>void this.#testVoiceRuntime(),onCheckManager:()=>void this.#checkVoiceManager(),onInstallLocalVoice:()=>void this.#installLocalVoice(),onSelectActor:identity=>{this.#selectedVoiceActorId=identity.actorId;void this.renderActive();},onSaveBaseName:profileName=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{profileName});},onSetBaseLanguage:language=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{language});},onToggleBaseLock:lockedByUser=>{if(selectedIdentity)void this.#setActorBaseVoice(selectedIdentity,{lockedByUser});},onToggleOverride:enabled=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{enabled});},onSaveOverrideName:profileName=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{profileName});},onSetOverrideLanguage:language=>{if(selectedIdentity)void this.#setInstanceVoiceOverride(selectedIdentity,{language});},onUploadClone:(file,identity)=>void this.#createVoiceClone(file,identity),onConfirmClone:value=>void this.#confirmVoiceClone(value),onPreviewVoice:(profileId,language)=>void this.#previewVoice(profileId,language)});body.append(voice);return this.#utilityWrap('settings',body,'Settings'); }
   #renderDiagnostics(view) { const body=element(this.#document,'div');body.className='tmrw-phone-utility-list';if(!view.settings.developerDiagnosticsEnabled)body.append(element(this.#document,'p','Diagnostics ปิดอยู่'));else if(!view.opened.authorization.granted)body.append(element(this.#document,'p','โทรศัพท์เครื่องนี้ยังล็อกอยู่'));else{const d=developerDiagnostics({enabled:true,scope:this.#scope,perspective:view.opened.perspective,lifecycle:view.opened.lifecycle,renderMetrics:view.renderMetrics,callTiming:this.#models.callTimingDiagnostics?.snapshot?.()||null});const pre=element(this.#document,'pre',JSON.stringify(d,null,2));pre.className='tmrw-v3-diagnostics-output';body.append(pre);}return this.#utilityWrap('diagnostics',body,'Diagnostics'); }
 
   async #startDirectCall(view, target) {
@@ -839,22 +850,43 @@ export class TmrwPhoneShell {
   #setVoiceDefaultDelivery(delivery) { return this.#runSettingsMutation(() => this.#models.setVoiceDefaultDelivery({ scope: this.#scope, playerInstanceId: this.#player.instanceId, delivery })); }
   async #createVoiceClone(file, identity) {
     if (!file || !identity) return false;
-    this.#toastMessage('กำลังถอดเสียงจากคลิป…');
+    this.#voiceCloneState = { phase: 'uploading', label: 'กำลังอ่านไฟล์เสียง…', identity };
+    await this.renderActive();
     try {
       const language = (await this.#models.getSettings({ scope: this.#scope, playerInstanceId: this.#player.instanceId })).voiceLanguagePreference === 'ja' ? 'ja' : 'en';
-      const transcription = await this.#voiceManager.transcribe(file, { language, onUpdate: job => this.#toastMessage(job.phase === 'transcribing' ? 'กำลังถอดเสียง…' : 'กำลังอ่านไฟล์เสียง…') });
-      const transcript = globalThis.prompt?.('ตรวจข้อความที่ถอดได้ แก้เฉพาะจุดที่ผิด แล้วกดตกลง', transcription.text || '') ?? transcription.text;
-      if (!String(transcript || '').trim()) return false;
-      this.#toastMessage('กำลังสร้างเสียงของตัวละคร…');
-      const result = await this.#voiceManager.clone({ characterId: identity.instanceId || identity.actorId, name: identity.label, audioId: transcription.audioId, transcript: String(transcript).trim(), language, onUpdate: () => this.#toastMessage('กำลังสร้างโปรไฟล์เสียง…') });
-      await this.#setActorBaseVoice(identity, { profileName: result.id, lockedByUser: true });
-      this.#toastMessage('บันทึกเสียงโคลนให้ตัวละครแล้ว');
+      let lastPhase = '';
+      const transcription = await this.#voiceManager.transcribe(file, { language, onUpdate: job => { if (job.phase === lastPhase) return; lastPhase = job.phase; this.#voiceCloneState = { ...this.#voiceCloneState, phase: job.phase, label: job.phase === 'transcribing' ? 'กำลังถอดเสียงอัตโนมัติ…' : 'กำลังเตรียมคลิป…' }; void this.renderActive(); } });
+      this.#voiceCloneState = { phase: 'review', label: 'ตรวจข้อความที่ถอดได้', identity, language, audioId: transcription.audioId, transcript: transcription.text || '', name: identity.label };
+      await this.renderActive();
       return true;
-    } catch (error) { this.#toastMessage(`สร้างเสียงไม่สำเร็จ: ${String(error?.message || error)}`); return false; }
+    } catch (error) { this.#voiceCloneState = { phase: 'failed', label: `ถอดเสียงไม่สำเร็จ: ${String(error?.message || error)}`, identity }; await this.renderActive(); return false; }
+  }
+  async #confirmVoiceClone({ transcript, name }) {
+    const state = this.#voiceCloneState;
+    if (state?.phase !== 'review' || !String(transcript || '').trim()) return false;
+    this.#voiceCloneState = { ...state, phase: 'extracting-profile', transcript: String(transcript).trim(), name: String(name || state.identity.label).trim(), label: 'กำลังสร้างโปรไฟล์เสียง…' };
+    await this.renderActive();
+    try {
+      let lastPhase = '';
+      const result = await this.#voiceManager.clone({ characterId: state.identity.instanceId || state.identity.actorId, name: this.#voiceCloneState.name, audioId: state.audioId, transcript: this.#voiceCloneState.transcript, language: state.language, onUpdate: job => { if (job.phase === lastPhase) return; lastPhase = job.phase; this.#voiceCloneState = { ...this.#voiceCloneState, phase: job.phase, label: job.phase === 'restarting-runtime' ? 'กำลังเปิดระบบเสียงกลับมา…' : 'กำลังแยกลักษณะเสียง…' }; void this.renderActive(); } });
+      await this.#setActorBaseVoice(state.identity, { profileName: result.id, lockedByUser: true });
+      this.#voiceManagerProfiles = (await this.#voiceManager.profiles()).profiles || [];
+      this.#voiceCloneState = { phase: 'complete', label: 'บันทึกและเลือกเสียงนี้แล้ว', identity: state.identity };
+      await this.renderActive();
+      return true;
+    } catch (error) { this.#voiceCloneState = { ...state, phase: 'failed', label: `สร้างเสียงไม่สำเร็จ: ${String(error?.message || error)}` }; await this.renderActive(); return false; }
+  }
+  async #previewVoice(profileId, language = 'en') {
+    if (this.#voicePreviewBusyId) return false;
+    this.#voicePreviewBusyId = profileId; await this.renderActive();
+    try { const blob = await this.#voiceManager.preview({ profileId, language }); if (this.#voicePreviewAudio) { try { this.#voicePreviewAudio.pause(); } catch {} }
+      const url = globalThis.URL?.createObjectURL?.(blob); if (!url) throw new Error('audio-preview-unavailable'); const audio = new globalThis.Audio(url); this.#voicePreviewAudio = audio; audio.addEventListener?.('ended', () => globalThis.URL?.revokeObjectURL?.(url), { once: true }); await audio.play(); return true;
+    } catch (error) { this.#toastMessage(`ฟังตัวอย่างไม่ได้: ${String(error?.message || error)}`); return false; }
+    finally { this.#voicePreviewBusyId = null; await this.renderActive(); }
   }
   async #checkVoiceManager() {
     if (this.#voiceManagerBusy) return false; this.#voiceManagerBusy = true;
-    try { this.#voiceManagerHealth = await this.#voiceManager.health(); return this.#voiceManagerHealth?.ready === true; }
+    try { this.#voiceManagerHealth = await this.#voiceManager.health(); if (this.#voiceManagerHealth?.ready) this.#voiceManagerProfiles = (await this.#voiceManager.profiles()).profiles || []; return this.#voiceManagerHealth?.ready === true; }
     catch (error) { this.#voiceManagerHealth = Object.freeze({ ready: false, error: String(error?.message || error) }); return false; }
     finally { this.#voiceManagerBusy = false; await this.renderActive(); }
   }
@@ -890,6 +922,7 @@ export class TmrwPhoneShell {
     try {
       this.#voiceRuntimeHealth = await this.#models.testVoiceRuntime({ scope: this.#scope, playerInstanceId: this.#player.instanceId });
       if (this.#voiceRuntimeHealth?.ready) await this.#models.activateDetectedVoice({ scope: this.#scope, playerInstanceId: this.#player.instanceId, language: 'en' });
+      try { this.#voiceManagerHealth = await this.#voiceManager.health(); if (this.#voiceManagerHealth?.ready) this.#voiceManagerProfiles = (await this.#voiceManager.profiles()).profiles || []; } catch {}
       return this.#voiceRuntimeHealth?.ready === true;
     } catch (error) {
       this.#voiceRuntimeHealth = Object.freeze({ ok: false, ready: false, reason: 'runtime-check-failed', error: error instanceof Error ? error.message : String(error) });

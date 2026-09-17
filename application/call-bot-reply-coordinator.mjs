@@ -165,7 +165,11 @@ export class CallBotReplyCoordinator {
     if (this.#inflight.has(key)) return this.#inflight.get(key);
     const promise = withDeadline(
       () => this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal }),
-      { signal, timeoutMs, onExpire: reason => this.#stopGeneration(reason) },
+      // A replaced/hung-up UI turn only owns this coordinator promise. Calling
+      // SillyTavern's global stopGeneration for that abort can race with and
+      // instantly kill the replacement request. Only a real deadline is
+      // allowed to stop the host generator globally.
+      { signal, timeoutMs, onExpire: reason => { if (reason === 'generation-timeout') this.#stopGeneration(reason); } },
     ).catch(error => {
       if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
       if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error);

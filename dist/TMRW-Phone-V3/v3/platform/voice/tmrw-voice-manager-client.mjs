@@ -16,6 +16,13 @@ export class TMRWVoiceManagerClient {
   }
   health() { return this.#json('/v1/health'); }
   catalog() { return this.#json('/v1/catalog'); }
+  profiles() { return this.#json('/v1/profiles'); }
+  async preview({ profileId, language = 'en' }) {
+    if (!this.#fetch) throw new Error('voice-manager-fetch-unavailable');
+    const response = await this.#fetch(`${this.#baseUrl}/v1/previews`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId, language }) });
+    if (!response.ok) { const value = await response.json().catch(() => null); throw new Error(value?.error || `voice-manager-http-${response.status}`); }
+    return response.blob();
+  }
   async installPack({ manifestUrl, packId, onUpdate = null }) {
     const job = await this.#json('/v1/packs/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ manifestUrl, packId }) });
     return this.waitJob(job.id, { timeoutMs: 90 * 60 * 1000, onUpdate });

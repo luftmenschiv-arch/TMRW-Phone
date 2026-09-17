@@ -16,6 +16,7 @@ const jobs = new Map();
 
 const safeId = value => String(value || '').trim().replace(/[^a-z0-9._-]+/giu, '-').replace(/^-+|-+$/g, '').slice(0, 96);
 const send = (response, status, value) => { const body = JSON.stringify(value); response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }); response.end(body); };
+const sendAudio = (response, value) => { response.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': value.length, 'Cache-Control': 'private, max-age=31536000' }); response.end(value); };
 const allowedOrigin = origin => !origin || /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/iu.test(origin);
 
 async function body(request, limit = 32 * 1024 * 1024) {
@@ -80,6 +81,29 @@ async function installedProfiles() {
   return rows;
 }
 
+async function runtimeJson(route, options) {
+  const response = await fetch(`${runtimeUrl}${route}`, options);
+  const value = await response.json().catch(() => null);
+  if (!response.ok || value?.ok !== true) throw new Error(value?.error || `runtime-http-${response.status}`);
+  return value;
+}
+
+async function previewAudio(profileId, language) {
+  const id = safeId(profileId); const lang = language === 'ja' ? 'ja' : 'en';
+  if (!id) throw Object.assign(new Error('invalid-preview-profile'), { status: 400 });
+  const directory = path.join(root, 'previews'); await fs.mkdir(directory, { recursive: true });
+  const cached = path.join(directory, `${id}-${lang}.wav`); const existing = await fs.readFile(cached).catch(() => null);
+  if (existing?.length > 44) return existing;
+  const health = await runtimeHealth(); if (!health.ready) throw Object.assign(new Error('runtime-not-ready'), { status: 503 });
+  const spoken = lang === 'ja' ? 'こんにちは。声のサンプルです。' : 'Hello. This is a preview of my voice.';
+  const turn = await runtimeJson('/turn/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_chunks: 1, language: lang === 'ja' ? 'japanese' : 'English', calibration: false, profile_id: id }) });
+  await runtimeJson('/turn/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ turn_id: turn.turn_id, index: 0, text: spoken, subtitle: spoken }) });
+  const audioResponse = await fetch(`${runtimeUrl}/turn/audio?wait=1&turn_id=${encodeURIComponent(turn.turn_id)}&index=0`);
+  const audio = Buffer.from(await audioResponse.arrayBuffer());
+  if (!audioResponse.ok || audio.length < 44) throw new Error('preview-audio-failed');
+  await fs.writeFile(cached, audio); return audio;
+}
+
 async function handle(request, response) {
   const origin = request.headers.origin;
   if (!allowedOrigin(origin)) return send(response, 403, { ok: false, error: 'origin-not-allowed' });
@@ -89,6 +113,7 @@ async function handle(request, response) {
   if (request.method === 'GET' && url.pathname === '/v1/health') return send(response, 200, { ok: true, ready: true, service: 'TMRW Voice Manager', version: '1.0.0-alpha.1', runtime: await runtimeHealth() });
   if (request.method === 'GET' && url.pathname === '/v1/catalog') return send(response, 200, JSON.parse(await fs.readFile(catalogPath, 'utf8')));
   if (request.method === 'GET' && url.pathname === '/v1/profiles') return send(response, 200, { profiles: await installedProfiles() });
+  if (request.method === 'POST' && url.pathname === '/v1/previews') { const input = await json(request); return sendAudio(response, await previewAudio(input.profileId, input.language)); }
   if (request.method === 'GET' && url.pathname.startsWith('/v1/jobs/')) { const job = jobs.get(url.pathname.slice(9)); return job ? send(response, 200, job) : send(response, 404, { ok: false, error: 'job-not-found' }); }
   if (request.method === 'POST' && url.pathname === '/v1/packs/install') {
     const input = await json(request); const manifestResponse = await fetch(new URL(input.manifestUrl)); if (!manifestResponse.ok) throw new Error(`manifest-download-failed:${manifestResponse.status}`);

@@ -105,7 +105,7 @@ test('generation cancellation exits without a late transcript commit', async () 
   const result = await pending;
   assert.equal(result.status, 'cancelled');
   assert.equal(result.reason, 'generation-cancelled');
-  assert.deepEqual(stopped, ['generation-cancelled']);
+  assert.deepEqual(stopped, [], 'replacing a turn must not stop the next SillyTavern generation globally');
   assert.equal(h.writes.length, 0);
 });
 
