@@ -320,19 +320,20 @@ Result:
 
 ### Checkpoint 12 — 2026-09-17
 
-Fixed the post-confirm bootstrap failure observed on the live mobile database. Repeated cast scans had correctly retired obsolete card memberships but retained their historical Device and Account identities. `PhoneStateService.initializeScope` consequently attempted to replay lifecycle initialization for every historical identity and collided with an older canonical Event whose semantic payload no longer matched. Initialization is now additive: existing Phone State and Account Session projections are preserved, only missing projections are created, and the one-click bootstrap passes the exact Device and Account IDs returned by the newly approved identity manifest instead of walking every historical identity in the Story/Branch. Retrying with a revised cast is therefore safe, does not reset an existing phone, and creates only newly selected phones.
+Fixed the post-confirm bootstrap failure observed on the live mobile database. Repeated cast scans had correctly retired obsolete card memberships but retained their historical Device and Account identities. `PhoneStateService.initializeScope` consequently attempted to replay lifecycle initialization for every historical identity and collided with an older canonical Event whose semantic payload no longer matched. Initialization is now additive: existing Phone State and Account Session projections are preserved, only missing projections are created, and the one-click bootstrap passes the exact Device and Account IDs returned by the newly approved identity manifest instead of walking every historical identity in the Story/Branch. The Initial Phone Seed follows the same approved Device set and skips already committed seed keys before reaching the canonical Event engine, preserving compatibility with seed Events written by older runtime versions whose source-record format changed. Retrying with a revised cast is therefore safe, does not reset an existing phone, and creates or seeds only newly selected phones.
 
 Commands:
 
 ```powershell
-node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs
+node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/initial-phone-seed.test.mjs
 npm run build:production-package
 npm run verify:production-package
 ```
 
 Result:
 
-- focused cast/bootstrap/settings tests: 9 passed, 0 failed
+- focused cast/bootstrap/settings/seed tests: 11 passed, 0 failed
 - revised-cast retry adds the missing phone without replaying old lifecycle Events
 - existing player Phone State is byte-for-byte preserved across the retry
+- legacy seed keys replay as no-ops and unselected historical phones receive no new seed data
 - production package: 250 files, 770 import edges; verification passed

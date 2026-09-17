@@ -31,10 +31,12 @@ export class InitialPhoneSeedService {
     this.#unit = new V3UnitOfWork(database); this.#world = phoneWorldService; this.#now = now;
   }
 
-  async #owners(scope) {
+  async #owners(scope, deviceIds = null) {
+    const selectedDeviceIds = Array.isArray(deviceIds) ? new Set(deviceIds.map(String)) : null;
     return this.#unit.readonly({ stores: ['devices', 'instances', 'actors', 'accounts'], scope }, async repositories => {
       const owners = [];
       for (const device of await repositories.devices.list()) {
+        if (selectedDeviceIds && !selectedDeviceIds.has(device.id)) continue;
         const instance = await repositories.instances.get(device.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId);
         if (!instance || !actor) continue;
         const accounts = await repositories.accounts.listByIndex('by_owner_scope', [scope.storyId, scope.branchId, instance.id]);
@@ -45,17 +47,20 @@ export class InitialPhoneSeedService {
     });
   }
 
-  async seed({ scope: inputScope, context = {}, fingerprint = 'initial' } = {}) {
-    const scope = requireEventScope(inputScope); const owners = await this.#owners(scope);
+  async seed({ scope: inputScope, context = {}, fingerprint = 'initial', deviceIds = null } = {}) {
+    const scope = requireEventScope(inputScope); const owners = await this.#owners(scope, deviceIds);
     const excerpt = storyText(context); const world = worldText(context); const currency = currencyFor(world); const fingerprintKey = clean(fingerprint) || 'initial';
     const observedAt = clean(Array.isArray(context?.chat) ? (context.chat.at(-1)?.send_date ?? context.chat.at(-1)?.timestamp) : '') || null;
+    const appliedKeys = await this.#unit.readonly({ stores: ['eventIdempotency'], scope }, async repositories => new Set((await repositories.eventIdempotency.list()).filter(row => row.producer === 'playable-phone-initial-seed').map(row => row.idempotencyKey)));
     let writes = 0;
     for (const owner of owners) {
       const key = await shortHash(`${scope.storyId}:${scope.branchId}:${owner.device.id}:${fingerprintKey}`);
       const common = { scope, deviceId: owner.device.id, ownerActorId: owner.actor.id, ownerInstanceId: owner.instance.id, ownerAccountId: owner.account.id, sourceKind: 'plausible-simulation', producer: 'playable-phone-initial-seed' };
       const write = async (kind, method, recordId, body) => {
+        const idempotencyKey = `initial-seed:${kind}:${owner.device.id}:${key}`;
+        if (appliedKeys.has(idempotencyKey)) return;
         const source = Object.freeze({ authority: 'playable-phone-bootstrap', kind: 'plausible-simulation', recordId, version: '1' });
-        await this.#world[method]({ ...common, ...body, recordId, source, idempotencyKey: `initial-seed:${kind}:${owner.device.id}:${key}` }); writes += 1;
+        await this.#world[method]({ ...common, ...body, recordId, source, idempotencyKey }); appliedKeys.add(idempotencyKey); writes += 1;
       };
       await write('note', 'saveNote', `bootstrap-current-story:${owner.device.id}:${key}`, { title: 'ตอนนี้ในเรื่อง', text: excerpt, pinned: true });
       await write('weather', 'recordWeather', `bootstrap-weather:${owner.device.id}:${key}`, { locationLabel: 'บริเวณตามฉากปัจจุบัน', condition: 'อากาศทั่วไป', temperatureC: 26, observedAt, provider: 'TMRW story estimate' });

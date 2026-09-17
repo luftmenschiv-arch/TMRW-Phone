@@ -25,6 +25,21 @@ test('initial seed makes every phone useful, keeps My Phone wallet user-owned, a
   assert.equal((await world.listWallet({ scope: c.scope, deviceId: c.user.deviceId })).length, 0, 'My Phone balance stays explicit-user controlled');
   assert.equal((await world.listWallet({ scope: c.scope, deviceId: c.alice.deviceId }))[0].currency, 'JPY');
   const before = (await engine.listEvents(c.scope)).length;
-  await seed.seed(input);
+  input.context.chat.push({ is_user: false, mes: 'presentation changed but the canonical fingerprint did not' });
+  const replay = await seed.seed(input);
+  assert.equal(replay.writes, 0);
   assert.equal((await engine.listEvents(c.scope)).length, before);
+});
+
+test('initial seed can target only the phones approved by the current cast manifest', async () => {
+  const c = await setupPhase9({ castSize: 3, manifestId: 'initial-phone-seed-selected' });
+  const engine = new CanonicalEventEngine({ database: c.database, eventTypes: createPhase23EventTypeRegistry(), projectors: [createPhoneWorldProjector()], now: () => '2026-09-17T07:00:00.000Z' });
+  await engine.catchUp(c.scope);
+  const world = new PhoneWorldService({ database: c.database, eventEngine: engine });
+  const seed = new InitialPhoneSeedService({ database: c.database, phoneWorldService: world, now: () => '2026-09-17T07:00:00.000Z' });
+  const result = await seed.seed({ scope: c.scope, fingerprint: 'selected-head', deviceIds: [c.user.deviceId, c.alice.deviceId], context: { name2: 'Current scene' } });
+  assert.equal(result.devices, 2);
+  assert.equal((await world.listNotes({ scope: c.scope, deviceId: c.user.deviceId })).length, 1);
+  assert.equal((await world.listNotes({ scope: c.scope, deviceId: c.alice.deviceId })).length, 1);
+  assert.equal((await world.listNotes({ scope: c.scope, deviceId: c.bob.deviceId })).length, 0);
 });
