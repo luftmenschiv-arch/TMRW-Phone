@@ -178,12 +178,17 @@ export class AdaptiveWorldPulseService {
   async #commitPost(scope, spec, index) {
     const author = await this.#identity(scope, spec.author); const prepared = [];
     for (const row of [...spec.comments, ...fallbackHandles.map(handle => ({ author: handle }))]) prepared.push(await this.#identity(scope, row.author));
-    const recordId = `${scope.branchId}:world-feed-v3:${index}`;
-    const result = await this.#social.createPost({ scope, authorAccountId: author.accountId, actualAuthorActorId: author.actorId, actualAuthorInstanceId: author.instanceId, deviceId: author.deviceId, text: spec.text, audience: { kind: 'public' }, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId, version: '3' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v3:${recordId}` });
+    // The projection count can lag an already committed canonical Event after
+    // an interrupted mobile refresh. Include the generated content in the
+    // source identity so retrying that numerical slot with new copy cannot
+    // reuse an older Event's idempotency key.
+    const contentKey = await shortHash(JSON.stringify({ author: spec.author, text: spec.text, comments: spec.comments }), 16);
+    const recordId = `${scope.branchId}:world-feed-v4:${index}:${contentKey}`;
+    const result = await this.#social.createPost({ scope, authorAccountId: author.accountId, actualAuthorActorId: author.actorId, actualAuthorInstanceId: author.instanceId, deviceId: author.deviceId, text: spec.text, audience: { kind: 'public' }, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId, version: '4' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v4:${recordId}` });
     const reactors = [];
     for (const identity of prepared) { if (reactors.length >= Math.max(0, Math.min(spec.likes, 8))) break; if (identity.accountId !== author.accountId && !reactors.some(item => item.accountId === identity.accountId)) reactors.push(identity); }
-    for (const [offset, reactor] of reactors.entries()) await this.#social.setEngagement({ scope, targetId: result.post.postId, actorAccountId: reactor.accountId, actualActorId: reactor.actorId, actualInstanceId: reactor.instanceId, active: true, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId: `${recordId}:like:${offset}`, version: '3' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v3:${recordId}:like:${offset}` });
-    for (const [offset, item] of spec.comments.entries()) { const commenter = await this.#identity(scope, item.author); await this.#social.createComment({ scope, postId: result.post.postId, authorAccountId: commenter.accountId, actualAuthorActorId: commenter.actorId, actualAuthorInstanceId: commenter.instanceId, deviceId: commenter.deviceId, text: item.text, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId: `${recordId}:comment:${offset}`, version: '3' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v3:${recordId}:comment:${offset}` }); }
+    for (const [offset, reactor] of reactors.entries()) await this.#social.setEngagement({ scope, targetId: result.post.postId, actorAccountId: reactor.accountId, actualActorId: reactor.actorId, actualInstanceId: reactor.instanceId, active: true, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId: `${recordId}:like:${offset}`, version: '4' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v4:${recordId}:like:${offset}` });
+    for (const [offset, item] of spec.comments.entries()) { const commenter = await this.#identity(scope, item.author); await this.#social.createComment({ scope, postId: result.post.postId, authorAccountId: commenter.accountId, actualAuthorActorId: commenter.actorId, actualAuthorInstanceId: commenter.instanceId, deviceId: commenter.deviceId, text: item.text, source: { authority: 'tmrw-world-social', kind: 'world-grounded-simulation', recordId: `${recordId}:comment:${offset}`, version: '4' }, producer: 'adaptive-world-pulse', idempotencyKey: `world-feed-v4:${recordId}:comment:${offset}` }); }
     return result.post;
   }
 

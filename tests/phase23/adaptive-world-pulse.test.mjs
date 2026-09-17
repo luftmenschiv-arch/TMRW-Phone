@@ -18,3 +18,25 @@ test('adaptive pulse grounds the feed in the current RP world, persists its bibl
   const npcQuestion=await commentFrom(c,feed.items[0].postId,c.user,{key:'player-question-on-npc',text:'ถามในโพสต์ชาวเมือง'});const npcReaction=await pulse.respondToPlayerAction({scope:c.scope,playerInstanceId:c.user.instanceId,postId:feed.items[0].postId,parentCommentId:npcQuestion.comment.commentId,actionText:npcQuestion.comment.text,actionKind:'comment'});assert.equal(npcReaction.generated,1);
   assert.equal((await c.viewModels.deviceRoster(c.scope)).length,rosterBefore.length,'ambient identities must not become Their Phone devices');
 });
+
+test('refeed survives a stale numerical slot without reusing an older canonical event key', async () => {
+  const c = await setupPhase15({ castSize:1, manifestId:'adaptive-world-pulse-stale-slot' });
+  let batch = 1;
+  const context={name2:'เจเรน',scenario:'นครการค้าทาสครึ่งสัตว์',chat:[],generateQuietPrompt:async options=>{
+    if(options.quietName==='TMRW World Social Bible')return JSON.stringify({worldSummary:'นครการค้าทาสครึ่งสัตว์',socialOrder:'นายหน้าและแรงงาน',economyAndLaw:'ตลาดกลางออกใบทะเบียน',technologyAndMedia:'ใช้เครือข่ายข่าว',languageStyle:'ภาษาไทย',publicNorms:['ตรวจทะเบียน'],institutions:['ตลาดกลาง'],tensions:['ค่าธรรมเนียม'],currentPublicEvents:['ด่านตรวจเข้มขึ้น']});
+    if(options.quietName==='TMRW Living Feed')return JSON.stringify({posts:Array.from({length:9},(_,index)=>({author:`ผู้สื่อข่าว ${batch}-${index}`,text:`ข่าวชุด ${batch} ลำดับ ${index}`,likes:0,comments:[]}))});
+    throw new Error('unexpected prompt');
+  }};
+  const first=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:00:00.000Z'});
+  const seeded=await first.refresh({scope:c.scope,count:1,playerInstanceId:c.user.instanceId});
+  assert.equal(seeded.created.length,1);
+
+  // Model an interrupted/legacy projection where the canonical Event exists
+  // but the feed counter no longer sees its projected row.
+  await c.database.transaction(['socialPosts'],'readwrite',tx=>tx.store('socialPosts').delete(seeded.created[0].postId));
+  batch=2;
+  const afterReload=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:01:00.000Z'});
+  const refreshed=await afterReload.refresh({scope:c.scope,count:1,playerInstanceId:c.user.instanceId});
+  assert.equal(refreshed.created.length,1);
+  assert.match(refreshed.created[0].text,/ข่าวชุด 2/u);
+});
