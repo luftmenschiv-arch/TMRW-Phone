@@ -12,10 +12,16 @@ const CARD_FIELD_LABELS = new Set([
 ]);
 const fieldKey = value => compact(value).normalize('NFKC').toLocaleLowerCase().replace(/[：:]+$/u, '');
 const GENERIC_FIELD_LABEL = /^(?:(?:character|personal|basic|physical|additional|other)\s+)?(?:info(?:rmation)?|details?|profile|prompt|instructions?|attributes?|features?|abilities|skills?|powers?|strengths?|weakness(?:es)?|goals?|motivation|relationships?|inventory|summary|description|history|background|personality|appearance|scenario|setting|context|metadata|examples?|dialogue|speech|style|tone)$/iu;
+const CURRENT_CAST_WINDOW = 160;
 
 function isMetadataLabel(value) {
   const key = fieldKey(value);
   return CARD_FIELD_LABELS.has(key) || GENERIC_FIELD_LABEL.test(key);
+}
+
+function recentChat(context, limit = CURRENT_CAST_WINDOW) {
+  const chat = Array.isArray(context?.chat) ? context.chat : [];
+  return chat.slice(Math.max(0, chat.length - limit));
 }
 
 function cardFromContext(context) {
@@ -69,7 +75,7 @@ function structuredNames(corpus) {
 
 function dialogueNames(context) {
   const counts = new Map();
-  for (const message of Array.isArray(context?.chat) ? context.chat : []) {
+  for (const message of recentChat(context)) {
     const body = text(message?.mes);
     for (const match of body.matchAll(/(?:^|\n)\s*([\p{L}\p{N}][\p{L}\p{N} ._'’\-]{1,40})\s*[:：]\s*\S/gu)) {
       const name = compact(match[1]); counts.set(name, (counts.get(name) || 0) + 1);
@@ -78,6 +84,42 @@ function dialogueNames(context) {
     if (speaker && !message?.is_user) counts.set(speaker, (counts.get(speaker) || 0) + 2);
   }
   return [...counts].filter(([, count]) => count >= 2).map(([name, count]) => ({ name, evidenceCount: count }));
+}
+
+function recentMentionCount(context, value) {
+  const needle = compact(value).normalize('NFKC').toLocaleLowerCase();
+  if (!needle) return 0;
+  let count = 0;
+  for (const message of recentChat(context)) {
+    const body = compact(message?.mes).normalize('NFKC').toLocaleLowerCase();
+    if (body.includes(needle)) count += 1;
+  }
+  return count;
+}
+
+function sceneRosterNames(context, primaryCharacterName) {
+  const counts = new Map();
+  const anchors = new Set(unique([
+    primaryCharacterName,
+    context?.name1,
+    context?.name2,
+    'คุณ', 'you', '{{user}}', '{{char}}',
+  ]).map(value => fieldKey(value)));
+  for (const message of recentChat(context)) {
+    const header = text(message?.mes).match(/^\s*<([^>\n]{1,1200})>/u)?.[1];
+    if (!header) continue;
+    const foundThisTurn = new Set();
+    for (const field of header.split('|')) {
+      const tokens = field.split(/[,，]/u).map(compact).filter(Boolean);
+      if (tokens.length < 2 || tokens.length > 8 || !tokens.some(token => anchors.has(fieldKey(token)))) continue;
+      for (const token of tokens) {
+        if (anchors.has(fieldKey(token)) || /\d|[<>|]/u.test(token) || token.length > 40 || isMetadataLabel(token)) continue;
+        foundThisTurn.add(token);
+      }
+    }
+    for (const name of foundThisTurn) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return [...counts].filter(([, evidenceCount]) => evidenceCount >= 3).map(([name, evidenceCount]) => ({ name, evidenceCount }));
 }
 
 const RECURRING_ROLE_PATTERNS = Object.freeze([
@@ -112,7 +154,7 @@ const RECURRING_ROLE_PATTERNS = Object.freeze([
 
 function recurringRoleNames(context) {
   const counts = new Map();
-  for (const message of Array.isArray(context?.chat) ? context.chat : []) {
+  for (const message of recentChat(context)) {
     if (message?.is_user) continue;
     const body = text(message?.mes);
     if (!body) continue;
@@ -161,8 +203,12 @@ export async function extractPlayableCastManifest(context = {}) {
   for (const row of source.declaredCast) add(row, 'declared-cast', 'confirmed', 10);
   for (const row of source.groupCast) add(row, 'sillytavern-group', 'confirmed', 10);
   if (!context?.groupId && source.primaryCharacterName && source.declaredCast.length === 0) add({ name: source.primaryCharacterName, sourceId: context?.characters?.[context?.characterId]?.avatar }, 'active-card', 'confirmed', 10);
-  for (const name of unique(structuredNames(source.corpus))) add({ name }, 'card-structure', 'candidate', 3);
+  for (const name of unique(structuredNames(source.corpus))) {
+    const evidenceCount = recentMentionCount(context, name);
+    if (evidenceCount >= 2) add({ name }, 'card-structure', evidenceCount >= 5 ? 'probable' : 'candidate', evidenceCount);
+  }
   for (const row of dialogueNames(context)) add(row, 'recurring-dialogue', row.evidenceCount >= 4 ? 'probable' : 'candidate', row.evidenceCount);
+  for (const row of sceneRosterNames(context, source.primaryCharacterName)) add(row, 'scene-roster', row.evidenceCount >= 5 ? 'probable' : 'candidate', row.evidenceCount);
   for (const row of recurringRoleNames(context)) add(row, 'recurring-role', row.evidenceCount >= 5 ? 'probable' : 'candidate', row.evidenceCount);
 
   const merged = new Map();

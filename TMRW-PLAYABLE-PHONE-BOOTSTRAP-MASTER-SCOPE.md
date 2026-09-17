@@ -297,3 +297,22 @@ Result:
 - repeated metadata labels do not become cast candidates
 - production package: 250 files, 770 import edges; verification passed
 - authoritative source, installed `v3/` runtime, and packaged `dist/.../v3/` hashes match for the changed runtime files
+
+### Checkpoint 11 — 2026-09-17
+
+Corrected cast relevance after validating against a real branched SillyTavern chat. Inferred cast discovery now uses a bounded current-story window instead of counting every historical message copied into a long branch, preventing characters from old scenes or ancestor timelines from returning merely because they were frequent hundreds of turns ago. Non-explicit Character Card headings also require corroboration in the current window. The scanner now reads repeated participant rosters from structured RP status headers using the active card and player placeholders as anchors, allowing unnamed-in-card Thai NPCs to be discovered without hardcoded character names. Settings labels these candidates as present in the current scene and still requires player confirmation.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused cast/bootstrap/settings tests: 8 passed, 0 failed
+- a Thai NPC present only in a repeated scene roster is discovered without a hardcoded name
+- recurring roles outside the current 160-message window are excluded
+- stale card headings absent from the current story window are excluded

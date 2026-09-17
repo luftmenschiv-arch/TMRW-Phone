@@ -39,7 +39,7 @@ test('card schema labels never become phone owners and inferred names require co
   const manifest = await extractPlayableCastManifest(context);
   assert.deepEqual(manifest.approvedCast.map(row => row.displayName), ['Jeren']);
   assert.equal(manifest.cast.some(row => ['Age', 'Hair', 'Height', 'Skin', 'Status', 'Note', 'Ooc'].includes(row.displayName)), false);
-  assert.equal(manifest.cast.find(row => row.displayName === 'Kaelan Vance')?.approved, false);
+  assert.equal(manifest.cast.some(row => row.displayName === 'Kaelan Vance'), false);
 });
 
 test('recurring Thai narrative roles become reviewable cast candidates', async () => {
@@ -63,4 +63,26 @@ test('recurring Thai narrative roles become reviewable cast candidates', async (
   assert.ok(landlord.evidence.includes('recurring-role'));
   assert.equal(manifest.cast.some(row => row.displayName === 'เจ้าของบ้าน'), false);
   assert.equal(manifest.cast.some(row => row.displayName === 'Hector'), false);
+});
+
+test('current scene roster finds Thai NPCs while stale branch history stays out of cast review', async () => {
+  const stale = Array.from({ length: 8 }, (_, index) => ({ is_user: false, name: 'Jeren', mes: `ชายเจ้าของบ้านพูดถึงเรื่องเก่า ${index}` }));
+  const bridge = Array.from({ length: 160 }, (_, index) => ({ is_user: index % 2 === 0, name: index % 2 === 0 ? 'Hector' : 'Jeren', mes: `เหตุการณ์ในเส้นเรื่องปัจจุบัน ${index}` }));
+  const current = Array.from({ length: 12 }, (_, index) => ({
+    is_user: index % 2 === 0,
+    name: index % 2 === 0 ? 'Hector' : 'Jeren',
+    mes: `<scene| เวลา | สถานที่ | ${index % 2 === 0 ? 'Jeren' : 'คุณ'}, คีรัน | ของใช้>\nคีรันยังอยู่ในฉากปัจจุบัน`,
+  }));
+  const manifest = await extractPlayableCastManifest({
+    characterId: 0,
+    name1: 'Hector',
+    name2: 'Jeren',
+    characters: [{ name: 'Jeren', avatar: 'jeren.png', description: 'เจ้าของบ้าน: ตัวละครจากเส้นเรื่องเก่า' }],
+    chat: [...stale, ...bridge, ...current],
+  });
+  const currentNpc = manifest.cast.find(row => row.displayName === 'คีรัน');
+  assert.ok(currentNpc);
+  assert.equal(currentNpc.approved, false);
+  assert.ok(currentNpc.evidence.includes('scene-roster'));
+  assert.equal(manifest.cast.some(row => row.displayName === 'เจ้าของบ้าน'), false);
 });
