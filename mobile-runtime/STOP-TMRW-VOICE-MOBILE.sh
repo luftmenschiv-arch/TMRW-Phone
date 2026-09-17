@@ -35,6 +35,17 @@ if "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null; then
     "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null || break
     "$TERMUX_PREFIX/bin/sleep" 1
   done
+  if "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null; then
+    "$TERMUX_PREFIX/bin/kill" -KILL "$runtime_pid"
+    for _ in $("$TERMUX_PREFIX/bin/seq" 1 5); do
+      "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null || break
+      "$TERMUX_PREFIX/bin/sleep" 1
+    done
+  fi
+  if "$TERMUX_PREFIX/bin/kill" -0 "$runtime_pid" 2>/dev/null; then
+    echo 'TMRW Voice Mobile could not be stopped safely.' >&2
+    exit 1
+  fi
 fi
 
 "$TERMUX_PREFIX/bin/rm" -f "$PID_FILE"
