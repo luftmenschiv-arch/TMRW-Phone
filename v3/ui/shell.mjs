@@ -243,8 +243,6 @@ export class TmrwPhoneShell {
     if (this.#models.playableBootstrapAvailable && view.settings?.playableBootstrap?.selectionConfirmed !== true) return this.#renderInitialCastSelection(view);
     if (this.#selectedThreadId) return this.#renderThread(view);
     const body = element(this.#document, 'section'); body.className = 'tmrw-phone-messages';
-    const allowedAccountIds = new Set((view.communicationTargets || []).map(target => target.accountId).filter(Boolean));
-    const visibleThreadRows = (view.threadRows || []).filter(thread => !allowedAccountIds.size || allowedAccountIds.has(thread.counterpartAccountId) || (thread.participantAccountIds || []).some(accountId => allowedAccountIds.has(accountId)));
     const search = element(this.#document, 'label'); search.className = 'tmrw-phone-search'; addIcon(this.#document, search, 'search', 19);
     const input = element(this.#document, 'input'); input.placeholder = 'ค้นหาข้อความ'; input.setAttribute('autocomplete', 'off'); search.append(input); body.append(search);
     const noteRow = element(this.#document, 'div'); noteRow.className = 'tmrw-phone-note-row';
@@ -253,12 +251,12 @@ export class TmrwPhoneShell {
     const avatar = element(this.#document, 'span'); avatar.className = 'tmrw-phone-note-avatar'; avatar.append(createPreviewAvatar({ document: this.#document, label: this.#ownerLabel(view), size: 'lg',imageUrl:this.#ownerAvatar(view) }));
     own.append(bubble, avatar, element(this.#document, 'b', 'โน้ตของคุณ')); noteRow.append(own);
     const noteAccounts=new Set();
-    for(const thread of visibleThreadRows){const accountId=thread.counterpartAccountId;if(!accountId||noteAccounts.has(accountId))continue;noteAccounts.add(accountId);const presentation=view.accountPresentations?.[accountId]||{};const noteText=String(presentation.note||'').trim();if(!noteText)continue;const item=element(this.#document,'button');item.type='button';item.className='tmrw-phone-note-person';const itemBubble=element(this.#document,'span',noteText);itemBubble.className='tmrw-phone-note-bubble';const itemAvatar=element(this.#document,'span');itemAvatar.className='tmrw-phone-note-avatar';itemAvatar.append(createPreviewAvatar({document:this.#document,label:thread.label,size:'lg',imageUrl:thread.avatarUrl||this.#accountAvatar(view,accountId,thread.label,thread.counterpartInstanceId)}));item.append(itemBubble,itemAvatar,element(this.#document,'b',thread.label));item.addEventListener('click',()=>{this.#selectedThreadId=thread.threadId;void this.renderActive();});noteRow.append(item);}
+    for(const thread of view.threadRows||[]){const accountId=thread.counterpartAccountId;if(!accountId||noteAccounts.has(accountId))continue;noteAccounts.add(accountId);const presentation=view.accountPresentations?.[accountId]||{};const noteText=String(presentation.note||'').trim();if(!noteText)continue;const item=element(this.#document,'button');item.type='button';item.className='tmrw-phone-note-person';const itemBubble=element(this.#document,'span',noteText);itemBubble.className='tmrw-phone-note-bubble';const itemAvatar=element(this.#document,'span');itemAvatar.className='tmrw-phone-note-avatar';itemAvatar.append(createPreviewAvatar({document:this.#document,label:thread.label,size:'lg',imageUrl:thread.avatarUrl||this.#accountAvatar(view,accountId,thread.label,thread.counterpartInstanceId)}));item.append(itemBubble,itemAvatar,element(this.#document,'b',thread.label));item.addEventListener('click',()=>{this.#selectedThreadId=thread.threadId;void this.renderActive();});noteRow.append(item);}
     body.append(noteRow);
     const heading = element(this.#document, 'div'); heading.className = 'tmrw-phone-message-section-title'; heading.append(element(this.#document, 'strong', 'ข้อความ'));
     const requests = element(this.#document, 'button', 'คำขอ'); requests.type = 'button'; requests.disabled = true; requests.setAttribute('aria-label', 'คำขอยังไม่มีข้อมูล'); heading.append(requests); body.append(heading);
     const list = element(this.#document, 'div'); list.className = 'tmrw-phone-thread-list'; const rows = [];
-    for (const thread of visibleThreadRows) {
+    for (const thread of view.threadRows || []) {
       const row = element(this.#document, 'button'); row.type = 'button'; row.className = 'tmrw-phone-thread'; row.dataset.threadId = thread.threadId;
       row.append(createPreviewAvatar({ document: this.#document, label: thread.label, size: 'lg',imageUrl:thread.avatarUrl||this.#accountAvatar(view,thread.counterpartAccountId,thread.label,thread.counterpartInstanceId) }));
       const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', thread.label));
@@ -266,7 +264,7 @@ export class TmrwPhoneShell {
       copy.append(element(this.#document, 'small', thread.preview)); row.append(copy);
       row.addEventListener('click', () => { this.#selectedThreadId = thread.threadId; void this.renderActive(); }); list.append(row); rows.push({ row, thread });
     }
-    const representedAccountIds = new Set(visibleThreadRows.flatMap(thread => thread.participantAccountIds || []));
+    const representedAccountIds = new Set((view.threadRows || []).flatMap(thread => thread.participantAccountIds || []));
     const missingTargets = (view.communicationTargets || []).filter(target => !representedAccountIds.has(target.accountId));
     if (missingTargets.length) {
       const intro = element(this.#document, 'div'); intro.className = 'tmrw-phone-connect-intro';

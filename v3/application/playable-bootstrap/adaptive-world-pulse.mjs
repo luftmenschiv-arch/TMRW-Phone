@@ -15,6 +15,8 @@ const unique = values => [...new Set((values || []).map(clean).filter(Boolean))]
 const fallbackHandles = Object.freeze(['คนเฝ้าข่าว', 'เสียงจากตลาด', 'คนผ่านทาง', 'นักจดเรื่องเมือง', 'ผู้เห็นเหตุการณ์', 'คนนอกวง']);
 const looksLikeStructuredPromptLeak = value => /(?:\[?#{1,6}\s*(?:world\s*setting|profile)|\{\{\s*(?:user|char)\s*\}\}|(?:^|[\s\[])\b(?:name|age|race|height|skin|status|personality|scenario)\s*:)/imu.test(String(value || ''));
 const publicFallbackText = 'ผู้คนในพื้นที่กำลังจับตาความเปลี่ยนแปลงรอบตัว และแลกเปลี่ยนข่าวที่ตรวจสอบได้จากชีวิตประจำวัน';
+const identityNameKey = value => clean(value).normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const identityNameCollides = (value, protectedNames = []) => { const current=identityNameKey(value);return current.length>=3&&protectedNames.some(name=>{const expected=identityNameKey(name);return expected.length>=3&&(current===expected||current.startsWith(expected)||expected.startsWith(current));}); };
 
 async function shortHash(value, length = 20) {
   const bytes = new TextEncoder().encode(String(value));
@@ -208,19 +210,20 @@ export class AdaptiveWorldPulseService {
     if(!this.#messages&&!this.#live)return Object.freeze({conversations:0,lives:0,skipped:true});
     const owners=await this.#phoneOwners(scope,deviceIds);if(!owners.length)return Object.freeze({conversations:0,lives:0,skipped:true});
     const bible=await this.prepareWorld({scope,playerInstanceId});const activityFingerprint=clean(fingerprint)||bible.sourceFingerprint;const applied=await this.#appliedPhoneActivityKeys(scope);
-    const pendingOwners=this.#messages?owners.filter(owner=>!applied.has(`phone-activity:${activityFingerprint}:${owner.accountId}:message:0`)):[];
+    const pendingOwners=this.#messages?owners.filter(owner=>!applied.has(`phone-activity-v2:${activityFingerprint}:${owner.accountId}:conversation:0:message:0`)):[];
     const liveKey=`phone-activity:${activityFingerprint}:live:0`;const needsLive=this.#live&&!applied.has(liveKey);
     if(!pendingOwners.length&&!needsLive)return Object.freeze({conversations:0,lives:0,replayed:true});
     const context=this.#getContext()||{};
     const prompt=[
       'สร้างกิจกรรมในโทรศัพท์ของตัวละครจากโลกโรลเพลย์นี้ ตอบเป็น JSON เท่านั้น',
-      'สำหรับเจ้าของเครื่องทุกคนที่ระบุ ให้สร้างแชทส่วนตัวหนึ่งห้องกับคนอื่นในโลกที่สมเหตุผล มี 3-6 ข้อความ และสลับผู้ส่งอย่างเป็นธรรมชาติ',
+      'สำหรับเจ้าของเครื่องทุกคนที่ระบุ ให้สร้างแชทส่วนตัว 3 ห้องกับคนละคนในโลกที่สมเหตุผล แต่ละห้องมี 3-6 ข้อความ และสลับผู้ส่งอย่างเป็นธรรมชาติ',
+      'คู่สนทนาต้องไม่ใช่เจ้าของเครื่อง ไม่ใช่ผู้เล่น และห้ามสร้างชื่อที่ต่อท้ายหรือดัดแปลงจากชื่อผู้เล่น',
       'บทสนทนาต้องเป็นสิ่งที่เจ้าของเครื่องและคู่สนทนารู้ได้จริง ห้ามใช้ความคิดในใจ ความลับ หรือบทสนทนาปิดที่พวกเขาไม่ได้เห็น',
       'สร้างไลฟ์ 1-2 ห้อง เน้นคนในโลกหรือชาวเน็ตเป็นผู้จัด ถ้าตัวละครหลักไลฟ์เองต้องเข้ากับนิสัยและสถานการณ์ มีความคิดเห็นสด 3-6 ข้อความ',
       'ใช้ภาษาไทยทั้งหมด ห้ามใส่ภาษาต่างประเทศแล้ววงเล็บคำแปลไทย ห้ามเขียนข้อความอธิบายระบบ',
       'sender ใช้ได้เฉพาะ owner หรือ contact',
       'JSON: {"conversations":[{"owner":"ชื่อเจ้าของเครื่อง","contact":"ชื่อคู่สนทนา","messages":[{"sender":"owner","text":"ข้อความ"}]}],"lives":[{"host":"ชื่อบัญชี","title":"ชื่อไลฟ์","topic":"หัวข้อ","description":"คำอธิบาย","comments":[{"author":"ชื่อบัญชี","text":"ข้อความสด"}]}]}',
-      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>row.handle).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,36),
+      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>row.handle).join(', ')}`,`ห้ามใช้เป็นคู่สนทนา: ${unique([context?.name1,...pendingOwners.map(row=>row.handle)]).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,36),
     ].join('\n');
     const schema = {
       type: 'object', additionalProperties: false, required: ['conversations', 'lives'], properties: {
@@ -234,12 +237,12 @@ export class AdaptiveWorldPulseService {
     };
     let activity=Object.freeze({conversations:Object.freeze([]),lives:Object.freeze([])});
     try { activity=parsePhoneActivity(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Phone Activity',responseLength:12288})); } catch {}
-    const byOwner=new Map(owners.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));let conversations=0;let lives=0;
+    const byOwner=new Map(owners.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));const protectedNames=unique([context?.name1,...owners.map(owner=>owner.handle)]);let conversations=0;let lives=0;
     for(const owner of pendingOwners){
-      let spec=activity.conversations.find(row=>clean(row.owner).normalize('NFKC').toLocaleLowerCase()===clean(owner.handle).normalize('NFKC').toLocaleLowerCase());
-      if(!spec)spec={owner:owner.handle,contact:fallbackHandles[(conversations+2)%fallbackHandles.length],messages:[{sender:'contact',text:`ช่วงนี้คนแถวนี้กำลังพูดถึงเรื่องนี้กันเยอะ: ${bounded(bible.currentPublicEvents?.[0]||bible.worldSummary,220)}`},{sender:'owner',text:'ไว้ฉันจะลองดูสถานการณ์อีกที'}]};
-      const contact=await this.#identity(scope,spec.contact);const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`phone-activity:${activityFingerprint}:${owner.accountId}:thread`});
-      for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:message:${index}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`phone-activity:${activityFingerprint}:${owner.accountId}:message:${index}`});}conversations+=1;
+      const seenContacts=new Set();const specs=[];
+      for(const row of activity.conversations){if(clean(row.owner).normalize('NFKC').toLocaleLowerCase()!==clean(owner.handle).normalize('NFKC').toLocaleLowerCase()||looksLikeStructuredPromptLeak(row.contact)||identityNameCollides(row.contact,protectedNames))continue;const key=identityNameKey(row.contact);if(!key||seenContacts.has(key))continue;seenContacts.add(key);specs.push(row);if(specs.length>=3)break;}
+      for(const fallback of fallbackHandles){if(specs.length>=3)break;if(identityNameCollides(fallback,protectedNames)||seenContacts.has(identityNameKey(fallback)))continue;seenContacts.add(identityNameKey(fallback));specs.push({owner:owner.handle,contact:fallback,messages:[{sender:'contact',text:`ช่วงนี้คนแถวนี้กำลังพูดถึงเรื่องนี้กันเยอะ: ${bounded(bible.currentPublicEvents?.[specs.length]||bible.worldSummary,220)}`},{sender:'owner',text:'ไว้ฉันจะลองดูสถานการณ์อีกที'}]});}
+      for(const [conversationIndex,spec] of specs.entries()){const contact=await this.#identity(scope,spec.contact);const key=`phone-activity-v2:${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}`;const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread:v2`,version:'2'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:thread`});for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}:message:${index}`,version:'2'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:message:${index}`});}conversations+=1;}
     }
     if(needsLive){
       const liveSpecs=activity.lives.length?activity.lives:[{host:fallbackHandles[1],title:bounded(bible.currentPublicEvents?.[0]||'คุยข่าวจากพื้นที่',120),topic:'เรื่องที่กำลังเกิดขึ้น',description:bounded(bible.worldSummary,360),comments:[{author:fallbackHandles[2],text:'เข้ามาฟังแล้ว เล่าต่อได้เลย'},{author:fallbackHandles[3],text:'ตรงนี้คนพูดถึงกันเยอะจริง'}]}];

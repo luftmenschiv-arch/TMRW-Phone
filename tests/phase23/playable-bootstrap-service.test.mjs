@@ -100,8 +100,13 @@ test('explicit first-time selection is remembered and removes unselected phone o
   const manifest = await service.preview();
   const selected = manifest.cast.find(row => row.displayName === 'Character 1');
   assert.ok(selected);
+  await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, deepBackfill: false });
+  const dm = await c.messages.createThread({ scope: c.scope, kind: 'dm', participantAccountIds: [c.user.accountId, c.alice.accountId], source: { authority: 'selection-history-test', kind: 'test', recordId: 'kept-thread', version: '1' }, idempotencyKey: 'selection-history-thread' });
+  await c.messages.sendMessage({ scope: c.scope, threadId: dm.thread.threadId, senderAccountId: c.alice.accountId, actualAuthorActorId: c.alice.actorId, actualAuthorInstanceId: c.alice.instanceId, deviceId: c.alice.deviceId, text: 'ข้อความตอบเดิมต้องไม่หาย', source: { authority: 'selection-history-test', kind: 'test', recordId: 'kept-reply', version: '1' }, idempotencyKey: 'selection-history-reply' });
   const result = await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, approvedSourceActorIds: [selected.sourceActorId], selectionConfirmed: true, deepBackfill: false });
   assert.equal(result.state.selectionConfirmed, true);
   assert.deepEqual(result.state.selectedSourceActorIds, [selected.sourceActorId]);
   assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label), ['Character 1']);
+  const kept = await c.messages.listMessages({ scope: c.scope, viewerAccountId: c.user.accountId, threadId: dm.thread.threadId });
+  assert.deepEqual(kept.map(row => row.text), ['ข้อความตอบเดิมต้องไม่หาย']);
 });

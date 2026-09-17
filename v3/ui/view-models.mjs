@@ -24,6 +24,12 @@ function presentationDisplayName(...candidates) {
   return generic || 'เจ้าของเครื่อง';
 }
 
+function identityNameKey(value) { return String(value || '').normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
+function identityNameCollides(value, protectedNames = []) {
+  const current = identityNameKey(value); if (current.length < 3) return false;
+  return protectedNames.some(name => { const expected = identityNameKey(name); return expected.length >= 3 && (current === expected || current.startsWith(expected) || expected.startsWith(current)); });
+}
+
 export class PhoneShellViewModels {
   #unitOfWork; #phones; #contacts; #settings; #playableBootstrap; #worldPulse; #imageProvider; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
   constructor({ database, phoneStateService, contactService, settingsService, playableBootstrapService = null, adaptiveWorldPulseService = null, imageProviderService = null, guideService = null, messageService = null, callService = null, callCoordinator = null, socialService = null, insungramService = null, liveService = null, notificationService = null, phoneWorldService = null, calendarService = null, commerceService = null, voiceProfileService = null, voiceAudioHistoryService = null, voiceCapability = null, voiceAdapter = null, callTimingDiagnostics = null }) {
@@ -201,8 +207,9 @@ export class PhoneShellViewModels {
         const story = await repositories.stories.get(scope.storyId);
         const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : [];
         const activeActorIds = new Set(memberships.map(row => row.actorId));
+        const playerInstance = await repositories.instances.get(playerInstanceId); const playerActor = playerInstance && await repositories.actors.get(playerInstance.actorId); const protectedPlayerNames = [playerInstance?.displayNameOverride, playerActor?.displayName, ...(playerActor?.aliases || []), ...(playerInstance?.aliases || [])].filter(Boolean);
         const visibleInstanceIds = new Set([opened.perspective.accountOwnerInstanceId, playerInstanceId]);
-        for (const instance of await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId])) { const actor=await repositories.actors.get(instance.actorId); if (activeActorIds.has(instance.actorId)||actor?.sourceAuthority==='tmrw-world-social') visibleInstanceIds.add(instance.id); }
+        for (const instance of await repositories.instances.listByIndex('by_story_branch', [scope.storyId, scope.branchId])) { const actor=await repositories.actors.get(instance.actorId); const safeWorldIdentity=actor?.sourceAuthority==='tmrw-world-social'&&!identityNameCollides(actor.displayName,protectedPlayerNames); if (activeActorIds.has(instance.actorId)||safeWorldIdentity) visibleInstanceIds.add(instance.id); }
         return Object.freeze(threads.filter(thread => (thread.participantInstanceIds || []).every(instanceId => visibleInstanceIds.has(instanceId))));
       });
     }

@@ -50,16 +50,18 @@ test('refeed survives a stale numerical slot without reusing an older canonical 
 test('phone activity gives each bot a contextual DM and creates a populated public live room', async () => {
   const c=await setupPhase15({castSize:1,manifestId:'adaptive-phone-activity'});
   const liveEngine=new CanonicalEventEngine({database:c.database,eventTypes:createPhase23EventTypeRegistry(),projectors:[createMessagingProjector(),createLiveProjector()],now:()=> '2026-09-17T08:00:00.000Z'});await liveEngine.rebuild(c.scope);const live=new LiveService({database:c.database,eventEngine:liveEngine});const messages=new MessageService({database:c.database,eventEngine:liveEngine});
-  const context={name2:'เจเรน',scenario:'นครการค้าทาสครึ่งสัตว์',chat:[{is_user:false,name:'เจเรน',mes:'คืนนี้ตลาดกลางจะตรวจตราเข้มกว่าปกติ'}],generateQuietPrompt:async options=>{
+  const context={name1:'เฮคเตอร์',name2:'เจเรน',scenario:'นครการค้าทาสครึ่งสัตว์',chat:[{is_user:false,name:'เจเรน',mes:'คืนนี้ตลาดกลางจะตรวจตราเข้มกว่าปกติ'}],generateQuietPrompt:async options=>{
     if(options.quietName==='TMRW World Social Bible')return JSON.stringify({worldSummary:'นครการค้าทาสครึ่งสัตว์',socialOrder:'นายหน้าและแรงงาน',economyAndLaw:'ตลาดกลางออกใบทะเบียน',technologyAndMedia:'ใช้เครือข่ายข่าว',languageStyle:'ภาษาไทย',publicNorms:['ตรวจทะเบียน'],institutions:['ตลาดกลาง'],tensions:['ค่าธรรมเนียม'],currentPublicEvents:['คืนนี้ด่านตรวจเข้มขึ้น']});
-    if(options.quietName==='TMRW Phone Activity')return JSON.stringify({conversations:[{owner:'Character 1',contact:'เสมียนเวรดึก',messages:[{sender:'contact',text:'คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ'},{sender:'owner',text:'รับทราบ เดี๋ยวฉันหลีกทางนั้น'}]}],lives:[{host:'นักข่าวตลาดกลาง',title:'เกาะติดด่านตรวจคืนนี้',topic:'ข่าวในเมือง',description:'รายงานบรรยากาศหน้าประตูเหนือ',comments:[{author:'คนส่งของเวรดึก',text:'แถวเริ่มยาวแล้ว'},{author:'แม่ค้าร้านชา',text:'ฝั่งตะวันออกยังผ่านได้'}]}]});
+    if(options.quietName==='TMRW Phone Activity')return JSON.stringify({conversations:[{owner:'Character 1',contact:'เฮคเตอร์ โลเคชันเดอร์',messages:[{sender:'contact',text:'ข้อความจากตัวตนผู้เล่นซ้ำที่ต้องถูกทิ้ง'}]},{owner:'Character 1',contact:'เสมียนเวรดึก',messages:[{sender:'contact',text:'คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ'},{sender:'owner',text:'รับทราบ เดี๋ยวฉันหลีกทางนั้น'}]},{owner:'Character 1',contact:'หัวหน้าเวร',messages:[{sender:'contact',text:'เปลี่ยนกะตอนเที่ยงคืน'}]},{owner:'Character 1',contact:'เจ้าของร้านชา',messages:[{sender:'contact',text:'ของที่ฝากไว้มาถึงแล้ว'}]}],lives:[{host:'นักข่าวตลาดกลาง',title:'เกาะติดด่านตรวจคืนนี้',topic:'ข่าวในเมือง',description:'รายงานบรรยากาศหน้าประตูเหนือ',comments:[{author:'คนส่งของเวรดึก',text:'แถวเริ่มยาวแล้ว'},{author:'แม่ค้าร้านชา',text:'ฝั่งตะวันออกยังผ่านได้'}]}]});
     throw new Error(`unexpected prompt ${options.quietName}`);
   }};
   const pulse=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,messageService:messages,liveService:live,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:00:00.000Z'});
   const result=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.user.deviceId,c.alice.deviceId],fingerprint:'phone-head-a'});
-  assert.equal(result.conversations,1);assert.equal(result.lives,1);
-  const threads=await messages.listThreads({scope:c.scope,viewerAccountId:c.alice.accountId});assert.equal(threads.length,1);
-  const dmMessages=await messages.listMessages({scope:c.scope,viewerAccountId:c.alice.accountId,threadId:threads[0].threadId});assert.deepEqual(dmMessages.map(row=>row.text),['คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ','รับทราบ เดี๋ยวฉันหลีกทางนั้น']);
+  assert.equal(result.conversations,3);assert.equal(result.lives,1);
+  const threads=await messages.listThreads({scope:c.scope,viewerAccountId:c.alice.accountId});assert.equal(threads.length,3);
+  const messageSets=await Promise.all(threads.map(thread=>messages.listMessages({scope:c.scope,viewerAccountId:c.alice.accountId,threadId:thread.threadId})));
+  assert.equal(messageSets.flat().some(row=>row.text==='ข้อความจากตัวตนผู้เล่นซ้ำที่ต้องถูกทิ้ง'),false);
+  assert.equal(messageSets.some(rows=>rows.map(row=>row.text).join('|')==='คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ|รับทราบ เดี๋ยวฉันหลีกทางนั้น'),true);
   const sessions=await live.listSessions({scope:c.scope,viewerAccountId:c.user.accountId});assert.equal(sessions.items.length,1);
   const comments=await live.listMessages({scope:c.scope,viewerAccountId:c.user.accountId,sessionId:sessions.items[0].sessionId});assert.equal(comments.items.length,2);
   const replay=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.alice.deviceId],fingerprint:'phone-head-a'});assert.equal(replay.replayed,true);
