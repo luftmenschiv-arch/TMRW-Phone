@@ -400,3 +400,24 @@ Result:
 - simultaneous optional seed and feed failures still finish with a `ready` playable phone
 - failed required stages retain a specific recovery category without exposing raw errors in the normal UI
 - package verification passed after manifest cache-version advance
+
+### Checkpoint 16 — 2026-09-17
+
+Reproduced the repeated one-click update on the live Android database through ADB and Chrome DevTools. The database was already `ready` at 911 messages with two phones, so an unchanged chat head and cast triggered an early return before any repair stage ran. The review sheet closed without progress, success, or failure, making the tap look broken and permanently skipping optional app/feed enrichment that may have failed during the earlier run.
+
+Same-head retries now revalidate the approved identity and phone projections, replay the idempotent utility seed, and retry world/feed readiness. They do not rescan the 911-message history or run Deep Backfill again. A normal complete phone therefore incurs no duplicate canonical writes, while a partially enriched phone can heal on the next explicit tap.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/fenced-domain-rejection.test.mjs tests/phase23/mobile-lease-resume.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused bootstrap/settings/feed/write-fence/lease tests: 12 passed, 0 failed
+- same-head retry repairs utility/feed enrichment without replaying chat history
+- production package: 250 files, 771 import edges; verification passed
+- Android diagnosis confirmed the prior silent no-op against the real 911-message database

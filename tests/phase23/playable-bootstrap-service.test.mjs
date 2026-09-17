@@ -67,3 +67,24 @@ test('optional seed and world-feed enrichment failures do not block a playable p
   assert.deepEqual(result.enrichmentWarnings.map(row=>row.stage),['initial-seed','world-pulse']);
   assert.equal((await service.status({scope:c.scope,playerInstanceId:c.user.instanceId})).status,PLAYABLE_BOOTSTRAP_STATUS.READY);
 });
+
+test('same-head manual update repairs enrichment without replaying the full chat history', async () => {
+  const c = await setupPhase9({ castSize: 1, manifestId: 'playable-bootstrap-same-head-repair' });
+  const context = { chatId:'same-head-repair-chat',characterId:0,name1:'Player',name2:'Character 1',characters:[{name:'Character 1'}],chat:Array.from({length:72},(_,index)=>({is_user:index%2===0,name:index%2?'Character 1':'Player',mes:`turn ${index}`})) };
+  let reconcileCalls=0;let seedCalls=0;let prepareCalls=0;let primeCalls=0;
+  const service = new PlayableBootstrapService({
+    database:c.database,identityKernel:c.kernel,phoneStateService:c.phones,settingsService:c.settings,getContext:()=>context,
+    runtimeIntegration:{reconcileHistory:async()=>{reconcileCalls+=1;return {processed:72};}},
+    initialPhoneSeedService:{seed:async()=>{seedCalls+=1;return {writes:0};}},
+    adaptiveWorldPulseService:{prepareWorld:async({force})=>{prepareCalls+=1;assert.equal(force,prepareCalls===1);return {};},prime:async()=>{primeCalls+=1;return {ready:true};}},
+    now:()=> '2026-09-17T15:00:00.000Z',
+  });
+  const first=await service.run({scope:c.scope,playerInstanceId:c.user.instanceId,deepBackfill:false});
+  const retry=await service.run({scope:c.scope,playerInstanceId:c.user.instanceId,deepBackfill:false});
+  assert.equal(first.replayed,false);assert.equal(retry.replayed,true);
+  assert.equal(reconcileCalls,1,'same-head retry must not rescan chat history');
+  assert.equal(seedCalls,2,'same-head retry must recheck idempotent app seeds');
+  assert.equal(prepareCalls,2,'same-head retry must recheck world context');
+  assert.equal(primeCalls,2,'same-head retry must refill missing feed data');
+  assert.equal(retry.state.status,PLAYABLE_BOOTSTRAP_STATUS.READY);
+});
