@@ -27,9 +27,40 @@ test('history reader chunks hundreds of messages with stable ordinals and finger
 });
 
 test('card schema labels never become phone owners and inferred names require confirmation', async () => {
-  const context = { characterId: 0, name2: 'Jeren', characters: [{ name: 'Jeren', avatar: 'jeren.png', description: 'Age: 28\nHair: black\nHeight: 190\nKaelan Vance: ผู้ร่วมเหตุการณ์' }], chat: [] };
+  const context = {
+    characterId: 0,
+    name2: 'Jeren',
+    characters: [{ name: 'Jeren', avatar: 'jeren.png', description: 'Age: 28\nHair: black\nHeight: 190\nSkin: pale\nStatus: active\nKaelan Vance: ผู้ร่วมเหตุการณ์' }],
+    chat: [
+      { is_user: false, name: 'Jeren', mes: 'Note: เขาเดินเข้ามา\nOoc: ดำเนินเรื่องต่อ' },
+      { is_user: false, name: 'Jeren', mes: 'Note: บันทึกอีกครั้ง\nOoc: ดำเนินเรื่องต่อ' },
+    ],
+  };
   const manifest = await extractPlayableCastManifest(context);
   assert.deepEqual(manifest.approvedCast.map(row => row.displayName), ['Jeren']);
-  assert.equal(manifest.cast.some(row => ['Age', 'Hair', 'Height'].includes(row.displayName)), false);
+  assert.equal(manifest.cast.some(row => ['Age', 'Hair', 'Height', 'Skin', 'Status', 'Note', 'Ooc'].includes(row.displayName)), false);
   assert.equal(manifest.cast.find(row => row.displayName === 'Kaelan Vance')?.approved, false);
+});
+
+test('recurring Thai narrative roles become reviewable cast candidates', async () => {
+  const context = {
+    characterId: 0,
+    name2: 'Jeren',
+    characters: [{ name: 'Jeren', avatar: 'jeren.png' }],
+    chat: [
+      { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านยืนรออยู่ตรงประตู “กลับมาแล้วเหรอ”' },
+      { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านวางแก้วลง “มานั่งก่อนสิ”' },
+      { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านหันมามองและตอบกลับทันที' },
+      { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านถอนหายใจ ก่อนจะเดินออกไป' },
+      { is_user: true, name: 'Hector', mes: 'เจ้าของบ้านคนนั้นเป็นใคร' },
+    ],
+  };
+  const manifest = await extractPlayableCastManifest(context);
+  const landlord = manifest.cast.find(row => row.displayName === 'ชายเจ้าของบ้าน');
+  assert.ok(landlord);
+  assert.equal(landlord.approved, false);
+  assert.equal(landlord.confidence, 'candidate');
+  assert.ok(landlord.evidence.includes('recurring-role'));
+  assert.equal(manifest.cast.some(row => row.displayName === 'เจ้าของบ้าน'), false);
+  assert.equal(manifest.cast.some(row => row.displayName === 'Hector'), false);
 });

@@ -3,12 +3,20 @@ const compact = value => text(value).replace(/\s+/gu, ' ');
 const unique = values => [...new Set(values.map(compact).filter(Boolean))];
 const CARD_FIELD_LABELS = new Set([
   'age', 'animal features', 'appearance', 'background', 'body', 'build', 'clothing', 'description', 'eyes', 'eye color',
-  'gender', 'hair', 'hair color', 'height', 'history', 'likes', 'dislikes', 'name', 'note', 'notes', 'occupation',
-  'personality', 'pronouns', 'race', 'role', 'scenario', 'sex', 'species', 'speech', 'summary', 'traits', 'weight',
+  'gender', 'hair', 'hair color', 'height', 'history', 'likes', 'dislikes', 'name', 'note', 'notes', 'occupation', 'ooc',
+  'personality', 'profile', 'pronouns', 'race', 'role', 'scenario', 'sex', 'skin', 'species', 'speech', 'status',
+  'summary', 'traits', 'weight', 'world', 'setting', 'context', 'metadata', 'example dialogue', 'dialogue examples',
   'อายุ', 'รูปร่าง', 'ลักษณะ', 'ลักษณะภายนอก', 'เสื้อผ้า', 'ดวงตา', 'สีตา', 'เพศ', 'ผม', 'สีผม', 'ส่วนสูง',
   'ประวัติ', 'สิ่งที่ชอบ', 'สิ่งที่ไม่ชอบ', 'ชื่อ', 'โน้ต', 'หมายเหตุ', 'อาชีพ', 'นิสัย', 'บุคลิก', 'เผ่าพันธุ์',
+  'สถานะ', 'บทบาท', 'บริบท', 'ฉาก', 'โลก', 'ข้อมูล', 'รายละเอียด', 'ตัวอย่างบทสนทนา',
 ]);
 const fieldKey = value => compact(value).normalize('NFKC').toLocaleLowerCase().replace(/[：:]+$/u, '');
+const GENERIC_FIELD_LABEL = /^(?:(?:character|personal|basic|physical|additional|other)\s+)?(?:info(?:rmation)?|details?|profile|prompt|instructions?|attributes?|features?|abilities|skills?|powers?|strengths?|weakness(?:es)?|goals?|motivation|relationships?|inventory|summary|description|history|background|personality|appearance|scenario|setting|context|metadata|examples?|dialogue|speech|style|tone)$/iu;
+
+function isMetadataLabel(value) {
+  const key = fieldKey(value);
+  return CARD_FIELD_LABELS.has(key) || GENERIC_FIELD_LABEL.test(key);
+}
 
 function cardFromContext(context) {
   const characters = Array.isArray(context?.characters) ? context.characters : [];
@@ -54,7 +62,7 @@ function structuredNames(corpus) {
     const match = line.match(/^\s*(?:[-*•]\s*)?(?:#{1,4}\s*)?([\p{L}\p{N}][\p{L}\p{N} ._'’\-]{1,48})\s*(?::|—|–|\|)\s*\S/u);
     if (!match) continue;
     const name = compact(match[1]).replace(/^(?:name|character|ตัวละคร|ชื่อ)\s*[:：]?\s*/iu, '');
-    if (name.length >= 2 && name.length <= 50 && !/[.!?。！？]$/u.test(name) && !CARD_FIELD_LABELS.has(fieldKey(name))) rows.push(name);
+    if (name.length >= 2 && name.length <= 50 && !/[.!?。！？]$/u.test(name) && !isMetadataLabel(name)) rows.push(name);
   }
   return rows;
 }
@@ -72,6 +80,54 @@ function dialogueNames(context) {
   return [...counts].filter(([, count]) => count >= 2).map(([name, count]) => ({ name, evidenceCount: count }));
 }
 
+const RECURRING_ROLE_PATTERNS = Object.freeze([
+  ['ชายเจ้าของบ้าน', /ชายเจ้าของบ้าน/gu],
+  ['หญิงเจ้าของบ้าน', /หญิงเจ้าของบ้าน/gu],
+  ['เจ้าของบ้าน', /เจ้าของบ้าน/gu],
+  ['เจ้าหน้าที่ชุดกาวน์', /เจ้าหน้าที่(?:ใน)?ชุดกาวน์/gu],
+  ['เจ้าหน้าที่', /เจ้าหน้าที่/gu],
+  ['เจ้าของร้าน', /เจ้าของร้าน/gu],
+  ['ผู้จัดการ', /ผู้จัดการ/gu],
+  ['เลขานุการ', /เลขานุการ/gu],
+  ['บอดี้การ์ด', /บอดี้การ์ด/gu],
+  ['คนขับรถ', /คนขับรถ/gu],
+  ['นักสืบ', /นักสืบ/gu],
+  ['ตำรวจ', /ตำรวจ/gu],
+  ['พยาบาล', /พยาบาล/gu],
+  ['คุณหมอ', /คุณหมอ/gu],
+  ['ผู้คุม', /ผู้คุม/gu],
+  ['อาจารย์', /อาจารย์/gu],
+  ['the homeowner', /\bthe\s+homeowner\b/giu],
+  ['the landlord', /\bthe\s+landlord\b/giu],
+  ['the landlady', /\bthe\s+landlady\b/giu],
+  ['the shopkeeper', /\bthe\s+shopkeeper\b/giu],
+  ['the doctor', /\bthe\s+doctor\b/giu],
+  ['the nurse', /\bthe\s+nurse\b/giu],
+  ['the guard', /\bthe\s+guard\b/giu],
+  ['the manager', /\bthe\s+manager\b/giu],
+  ['the officer', /\bthe\s+officer\b/giu],
+  ['the bartender', /\bthe\s+bartender\b/giu],
+  ['the driver', /\bthe\s+driver\b/giu],
+]);
+
+function recurringRoleNames(context) {
+  const counts = new Map();
+  for (const message of Array.isArray(context?.chat) ? context.chat : []) {
+    if (message?.is_user) continue;
+    const body = text(message?.mes);
+    if (!body) continue;
+    const matchedThisTurn = [];
+    for (const [name, pattern] of RECURRING_ROLE_PATTERNS) {
+      pattern.lastIndex = 0;
+      if (pattern.test(body)) matchedThisTurn.push(name);
+    }
+    const mostSpecific = matchedThisTurn.filter(name => !matchedThisTurn.some(other => other !== name && other.includes(name)));
+    for (const name of mostSpecific) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const recurring = [...counts].filter(([, count]) => count >= 3).map(([name, evidenceCount]) => ({ name, evidenceCount }));
+  return recurring.filter(row => !recurring.some(other => other !== row && other.name.includes(row.name)));
+}
+
 async function shortDigest(value) {
   const bytes = new TextEncoder().encode(String(value));
   const hash = await globalThis.crypto.subtle.digest('SHA-256', bytes);
@@ -80,7 +136,7 @@ async function shortDigest(value) {
 
 function safeName(value) {
   const name = compact(value).replace(/^['"“”]+|['"“”]+$/gu, '');
-  if (!name || name.length > 64 || /^(?:user|you|assistant|narrator|system|ผู้ใช้|คุณ|ฉัน|ผม|เรา)$/iu.test(name)) return null;
+  if (!name || name.length > 64 || isMetadataLabel(name) || /^(?:user|you|assistant|narrator|system|ผู้ใช้|คุณ|ฉัน|ผม|เรา)$/iu.test(name)) return null;
   return name;
 }
 
@@ -107,6 +163,7 @@ export async function extractPlayableCastManifest(context = {}) {
   if (!context?.groupId && source.primaryCharacterName && source.declaredCast.length === 0) add({ name: source.primaryCharacterName, sourceId: context?.characters?.[context?.characterId]?.avatar }, 'active-card', 'confirmed', 10);
   for (const name of unique(structuredNames(source.corpus))) add({ name }, 'card-structure', 'candidate', 3);
   for (const row of dialogueNames(context)) add(row, 'recurring-dialogue', row.evidenceCount >= 4 ? 'probable' : 'candidate', row.evidenceCount);
+  for (const row of recurringRoleNames(context)) add(row, 'recurring-role', row.evidenceCount >= 5 ? 'probable' : 'candidate', row.evidenceCount);
 
   const merged = new Map();
   const rank = { candidate: 1, probable: 2, confirmed: 3 };

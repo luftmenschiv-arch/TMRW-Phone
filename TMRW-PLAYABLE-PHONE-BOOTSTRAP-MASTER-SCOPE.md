@@ -277,3 +277,23 @@ Result:
 - three broader UI files remain blocked at module load by the pre-existing missing `tests/phase17/notification-fixtures.mjs`
 - production package: 250 files, 770 import edges; verification passed
 - authoritative source, installed `v3/` runtime, and packaged `dist/.../v3/` hashes match for every touched runtime file
+
+### Checkpoint 10 — 2026-09-17
+
+Fixed cast discovery for recurring NPCs that exist only inside roleplay history. The scanner no longer depends on the SillyTavern message author or `Name: dialogue` formatting alone: recurring Thai and English narrative roles such as `ชายเจ้าของบ้าน` can now become reviewable cast candidates after appearing across multiple bot turns. They remain unselected until the player confirms them. Metadata and card-schema labels are rejected through a shared classifier across both structured-card and dialogue discovery, covering false owners such as Note, OOC, Skin, and Status in addition to the earlier physical-profile fields. Settings explains when a candidate was inferred from a recurring narrative role.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused cast/bootstrap/settings tests: 7 passed, 0 failed
+- recurring Thai narrative role is offered for review but never auto-approved
+- repeated metadata labels do not become cast candidates
+- production package: 250 files, 770 import edges; verification passed
+- authoritative source, installed `v3/` runtime, and packaged `dist/.../v3/` hashes match for the changed runtime files
