@@ -7,7 +7,7 @@ readonly APP_DIR="$VOICE_HOME/app"
 
 echo 'ติดตั้ง TMRW Local Voice สำหรับ Android…'
 pkg update -y
-pkg install -y nodejs-lts git python ffmpeg curl tar whisper-cpp
+pkg install -y nodejs-lts git python ffmpeg curl tar
 mkdir -p "$VOICE_HOME"
 
 if [[ -d "$APP_DIR/.git" ]]; then
@@ -29,6 +29,20 @@ cp "$APP_DIR/mobile-runtime/START-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin
 cp "$APP_DIR/mobile-runtime/STOP-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin/"
 cp "$APP_DIR/voice-packs/catalog/presets.v1.json" "$VOICE_HOME/current/catalog/"
 mkdir -p "$VOICE_HOME/current/stt"
+if ! command -v whisper-cli >/dev/null 2>&1 && [[ ! -x "$VOICE_HOME/current/stt/whisper-cli" ]]; then
+  if ! pkg install -y whisper-cpp; then
+    echo 'แพ็กเกจ whisper.cpp ไม่มีใน mirror นี้ กำลังสร้างตัวถอดเสียง local…'
+    pkg install -y cmake clang make
+    WHISPER_SOURCE="$VOICE_HOME/whisper.cpp-v1.9.4"
+    if [[ ! -d "$WHISPER_SOURCE/.git" ]]; then
+      git clone --depth 1 --branch v1.9.4 https://github.com/ggml-org/whisper.cpp.git "$WHISPER_SOURCE"
+    fi
+    cmake -S "$WHISPER_SOURCE" -B "$WHISPER_SOURCE/build-tmrw" -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
+    cmake --build "$WHISPER_SOURCE/build-tmrw" --config Release --target whisper-cli -j 2
+    cp "$WHISPER_SOURCE/build-tmrw/bin/whisper-cli" "$VOICE_HOME/current/stt/whisper-cli"
+    chmod 700 "$VOICE_HOME/current/stt/whisper-cli"
+  fi
+fi
 if [[ ! -s "$VOICE_HOME/current/stt/ggml-base-q5_1.bin" ]]; then
   curl -L --fail --retry 5 --retry-delay 5 --output "$VOICE_HOME/current/stt/ggml-base-q5_1.bin.partial" 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin'
   mv "$VOICE_HOME/current/stt/ggml-base-q5_1.bin.partial" "$VOICE_HOME/current/stt/ggml-base-q5_1.bin"
