@@ -31,9 +31,9 @@ export function createPreviewRootChrome({ document, onClose }) {
   device.append(screen, sheet, toast); root.append(backdrop, device); return Object.freeze({ root, device, screen, sheet, toast });
 }
 
-function ownerButton({ document, ownerLabel, onOwner, lock = false }) {
+function ownerButton({ document, ownerLabel, ownerAvatarUrl = null, onOwner, lock = false }) {
   const button = el(document, 'button'); button.type = 'button'; button.className = lock ? 'tmrw-phone-lock-owner' : 'tmrw-phone-owner-pill'; button.dataset.action = 'owner-sheet'; button.addEventListener('click', () => onOwner?.());
-  button.append(createPreviewAvatar({ document, label: ownerLabel, size: 'sm' }));
+  button.append(createPreviewAvatar({ document, label: ownerLabel, size: 'sm', imageUrl: ownerAvatarUrl }));
   const copy = el(document, 'span'); copy.append(el(document, 'small', 'โทรศัพท์ของ'), el(document, 'strong', ownerLabel)); button.append(copy);
   if (lock) { const icon = el(document, 'i'); appendIcon(document, icon, 'lock', 15); button.append(icon); }
   else button.append(createPreviewIcon({ document, name: 'chevron', size: 16 }));
@@ -49,9 +49,9 @@ function musicCard({ document, lock = false }) {
   section.append(album, copy, play); return section;
 }
 
-export function createPreviewLockScreen({ document, ownerLabel, overview, onOwner, onUnlock, onTarget, onClose }) {
+export function createPreviewLockScreen({ document, ownerLabel, ownerAvatarUrl = null, overview, onOwner, onUnlock, onTarget, onClose }) {
   const root = el(document, 'div'); root.className = 'tmrw-phone-lock'; root.dataset.role = 'lock-screen'; root.append(createPreviewStatusBar({ document }));
-  const content = el(document, 'div'); content.className = 'tmrw-phone-lock-content'; content.dataset.role = 'lock-content'; content.append(ownerButton({ document, ownerLabel, onOwner, lock: true }));
+  const content = el(document, 'div'); content.className = 'tmrw-phone-lock-content'; content.dataset.role = 'lock-content'; content.append(ownerButton({ document, ownerLabel, ownerAvatarUrl, onOwner, lock: true }));
   const clock = el(document, 'section'); clock.className = 'tmrw-phone-lock-clock'; const time = el(document, 'div', previewClock()); time.className = 'tmrw-phone-lock-time tmrw-phone-live-time'; const date = el(document, 'div', previewDate()); date.className = 'tmrw-phone-lock-date tmrw-phone-live-date'; clock.append(time, date); content.append(clock, musicCard({ document, lock: true }));
   const notifications = el(document, 'section'); notifications.className = 'tmrw-phone-lock-notifications'; notifications.setAttribute('aria-label', 'การแจ้งเตือน');
   for (const item of overview.lockNotifications || []) {
@@ -72,10 +72,10 @@ const PRIMARY_APPS = Object.freeze([['insungram','Insungram','message'],['maps',
 const SECONDARY_APPS = Object.freeze([['gallery','Gallery','gallery'],['themes','Themes','palette','theme'],['calendar','Calendar','calendar'],['weather','Weather','cloud'],['health','Health','health'],['files','Files','files']]);
 function appButton({ document, tuple, onApp }) { const [app,label,iconName,route = app] = tuple; const button = el(document, 'button'); button.type = 'button'; button.className = 'tmrw-phone-app'; button.dataset.action = 'open-app'; button.dataset.app = app; const iconWrap = el(document, 'span'); iconWrap.append(createPreviewIcon({ document, name: iconName, size: 25 })); button.append(iconWrap, el(document, 'b', label)); button.addEventListener('click', () => onApp?.(route)); return button; }
 
-export function createPreviewHome({ document, ownerLabel, overview, homePage = 0, onOwner, onApp, onPage, onDock, onLock }) {
+export function createPreviewHome({ document, ownerLabel, ownerAvatarUrl = null, overview, homePage = 0, onOwner, onApp, onPage, onDock, onLock }) {
   const root = el(document, 'div'); root.className = 'tmrw-phone-home'; root.append(createPreviewStatusBar({ document }));
   const pager = el(document, 'div'); pager.className = 'tmrw-phone-app-pages tmrw-phone-full-home-pages'; pager.dataset.role = 'home-pages';
-  const main = el(document, 'section'); main.className = 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main'; main.dataset.page = '0'; main.append(ownerButton({ document, ownerLabel, onOwner }));
+  const main = el(document, 'section'); main.className = 'tmrw-phone-app-page tmrw-phone-home-panel tmrw-phone-home-panel--main'; main.dataset.page = '0'; main.append(ownerButton({ document, ownerLabel, ownerAvatarUrl, onOwner }));
   const clock = el(document, 'section'); clock.className = 'tmrw-phone-clock-block'; const time = el(document, 'div', previewClock()); time.className = 'tmrw-phone-home-time tmrw-phone-live-time'; const date = el(document, 'div', previewDate()); date.className = 'tmrw-phone-home-date'; clock.append(time, date, el(document, 'p', overview.status || 'พร้อมใช้งาน')); main.append(clock, musicCard({ document }));
   const primary = el(document, 'div'); primary.className = 'tmrw-phone-app-grid tmrw-phone-primary-grid'; for (const tuple of PRIMARY_APPS) primary.append(appButton({ document, tuple, badges: overview.badges, onApp })); main.append(primary);
   const note = el(document, 'div'); note.className = 'tmrw-phone-home-note'; note.append(el(document, 'span', 'NOTE'), el(document, 'p', overview.noteText || 'ยังไม่มีโน้ต')); main.append(note);

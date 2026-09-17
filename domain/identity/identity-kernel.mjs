@@ -43,7 +43,7 @@ function presentationAliases(existing, requested) {
 }
 
 function accountSpecs(owner) {
-  if (!owner.accounts) return [{ key: 'primary', kind: 'phone', label: `${owner.displayName} Phone Account`, isPrimary: true }];
+  if (!owner.accounts) return [{ key: 'primary', kind: 'phone', label: owner.displayName, isPrimary: true }];
   if (!Array.isArray(owner.accounts) || owner.accounts.length < 1) throw new TypeError('Each identity owner must have at least one Account');
   const keys = owner.accounts.map(row => requireText(row.key, 'account.key'));
   if (new Set(keys).size !== keys.length) throw new TypeError('Account keys must be unique per owner');
@@ -102,7 +102,26 @@ export class V3IdentityKernel {
     const now = this.#now();
     const batchId = await deterministicIdentityId('identity-batch', { sourceAuthority: 'tmrw-v3-phase2', stableSourceId: manifestId });
     const existingBatch = await this.#unitOfWork.readonly({ stores: ['identityBatches'] }, repositories => repositories.identityBatches.getByIndex('by_manifest', manifestId));
-    if (existingBatch?.status === 'active') return existingBatch.result;
+    if (existingBatch?.status === 'active') {
+      const cardId = await deterministicIdentityId('character-card', { sourceAuthority, stableSourceId: input.card.sourceCardId });
+      const requestedActorIds = new Set(await Promise.all(input.cast.map(row => deterministicIdentityId('actor', { sourceAuthority, stableSourceId: row.sourceActorId }))));
+      await this.#unitOfWork.readwrite({ stores: ['characterCardActors'] }, async repositories => {
+        const memberships = await repositories.characterCardActors.listByIndex('by_card_status', [cardId, 'active']);
+        const removed = await repositories.characterCardActors.listByIndex('by_card_status', [cardId, 'removed']);
+        for (const membership of [...memberships, ...removed]) {
+          const status = requestedActorIds.has(membership.actorId) ? 'active' : 'removed';
+          if (membership.status === status) continue;
+          await repositories.characterCardActors.put(createCharacterCardMembership({
+            ...membership,
+            status,
+            updatedAt: now,
+            manifestId,
+            existingManifestIds: membership.manifestIds,
+          }));
+        }
+      });
+      return existingBatch.result;
+    }
 
     const cardId = await deterministicIdentityId('character-card', { sourceAuthority, stableSourceId: input.card.sourceCardId });
     const storyId = await deterministicIdentityId('story', { sourceAuthority, stableSourceId: input.story.sourceStoryId, scopeParts: [cardId] });

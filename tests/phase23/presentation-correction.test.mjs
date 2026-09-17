@@ -15,12 +15,14 @@ const hasClass = (node, name) => String(node?.className || '').split(/\s+/).incl
 test('presentation correction preserves Preview app icon identity, neutral fallback, empty notification geometry, and safe player presentation', async () => {
   const document = new FakeDocument();
   const overview = { lockNotifications: [], status: 'พร้อมใช้งาน', noteText: null, steps: null, badges: {} };
-  const lock = createPreviewLockScreen({ document, ownerLabel: 'Product Owner', overview, onOwner() {}, onUnlock() {}, onTarget() {}, onClose() {} });
+  const lock = createPreviewLockScreen({ document, ownerLabel: 'Product Owner', ownerAvatarUrl: '/characters/owner.png', overview, onOwner() {}, onUnlock() {}, onTarget() {}, onClose() {} });
   assert.match(allText(lock), /Product Owner/); assert.doesNotMatch(allText(lock), /\{\{[^{}]+\}\}/);
+  assert.equal(find(lock, node => node.tagName === 'img')?.src, '/characters/owner.png');
   const notifications = find(lock, node => hasClass(node, 'tmrw-phone-lock-notifications')); assert.ok(notifications); assert.equal(notifications.children.length, 1);
   const empty = notifications.children[0]; assert.ok(hasClass(empty, 'tmrw-phone-lock-notification')); assert.ok(hasClass(empty, 'tmrw-phone-lock-notification--empty')); assert.equal(empty.children.length, 3); assert.match(allText(empty), /ไม่มีการแจ้งเตือน/); assert.ok(find(empty, node => node.dataset?.icon === 'notifications'));
 
-  const home = createPreviewHome({ document, ownerLabel: 'Product Owner', overview, homePage: 0, onOwner() {}, onApp() {}, onPage() {}, onDock() {}, onLock() {} });
+  const home = createPreviewHome({ document, ownerLabel: 'Product Owner', ownerAvatarUrl: '/characters/owner.png', overview, homePage: 0, onOwner() {}, onApp() {}, onPage() {}, onDock() {}, onLock() {} });
+  assert.equal(find(home, node => node.tagName === 'img')?.src, '/characters/owner.png');
   const expectedIcons = new Map([['insungram','message'],['maps','location'],['shop','bag'],['wallet','wallet'],['calls','phone'],['notes','notes'],['gallery','gallery'],['themes','palette'],['calendar','calendar'],['weather','cloud'],['health','health'],['files','files']]);
   for (const [app, expected] of expectedIcons) { const button = find(home, node => node.dataset?.app === app); assert.ok(button, app); const icon = find(button, node => hasClass(node, 'tmrw-v3-preview-icon')); assert.ok(icon, `${app} icon`); assert.equal(icon.dataset.icon, expected); assert.equal(icon.dataset.fallback, undefined); if (app !== 'calls') assert.notEqual(icon.dataset.icon, 'phone'); }
   const dock = find(home, node => hasClass(node, 'tmrw-phone-dock')); assert.ok(dock); assert.deepEqual(dock.children.map(button => find(button, node => hasClass(node, 'tmrw-v3-preview-icon'))?.dataset.icon), ['user','phone','globe','settings']);

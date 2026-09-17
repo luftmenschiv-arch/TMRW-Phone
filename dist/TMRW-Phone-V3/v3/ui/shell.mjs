@@ -140,7 +140,7 @@ export class TmrwPhoneShell {
 
   async #showOwnerSheet(devices) {
     if (!this.#sheetLayer) return;
-    const rows = devices.map(row => Object.freeze({ ...row, selected: row.deviceId === this.#selectedDeviceId, avatarUrl: row.kind === 'my-phone' ? this.#playerAvatarUrl : this.#avatarUrlFor(row.label, row.instanceId) }));
+    const rows = devices.map(row => Object.freeze({ ...row, selected: row.deviceId === this.#selectedDeviceId, avatarUrl: row.avatarUrl || (row.kind === 'my-phone' ? this.#playerAvatarUrl : this.#avatarUrlFor(row.label, row.instanceId)) }));
     const sheet = createPreviewOwnerSheet({ document: this.#document, devices: rows, onSelect: deviceId => { this.#closeSheet(); void this.selectDevice(deviceId); }, onClose: () => this.#closeSheet() });
     this.#sheetLayer.className = 'is-open'; this.#sheetLayer.replaceChildren(sheet.backdrop, sheet.sheet);
   }
@@ -159,10 +159,11 @@ export class TmrwPhoneShell {
       const overview = await this.#models.previewOverview({ scope: this.#scope, deviceId: this.#selectedDeviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, controller: this.#controller }); if (!isCurrent()) return null;
       root.dataset.theme = overview.themeId || 'light-blue';
       const onOwner = () => { void this.#showOwnerSheet(roster); };
+      const ownerAvatarUrl = selected.avatarUrl || (selected.kind === 'my-phone' ? this.#playerAvatarUrl : this.#avatarUrlFor(selected.label, selected.instanceId));
       if (this.#presentationView === 'lock') {
-        screen.replaceChildren(createPreviewLockScreen({ document: this.#document, ownerLabel: selected.label, overview, onOwner, onUnlock: target => { this.#presentationView = 'home'; if (target && target !== 'home') this.#openRoute(target); else void this.renderActive(); }, onTarget: target => { this.#presentationView = 'home'; this.#openRoute(target); }, onClose: () => this.close() }));
+        screen.replaceChildren(createPreviewLockScreen({ document: this.#document, ownerLabel: selected.label, ownerAvatarUrl, overview, onOwner, onUnlock: target => { this.#presentationView = 'home'; if (target && target !== 'home') this.#openRoute(target); else void this.renderActive(); }, onTarget: target => { this.#presentationView = 'home'; this.#openRoute(target); }, onClose: () => this.close() }));
       } else {
-        screen.replaceChildren(createPreviewHome({ document: this.#document, ownerLabel: selected.label, overview, homePage: this.#homePage, onOwner, onApp: nextRoute => this.#openRoute(nextRoute), onPage: (page, pager) => { this.#homePage = Math.max(0, Math.min(1, Number(page) || 0)); this.#homePageByDevice.set(this.#selectedDeviceId, this.#homePage); if (!pager) return; const left = this.#homePage * Math.max(1, Number(pager.clientWidth || 0)); if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior: 'smooth' }); else pager.scrollLeft = left; }, onDock: action => { if (action === 'owner') onOwner(); else this.#openRoute(action); }, onLock: () => this.#lock() }));
+        screen.replaceChildren(createPreviewHome({ document: this.#document, ownerLabel: selected.label, ownerAvatarUrl, overview, homePage: this.#homePage, onOwner, onApp: nextRoute => this.#openRoute(nextRoute), onPage: (page, pager) => { this.#homePage = Math.max(0, Math.min(1, Number(page) || 0)); this.#homePageByDevice.set(this.#selectedDeviceId, this.#homePage); if (!pager) return; const left = this.#homePage * Math.max(1, Number(pager.clientWidth || 0)); if (typeof pager.scrollTo === 'function') pager.scrollTo({ left, behavior: 'smooth' }); else pager.scrollLeft = left; }, onDock: action => { if (action === 'owner') onOwner(); else this.#openRoute(action); }, onLock: () => this.#lock() }));
       }
       this.#renderedRoute = route; this.#metrics.appRegionUpdates += 1; return overview;
     }

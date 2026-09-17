@@ -29,6 +29,10 @@ function identityNameCollides(value, protectedNames = []) {
   const current = identityNameKey(value); if (current.length < 3) return false;
   return protectedNames.some(name => { const expected = identityNameKey(name); return expected.length >= 3 && (current === expected || current.startsWith(expected) || expected.startsWith(current)); });
 }
+const isLegacyPhoneFallback = messages => messages.length === 2
+  && messages.some(row => String(row?.text || '').startsWith('ช่วงนี้คนแถวนี้กำลังพูดถึงเรื่องนี้กันเยอะ:'))
+  && messages.some(row => String(row?.text || '') === 'ไว้ฉันจะลองดูสถานการณ์อีกที');
+const isLegacyFeedFallback = post => String(post?.text || '').includes('— คนในพื้นที่มองเรื่องนี้กันอย่างไรบ้าง?');
 
 export class PhoneShellViewModels {
   #unitOfWork; #phones; #contacts; #settings; #playableBootstrap; #worldPulse; #imageProvider; #guide; #messaging; #calls; #callCoordinator; #social; #insungram; #live; #notifications; #phoneWorldUtilities; #calendar; #commerce; #voiceProfiles; #voiceAudio; #voiceCapability; #voiceAdapter; #callTimingDiagnostics;
@@ -52,7 +56,7 @@ export class PhoneShellViewModels {
         const account = await repositories.accounts.get(accountId); if (!account) continue;
         const instance = await repositories.instances.get(account.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId);
         const persona = await repositories.socialPersonas.getByIndex('by_scope_account', [scope.storyId, scope.branchId, accountId]);
-        entries.push([accountId, Object.freeze({ accountId, actorId: actor?.id || null, instanceId: instance?.id || null, label: presentationDisplayName(persona?.displayName, instance?.displayNameOverride, actor?.displayName, ...(actor?.aliases || []), account.label, 'บัญชี'), avatarUrl: persona?.avatarUrl || null, bio: persona?.bio || '', note: persona?.note || '' })]);
+        entries.push([accountId, Object.freeze({ accountId, actorId: actor?.id || null, instanceId: instance?.id || null, sourceAuthority: actor?.sourceAuthority || null, label: presentationDisplayName(persona?.displayName, instance?.displayNameOverride, actor?.displayName, ...(actor?.aliases || []), account.label, 'บัญชี'), avatarUrl: persona?.avatarUrl || null, bio: persona?.bio || '', note: persona?.note || '' })]);
       }
       return Object.freeze(Object.fromEntries(entries));
     });
@@ -102,7 +106,7 @@ export class PhoneShellViewModels {
   endLocation(input) { if (!this.#phoneWorldUtilities) throw new Error('Maps service is unavailable'); return this.#phoneWorldUtilities.endLocation(input); }
   async deviceRoster(scopeInput, { playerActorId = null, playerDisplayName = null, activeCharacterDisplayName = null } = {}) {
     const scope = requireEventScope(scopeInput);
-    return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors', 'stories', 'characterCardActors'], scope }, async repositories => {
+    return this.#unitOfWork.readonly({ stores: ['phoneStates', 'instances', 'actors', 'accounts', 'socialPersonas', 'stories', 'characterCardActors'], scope }, async repositories => {
       const states = await repositories.phoneStates.list(); const roster = [];
       const story = await repositories.stories.get(scope.storyId); const memberships = story ? await repositories.characterCardActors.listByIndex('by_card_status', [story.characterCardId, 'active']) : []; const activeActorIds = new Set(memberships.map(row => row.actorId));
       const nonPlayerCount = states.length - 1;
@@ -111,7 +115,10 @@ export class PhoneShellViewModels {
         const playerOwned = isPlayerControlled(actor); if (!playerOwned && !activeActorIds.has(actor.id)) continue;
         const liveCharacterName = !playerOwned && nonPlayerCount === 1 ? activeCharacterDisplayName : null;
         const label = presentationDisplayName(instance.displayNameOverride, playerOwned && actor.id === playerActorId ? playerDisplayName : null, liveCharacterName, actor.displayName, ...(actor.aliases || []), playerOwned ? 'เจ้าของเครื่อง' : 'ไม่ทราบชื่อ');
-        roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label, kind: playerOwned ? 'my-phone' : 'their-phone', lockState: state.lockState }));
+        const accounts = await repositories.accounts.listByIndex('by_owner_scope', [scope.storyId, scope.branchId, instance.id]);
+        const account = accounts.find(row => row.isPrimary && row.deviceIds?.includes(state.deviceId)) || accounts.find(row => row.deviceIds?.includes(state.deviceId)) || accounts[0] || null;
+        const persona = account ? await repositories.socialPersonas.getByIndex('by_scope_account', [scope.storyId, scope.branchId, account.id]) : null;
+        roster.push(Object.freeze({ deviceId: state.deviceId, actorId: actor.id, instanceId: instance.id, label: presentationDisplayName(persona?.displayName, label), avatarUrl: persona?.avatarUrl || null, kind: playerOwned ? 'my-phone' : 'their-phone', lockState: state.lockState }));
       }
       return Object.freeze(roster.sort((left, right) => (left.kind === 'my-phone' ? -1 : right.kind === 'my-phone' ? 1 : left.label.localeCompare(right.label) || left.deviceId.localeCompare(right.deviceId))));
     });
@@ -222,10 +229,12 @@ export class PhoneShellViewModels {
       const label = thread.kind === 'dm' ? (participantLabels[0] || 'ข้อความส่วนตัว') : (participantLabels.length ? participantLabels.join(', ') : `กลุ่ม ${thread.participantInstanceIds.length} คน`);
       const primaryContact = thread.kind === 'dm' ? matchingContacts[0] || null : null;
       const secondary = primaryContact?.savedName ? primaryContact.number : (thread.kind === 'group' ? `${thread.participantAccountIds.length} คน` : '');
-      const latestMessages = await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 1 });
-      const latest = latestMessages.at(-1) || null;
+      const recentMessages = await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 8 });
+      if (otherAccountIds.some(accountId => accountPresentations[accountId]?.sourceAuthority === 'tmrw-world-social') && isLegacyPhoneFallback(recentMessages)) return null;
+      const latest = recentMessages.at(-1) || null;
       return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, avatarUrl: accountPresentations[otherAccountIds[0]]?.avatarUrl || null, counterpartAccountId: otherAccountIds[0] || null, counterpartInstanceId: accountPresentations[otherAccountIds[0]]?.instanceId || null, preview: latest?.text || 'ยังไม่มีข้อความ', lastActivitySequence: Number(latest?.sourceEventSequence || thread.sourceEventSequence || 0), participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
     })) : [];
+    threadRows = threadRows.filter(Boolean);
     threadRows = Object.freeze(threadRows.sort((left, right) => right.lastActivitySequence - left.lastActivitySequence || left.label.localeCompare(right.label) || left.threadId.localeCompare(right.threadId)));
     const activeThreadId = threadRows.some(thread => thread.threadId === selectedThreadId) ? selectedThreadId : (threadRows[0]?.threadId || null);
     const messages = route === 'messages' && this.#messaging && activeThreadId && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: activeThreadId }) : Object.freeze([]);
@@ -246,7 +255,7 @@ export class PhoneShellViewModels {
       if (!this.#social) socialError = 'Feed service is unavailable.';
       else { try {
         feed = await this.#social.listFeed({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
-        const enrichedItems = await Promise.all((feed.items || []).map(async post => {
+        const enrichedItems = await Promise.all((feed.items || []).filter(post => !isLegacyFeedFallback(post)).map(async post => {
           const [comments, likes] = await Promise.all([this.#social.listComments({ scope, viewerAccountId: opened.perspective.accountId, postId: post.postId, limit: 30 }), this.#social.listEngagements({ scope, targetId: post.postId, limit: 100 })]);
           const roots=comments.items||[];const children=await Promise.all(roots.map(comment=>this.#social.listComments({scope,viewerAccountId:opened.perspective.accountId,postId:post.postId,parentCommentId:comment.commentId,limit:30})));const discussion=roots.flatMap((comment,index)=>[comment,...(children[index]?.items||[])]).slice(0,60);
           return Object.freeze({ ...post, commentPreview: Object.freeze(discussion), commentCount: discussion.length, likeCount: likes.filter(row => row.activeState === 'active').length, likedByViewer: likes.some(row => row.actorAccountId === opened.perspective.accountId && row.kind === 'like' && row.activeState === 'active') });

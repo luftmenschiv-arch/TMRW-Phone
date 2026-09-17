@@ -109,4 +109,10 @@ test('explicit first-time selection is remembered and removes unselected phone o
   assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label), ['Character 1']);
   const kept = await c.messages.listMessages({ scope: c.scope, viewerAccountId: c.user.accountId, threadId: dm.thread.threadId });
   assert.deepEqual(kept.map(row => row.text), ['ข้อความตอบเดิมต้องไม่หาย']);
+  await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, approvedSourceActorIds: manifest.cast.map(row => row.sourceActorId), selectionConfirmed: true, deepBackfill: false });
+  assert.equal((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').length, 3);
+  await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, approvedSourceActorIds: [selected.sourceActorId], selectionConfirmed: true, deepBackfill: false });
+  assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label), ['Character 1'], 'replaying a cached selection must reconcile memberships that another manifest reactivated');
+  const stillKept = await c.messages.listMessages({ scope: c.scope, viewerAccountId: c.user.accountId, threadId: dm.thread.threadId });
+  assert.deepEqual(stillKept.map(row => row.text), ['ข้อความตอบเดิมต้องไม่หาย']);
 });

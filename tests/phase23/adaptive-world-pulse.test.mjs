@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupPhase15, postFrom, commentFrom } from '../phase15/social-fixtures.mjs';
+import { setupPhase15, postFrom, commentFrom, socialSource } from '../phase15/social-fixtures.mjs';
 import { AdaptiveWorldPulseService } from '../../application/playable-bootstrap/adaptive-world-pulse.mjs';
 import { CanonicalEventEngine } from '../../domain/events/event-transaction.mjs';
 import { createPhase23EventTypeRegistry } from '../../domain/utilities/phone-world-event-types.mjs';
@@ -10,6 +10,13 @@ import { createMessagingProjector } from '../../domain/messaging/messaging-proje
 import { MessageService } from '../../domain/messaging/message-service.mjs';
 
 const feedBatch = () => ({ posts:Array.from({length:9},(_,index)=>({ author:`คนงานเขตเหนือ ${index+1}`, text:`ประกาศตลาดแรงงานครึ่งสัตว์ฉบับที่ ${index+1} กำลังถูกวิจารณ์เรื่องค่าธรรมเนียม`, likes:3, comments:[{author:'เสมียนตลาดกลาง',text:'กฎใหม่นี้กระทบทั้งนายหน้าและครอบครัวผู้ซื้อโดยตรง'},{author:'คนส่งข่าวประจำตรอก',text:'ฝั่งประตูเหนือเริ่มตรวจเอกสารเข้มขึ้นแล้ว'}] })) });
+
+test('device roster uses the saved profile avatar and display name before card fallbacks', async () => {
+  const c=await setupPhase15({castSize:1,manifestId:'device-roster-profile-avatar'});
+  await c.social.setPersona({scope:c.scope,actorId:c.alice.actorId,instanceId:c.alice.instanceId,accountId:c.alice.accountId,persona:{displayName:'ชื่อในโปรไฟล์',avatarUrl:'data:image/png;base64,profile'},source:socialSource('roster-profile'),idempotencyKey:'roster-profile'});
+  const row=(await c.viewModels.deviceRoster(c.scope)).find(item=>item.actorId===c.alice.actorId);
+  assert.equal(row.label,'ชื่อในโปรไฟล์');assert.equal(row.avatarUrl,'data:image/png;base64,profile');
+});
 
 test('adaptive pulse grounds the feed in the current RP world, persists its bible, and replies live to the player', async () => {
   const c = await setupPhase15({ castSize:1, manifestId:'adaptive-world-pulse' });
@@ -52,7 +59,7 @@ test('phone activity gives each bot a contextual DM and creates a populated publ
   const liveEngine=new CanonicalEventEngine({database:c.database,eventTypes:createPhase23EventTypeRegistry(),projectors:[createMessagingProjector(),createLiveProjector()],now:()=> '2026-09-17T08:00:00.000Z'});await liveEngine.rebuild(c.scope);const live=new LiveService({database:c.database,eventEngine:liveEngine});const messages=new MessageService({database:c.database,eventEngine:liveEngine});
   const context={name1:'เฮคเตอร์',name2:'เจเรน',scenario:'นครการค้าทาสครึ่งสัตว์',chat:[{is_user:false,name:'เจเรน',mes:'คืนนี้ตลาดกลางจะตรวจตราเข้มกว่าปกติ'}],generateQuietPrompt:async options=>{
     if(options.quietName==='TMRW World Social Bible')return JSON.stringify({worldSummary:'นครการค้าทาสครึ่งสัตว์',socialOrder:'นายหน้าและแรงงาน',economyAndLaw:'ตลาดกลางออกใบทะเบียน',technologyAndMedia:'ใช้เครือข่ายข่าว',languageStyle:'ภาษาไทย',publicNorms:['ตรวจทะเบียน'],institutions:['ตลาดกลาง'],tensions:['ค่าธรรมเนียม'],currentPublicEvents:['คืนนี้ด่านตรวจเข้มขึ้น']});
-    if(options.quietName==='TMRW Phone Activity')return JSON.stringify({conversations:[{owner:'Character 1',contact:'เฮคเตอร์ โลเคชันเดอร์',messages:[{sender:'contact',text:'ข้อความจากตัวตนผู้เล่นซ้ำที่ต้องถูกทิ้ง'}]},{owner:'Character 1',contact:'เสมียนเวรดึก',messages:[{sender:'contact',text:'คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ'},{sender:'owner',text:'รับทราบ เดี๋ยวฉันหลีกทางนั้น'}]},{owner:'Character 1',contact:'หัวหน้าเวร',messages:[{sender:'contact',text:'เปลี่ยนกะตอนเที่ยงคืน'}]},{owner:'Character 1',contact:'เจ้าของร้านชา',messages:[{sender:'contact',text:'ของที่ฝากไว้มาถึงแล้ว'}]}],lives:[{host:'นักข่าวตลาดกลาง',title:'เกาะติดด่านตรวจคืนนี้',topic:'ข่าวในเมือง',description:'รายงานบรรยากาศหน้าประตูเหนือ',comments:[{author:'คนส่งของเวรดึก',text:'แถวเริ่มยาวแล้ว'},{author:'แม่ค้าร้านชา',text:'ฝั่งตะวันออกยังผ่านได้'}]}]});
+    if(options.quietName==='TMRW Phone Activity')return JSON.stringify({conversations:[{ownerKey:'owner-1',contact:'เฮคเตอร์ โลเคชันเดอร์',messages:[{sender:'contact',text:'ข้อความจากตัวตนผู้เล่นซ้ำที่ต้องถูกทิ้ง'},{sender:'owner',text:'ไม่ควรเห็น'}]},{ownerKey:'owner-1',contact:'เสมียนเวรดึก',messages:[{sender:'contact',text:'คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ'},{sender:'owner',text:'รับทราบ เดี๋ยวฉันหลีกทางนั้น'}]},{ownerKey:'owner-1',contact:'หัวหน้าเวร',messages:[{sender:'contact',text:'เปลี่ยนกะตอนเที่ยงคืน'},{sender:'owner',text:'ฉันจะไปให้ตรงเวลา'}]},{ownerKey:'owner-1',contact:'เจ้าของร้านชา',messages:[{sender:'contact',text:'ของที่ฝากไว้มาถึงแล้ว'},{sender:'owner',text:'เก็บไว้หลังร้านก่อน'}]}],lives:[{host:'นักข่าวตลาดกลาง',title:'เกาะติดด่านตรวจคืนนี้',topic:'ข่าวในเมือง',description:'รายงานบรรยากาศหน้าประตูเหนือ',comments:[{author:'คนส่งของเวรดึก',text:'แถวเริ่มยาวแล้ว'},{author:'แม่ค้าร้านชา',text:'ฝั่งตะวันออกยังผ่านได้'}]}]});
     throw new Error(`unexpected prompt ${options.quietName}`);
   }};
   const pulse=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,messageService:messages,liveService:live,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:00:00.000Z'});
@@ -65,4 +72,21 @@ test('phone activity gives each bot a contextual DM and creates a populated publ
   const sessions=await live.listSessions({scope:c.scope,viewerAccountId:c.user.accountId});assert.equal(sessions.items.length,1);
   const comments=await live.listMessages({scope:c.scope,viewerAccountId:c.user.accountId,sessionId:sessions.items[0].sessionId});assert.equal(comments.items.length,2);
   const replay=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.alice.deviceId],fingerprint:'phone-head-a'});assert.equal(replay.replayed,true);
+});
+
+test('phone activity failure produces three distinct readable conversations instead of permanent duplicate placeholders', async () => {
+  const c=await setupPhase15({castSize:1,manifestId:'adaptive-phone-activity-fallback'});
+  const context={name1:'ผู้เล่น',name2:'Character 1',scenario:'เมืองกำลังรับมือเหตุการณ์สำคัญ',chat:[],generateQuietPrompt:async options=>{
+    if(options.quietName==='TMRW World Social Bible')return JSON.stringify({worldSummary:'เมืองที่ผู้คนติดตามข่าวจากหน้างาน',socialOrder:'ผู้ประสานงานและคนทำงาน',economyAndLaw:'ใช้กฎของเมือง',technologyAndMedia:'ใช้โทรศัพท์',languageStyle:'ภาษาไทย',publicNorms:['ตรวจสอบข่าวก่อนส่งต่อ'],institutions:['ศูนย์ประสานงาน'],tensions:['ข้อมูลจากแต่ละฝ่ายยังไม่ตรงกัน'],currentPublicEvents:['ศูนย์ประสานงานกำลังรวบรวมข้อมูลล่าสุด']});
+    if(options.quietName==='TMRW Phone Activity')throw new Error('503 Service Unavailable');
+    throw new Error(`unexpected prompt ${options.quietName}`);
+  }};
+  const pulse=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,messageService:c.messages,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:00:00.000Z'});
+  const result=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.alice.deviceId],fingerprint:'phone-head-fallback'});
+  assert.equal(result.conversations,3);
+  const threads=await c.messages.listThreads({scope:c.scope,viewerAccountId:c.alice.accountId});assert.equal(threads.length,3);
+  const sets=await Promise.all(threads.map(thread=>c.messages.listMessages({scope:c.scope,viewerAccountId:c.alice.accountId,threadId:thread.threadId})));
+  assert.equal(new Set(sets.map(rows=>rows.map(row=>row.text).join('|'))).size,3);
+  assert.equal(sets.every(rows=>rows.length===4),true);
+  assert.equal(sets.flat().some(row=>row.text==='ไว้ฉันจะลองดูสถานการณ์อีกที'),false);
 });

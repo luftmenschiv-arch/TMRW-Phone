@@ -13,6 +13,12 @@ const clean = value => String(value ?? '').replace(/<[^>]+>/gu, ' ').replace(/\s
 const bounded = (value, length) => clean(value).slice(0, length);
 const unique = values => [...new Set((values || []).map(clean).filter(Boolean))];
 const fallbackHandles = Object.freeze(['คนเฝ้าข่าว', 'เสียงจากตลาด', 'คนผ่านทาง', 'นักจดเรื่องเมือง', 'ผู้เห็นเหตุการณ์', 'คนนอกวง']);
+const fallbackFeedHandles = Object.freeze(['คนเวรเช้า', 'เจ้าของร้านหัวมุม', 'คนส่งของประจำย่าน', 'คนทำงานกะดึก', 'นักข่าวท้องถิ่น', 'คนในละแวกนี้', 'บัญชีเล่าเรื่องเมือง', 'ผู้ใช้ทางผ่าน', 'คนเฝ้าสถานการณ์']);
+const fallbackConversationProfiles = Object.freeze([
+  Object.freeze({ contact: 'คนในทีม', opening: fact => `มีรายละเอียดใหม่เรื่อง ${fact} ส่งมาให้ดูก่อน เผื่อต้องตัดสินใจวันนี้`, owner: 'ส่งต้นทางกับเวลาที่ได้ข่าวมาด้วย ฉันจะเช็กเอง', followup: 'ได้ เดี๋ยวรวมเฉพาะข้อมูลที่ยืนยันแล้วส่งให้', closing: 'ขอบใจ ถ้ามีอะไรเปลี่ยนโทรมาทันที' }),
+  Object.freeze({ contact: 'ผู้ประสานงาน', opening: fact => `ตอนนี้คนที่เกี่ยวข้องกำลังถามเรื่อง ${fact} จะให้ตอบไปทางไหน`, owner: 'ยังไม่ต้องสรุปแทนฉัน ขอรายละเอียดที่ขาดมาก่อน', followup: 'รับทราบ ฉันจะไล่ถามทีละฝ่ายแล้วอัปเดตในห้องนี้', closing: 'ดี เอาเฉพาะสิ่งที่ตรวจสอบได้' }),
+  Object.freeze({ contact: 'คนรู้จักเก่า', opening: fact => `เห็นข่าวเรื่อง ${fact} แล้วนึกถึงนาย ช่วงนี้ยังรับมือไหวไหม`, owner: 'ยังไหว แค่ยุ่งกว่าปกติหน่อย', followup: 'ถ้าต้องการคนช่วยประสานอะไรบอกได้ ฉันยังติดต่อคนเดิมได้', closing: 'ไว้ฉันรู้สถานการณ์ชัดกว่านี้แล้วจะบอก' }),
+]);
 const looksLikeStructuredPromptLeak = value => /(?:\[?#{1,6}\s*(?:world\s*setting|profile)|\{\{\s*(?:user|char)\s*\}\}|(?:^|[\s\[])\b(?:name|age|race|height|skin|status|personality|scenario)\s*:)/imu.test(String(value || ''));
 const publicFallbackText = 'ผู้คนในพื้นที่กำลังจับตาความเปลี่ยนแปลงรอบตัว และแลกเปลี่ยนข่าวที่ตรวจสอบได้จากชีวิตประจำวัน';
 const identityNameKey = value => clean(value).normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -96,10 +102,10 @@ function parsePhoneActivity(value) {
   try {
     const parsed = JSON.parse(jsonCandidate(value));
     const conversations = (Array.isArray(parsed?.conversations) ? parsed.conversations : []).slice(0, 12).map(row => ({
-      owner: bounded(row?.owner, 80),
+      ownerKey: bounded(row?.ownerKey, 40), owner: bounded(row?.owner, 80),
       contact: bounded(row?.contact, 80),
       messages: (Array.isArray(row?.messages) ? row.messages : []).slice(0, 8).map(message => ({ sender: message?.sender === 'owner' ? 'owner' : 'contact', text: bounded(message?.text, 900) })).filter(message => message.text),
-    })).filter(row => row.owner && row.contact && row.messages.length);
+    })).filter(row => (row.ownerKey || row.owner) && row.contact && row.messages.length >= 2);
     const lives = (Array.isArray(parsed?.lives) ? parsed.lives : []).slice(0, 3).map(row => ({
       host: bounded(row?.host, 80), title: bounded(row?.title, 160), topic: bounded(row?.topic, 100), description: bounded(row?.description, 800),
       comments: (Array.isArray(row?.comments) ? row.comments : []).slice(0, 8).map(comment => ({ author: bounded(comment?.author, 80), text: bounded(comment?.text, 500) })).filter(comment => comment.author && comment.text),
@@ -110,10 +116,28 @@ function parsePhoneActivity(value) {
 
 function fallbackBatch(bible, startIndex) {
   const facts = unique([...(bible.currentPublicEvents || []), ...(bible.tensions || []), ...(bible.publicNorms || []), bible.worldSummary]).filter(value => value && !looksLikeStructuredPromptLeak(value));
+  const postTemplates = [
+    fact => `${fact} ใครอยู่ใกล้เหตุการณ์ช่วยยืนยันหน่อย ตอนนี้ข่าวไปกันคนละทางแล้ว`,
+    fact => `วันนี้คนแถวนี้คุยกันแต่เรื่อง ${fact} คนที่ต้องออกไปข้างนอกเผื่อเวลากันด้วย`,
+    fact => `ขอถามคนที่รู้จริงเรื่อง ${fact} ตอนนี้มีอะไรเปลี่ยนจากเมื่อวานบ้าง`,
+    fact => `ได้ยินจากคนทำงานในพื้นที่ว่า ${fact} ยังไม่สรุปนะ แต่อย่าเพิ่งส่งต่อข้อมูลผิด`,
+    fact => `${fact} ถ้ามีประกาศใหม่ฝากไว้ใต้โพสต์นี้ จะได้รวมข้อมูลไว้ที่เดียว`,
+    fact => `มุมของคนทำงานนะ เรื่อง ${fact} กระทบหน้างานจริงกว่าที่คนข้างนอกคิด`,
+    fact => `ใครตามเรื่อง ${fact} อยู่บ้าง มีจุดไหนที่สื่อสารกันคลาดเคลื่อนหรือเปล่า`,
+    fact => `บันทึกไว้ก่อน: ${fact} เดี๋ยวเย็นนี้กลับมาอัปเดตอีกที`,
+    fact => `อยากฟังจากคนที่อยู่ในเหตุการณ์ตรง ๆ เรื่อง ${fact} มากกว่าข้อความที่แชร์ต่อกันมา`,
+  ];
+  const commentTemplates = [
+    ['ฉันอยู่แถวนั้นพอดี รายละเอียดบางอย่างยังไม่ตรงกับที่แชร์กัน', 'ถ้ามีต้นทางประกาศแล้วช่วยแปะไว้หน่อย จะได้ไม่เดากันต่อ'],
+    ['ฝั่งที่ฉันอยู่ยังเดินทางได้ แต่คนเริ่มเยอะกว่าปกติ', 'ขอบคุณที่เตือน กำลังจะออกไปพอดี'],
+    ['อยากรู้เหมือนกัน เห็นแต่คนเล่าต่อกันมายังไม่มีใครยืนยัน', 'ลองถามคนทำงานตรงนั้นดีกว่า น่าจะชัดที่สุด'],
+    ['อันนี้ตรงกับที่ฉันได้ยินมา แต่เวลายังไม่แน่นอน', 'อย่าเพิ่งสรุปแรง รอข้อมูลครบก่อน'],
+    ['ถ้ามีข้อมูลเพิ่มฉันจะกลับมาอัปเดตใต้โพสต์นี้', 'ขอตามไว้ก่อน เรื่องนี้กระทบหลายคนจริง'],
+  ];
   return Array.from({ length: 9 }, (_, offset) => {
     const index = startIndex + offset; const fact = facts[index % Math.max(1, facts.length)] || publicFallbackText;
-    const author = fallbackHandles[index % fallbackHandles.length];
-    return Object.freeze({ author, text: `${bounded(fact, 360)} — คนในพื้นที่มองเรื่องนี้กันอย่างไรบ้าง?`, likes: 2 + (index % 5), comments: Object.freeze([{ author: fallbackHandles[(index + 1) % fallbackHandles.length], text: 'ประเด็นนี้ต้องมองตามกฎและค่านิยมของโลกนี้จริง ๆ' }, { author: fallbackHandles[(index + 2) % fallbackHandles.length], text: 'อยากฟังข้อมูลจากคนที่อยู่ในเหตุการณ์มากกว่านี้' }]) });
+    const author = fallbackFeedHandles[index % fallbackFeedHandles.length]; const comments = commentTemplates[index % commentTemplates.length];
+    return Object.freeze({ author, text: postTemplates[index % postTemplates.length](bounded(fact, 260)), likes: 2 + (index % 5), comments: Object.freeze([{ author: fallbackFeedHandles[(index + 2) % fallbackFeedHandles.length], text: comments[0] }, { author: fallbackFeedHandles[(index + 5) % fallbackFeedHandles.length], text: comments[1] }]) });
   });
 }
 
@@ -176,7 +200,7 @@ export class AdaptiveWorldPulseService {
       let count = 0;
       for (const post of await repositories.socialPosts.list()) {
         const account = await repositories.accounts.get(post.authorAccountId); const instance = account && await repositories.instances.get(account.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId);
-        if (actor?.sourceAuthority === 'tmrw-world-social') count += 1;
+        if (actor?.sourceAuthority === 'tmrw-world-social' && !String(post.text || '').includes('— คนในพื้นที่มองเรื่องนี้กันอย่างไรบ้าง?')) count += 1;
       }
       return count;
     });
@@ -210,25 +234,27 @@ export class AdaptiveWorldPulseService {
     if(!this.#messages&&!this.#live)return Object.freeze({conversations:0,lives:0,skipped:true});
     const owners=await this.#phoneOwners(scope,deviceIds);if(!owners.length)return Object.freeze({conversations:0,lives:0,skipped:true});
     const bible=await this.prepareWorld({scope,playerInstanceId});const activityFingerprint=clean(fingerprint)||bible.sourceFingerprint;const applied=await this.#appliedPhoneActivityKeys(scope);
-    const pendingOwners=this.#messages?owners.filter(owner=>!applied.has(`phone-activity-v2:${activityFingerprint}:${owner.accountId}:conversation:0:message:0`)):[];
+    const ownerSpecs=owners.map((owner,index)=>Object.freeze({...owner,ownerKey:`owner-${index+1}`}));
+    const pendingOwners=this.#messages?ownerSpecs.filter(owner=>!applied.has(`phone-activity-v3:${activityFingerprint}:${owner.accountId}:conversation:0:message:0`)):[];
     const liveKey=`phone-activity:${activityFingerprint}:live:0`;const needsLive=this.#live&&!applied.has(liveKey);
     if(!pendingOwners.length&&!needsLive)return Object.freeze({conversations:0,lives:0,replayed:true});
     const context=this.#getContext()||{};
     const prompt=[
       'สร้างกิจกรรมในโทรศัพท์ของตัวละครจากโลกโรลเพลย์นี้ ตอบเป็น JSON เท่านั้น',
       'สำหรับเจ้าของเครื่องทุกคนที่ระบุ ให้สร้างแชทส่วนตัว 3 ห้องกับคนละคนในโลกที่สมเหตุผล แต่ละห้องมี 3-6 ข้อความ และสลับผู้ส่งอย่างเป็นธรรมชาติ',
+      'อ้างเจ้าของเครื่องด้วย ownerKey ที่ให้มาเท่านั้น ห้ามเดาหรือแก้ชื่อเจ้าของเครื่อง',
       'คู่สนทนาต้องไม่ใช่เจ้าของเครื่อง ไม่ใช่ผู้เล่น และห้ามสร้างชื่อที่ต่อท้ายหรือดัดแปลงจากชื่อผู้เล่น',
       'บทสนทนาต้องเป็นสิ่งที่เจ้าของเครื่องและคู่สนทนารู้ได้จริง ห้ามใช้ความคิดในใจ ความลับ หรือบทสนทนาปิดที่พวกเขาไม่ได้เห็น',
       'สร้างไลฟ์ 1-2 ห้อง เน้นคนในโลกหรือชาวเน็ตเป็นผู้จัด ถ้าตัวละครหลักไลฟ์เองต้องเข้ากับนิสัยและสถานการณ์ มีความคิดเห็นสด 3-6 ข้อความ',
       'ใช้ภาษาไทยทั้งหมด ห้ามใส่ภาษาต่างประเทศแล้ววงเล็บคำแปลไทย ห้ามเขียนข้อความอธิบายระบบ',
       'sender ใช้ได้เฉพาะ owner หรือ contact',
-      'JSON: {"conversations":[{"owner":"ชื่อเจ้าของเครื่อง","contact":"ชื่อคู่สนทนา","messages":[{"sender":"owner","text":"ข้อความ"}]}],"lives":[{"host":"ชื่อบัญชี","title":"ชื่อไลฟ์","topic":"หัวข้อ","description":"คำอธิบาย","comments":[{"author":"ชื่อบัญชี","text":"ข้อความสด"}]}]}',
-      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>row.handle).join(', ')}`,`ห้ามใช้เป็นคู่สนทนา: ${unique([context?.name1,...pendingOwners.map(row=>row.handle)]).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,36),
+      'JSON: {"conversations":[{"ownerKey":"owner-1","contact":"ชื่อคู่สนทนา","messages":[{"sender":"owner","text":"ข้อความ"}]}],"lives":[{"host":"ชื่อบัญชี","title":"ชื่อไลฟ์","topic":"หัวข้อ","description":"คำอธิบาย","comments":[{"author":"ชื่อบัญชี","text":"ข้อความสด"}]}]}',
+      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>`${row.ownerKey} = ${row.handle}`).join(' / ')}`,`ห้ามใช้เป็นคู่สนทนา: ${unique([context?.name1,...pendingOwners.map(row=>row.handle)]).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,24),
     ].join('\n');
     const schema = {
       type: 'object', additionalProperties: false, required: ['conversations', 'lives'], properties: {
-        conversations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['owner', 'contact', 'messages'], properties: {
-          owner: { type: 'string' }, contact: { type: 'string' }, messages: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['sender', 'text'], properties: { sender: { type: 'string', enum: ['owner', 'contact'] }, text: { type: 'string' } } } },
+        conversations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['ownerKey', 'contact', 'messages'], properties: {
+          ownerKey: { type: 'string' }, contact: { type: 'string' }, messages: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'object', additionalProperties: false, required: ['sender', 'text'], properties: { sender: { type: 'string', enum: ['owner', 'contact'] }, text: { type: 'string' } } } },
         } } },
         lives: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['host', 'title', 'topic', 'description', 'comments'], properties: {
           host: { type: 'string' }, title: { type: 'string' }, topic: { type: 'string' }, description: { type: 'string' }, comments: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['author', 'text'], properties: { author: { type: 'string' }, text: { type: 'string' } } } },
@@ -237,12 +263,13 @@ export class AdaptiveWorldPulseService {
     };
     let activity=Object.freeze({conversations:Object.freeze([]),lives:Object.freeze([])});
     try { activity=parsePhoneActivity(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Phone Activity',responseLength:12288})); } catch {}
-    const byOwner=new Map(owners.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));const protectedNames=unique([context?.name1,...owners.map(owner=>owner.handle)]);let conversations=0;let lives=0;
+    const byOwner=new Map(ownerSpecs.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));const protectedNames=unique([context?.name1,...owners.map(owner=>owner.handle)]);let conversations=0;let lives=0;
     for(const owner of pendingOwners){
       const seenContacts=new Set();const specs=[];
-      for(const row of activity.conversations){if(clean(row.owner).normalize('NFKC').toLocaleLowerCase()!==clean(owner.handle).normalize('NFKC').toLocaleLowerCase()||looksLikeStructuredPromptLeak(row.contact)||identityNameCollides(row.contact,protectedNames))continue;const key=identityNameKey(row.contact);if(!key||seenContacts.has(key))continue;seenContacts.add(key);specs.push(row);if(specs.length>=3)break;}
-      for(const fallback of fallbackHandles){if(specs.length>=3)break;if(identityNameCollides(fallback,protectedNames)||seenContacts.has(identityNameKey(fallback)))continue;seenContacts.add(identityNameKey(fallback));specs.push({owner:owner.handle,contact:fallback,messages:[{sender:'contact',text:`ช่วงนี้คนแถวนี้กำลังพูดถึงเรื่องนี้กันเยอะ: ${bounded(bible.currentPublicEvents?.[specs.length]||bible.worldSummary,220)}`},{sender:'owner',text:'ไว้ฉันจะลองดูสถานการณ์อีกที'}]});}
-      for(const [conversationIndex,spec] of specs.entries()){const contact=await this.#identity(scope,spec.contact);const key=`phone-activity-v2:${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}`;const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread:v2`,version:'2'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:thread`});for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}:message:${index}`,version:'2'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:message:${index}`});}conversations+=1;}
+      for(const row of activity.conversations){const ownerMatches=row.ownerKey===owner.ownerKey||(!row.ownerKey&&clean(row.owner).normalize('NFKC').toLocaleLowerCase()===clean(owner.handle).normalize('NFKC').toLocaleLowerCase());if(!ownerMatches||looksLikeStructuredPromptLeak(row.contact)||identityNameCollides(row.contact,protectedNames))continue;const key=identityNameKey(row.contact);if(!key||seenContacts.has(key))continue;seenContacts.add(key);specs.push(row);if(specs.length>=3)break;}
+      const facts=unique([...(bible.currentPublicEvents||[]),...(bible.tensions||[]),...(bible.publicNorms||[]),bible.worldSummary]).filter(value=>value&&!looksLikeStructuredPromptLeak(value));
+      for(const [profileIndex,profile] of fallbackConversationProfiles.entries()){if(specs.length>=3)break;if(identityNameCollides(profile.contact,protectedNames)||seenContacts.has(identityNameKey(profile.contact)))continue;const fact=bounded(facts[profileIndex%Math.max(1,facts.length)]||publicFallbackText,220);seenContacts.add(identityNameKey(profile.contact));specs.push({ownerKey:owner.ownerKey,contact:profile.contact,messages:[{sender:'contact',text:profile.opening(fact)},{sender:'owner',text:profile.owner},{sender:'contact',text:profile.followup},{sender:'owner',text:profile.closing}]});}
+      for(const [conversationIndex,spec] of specs.entries()){const contact=await this.#identity(scope,spec.contact);const key=`phone-activity-v3:${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}`;const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread:v3`,version:'3'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:thread`});for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:conversation:v3:${conversationIndex}:message:${index}`,version:'3'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:message:${index}`});}conversations+=1;}
     }
     if(needsLive){
       const liveSpecs=activity.lives.length?activity.lives:[{host:fallbackHandles[1],title:bounded(bible.currentPublicEvents?.[0]||'คุยข่าวจากพื้นที่',120),topic:'เรื่องที่กำลังเกิดขึ้น',description:bounded(bible.worldSummary,360),comments:[{author:fallbackHandles[2],text:'เข้ามาฟังแล้ว เล่าต่อได้เลย'},{author:fallbackHandles[3],text:'ตรงนี้คนพูดถึงกันเยอะจริง'}]}];
