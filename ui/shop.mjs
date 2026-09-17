@@ -3,7 +3,8 @@ import { createPreviewIcon } from './app-icons.mjs';
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
 const money = item => `${Number(item.price)} ${item.currency}`;
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'shop', title: text, compact: true });
 
 function fundsState(item, walletView) {
   if (Number(item.price) === 0) return Object.freeze({ kind: 'free', label: 'FREE', canCheckout: true });
@@ -16,7 +17,7 @@ function fundsState(item, walletView) {
 export function renderShop({ document, view = { items: [], orders: [] }, walletView = { knownBalances: {} }, authorizationGranted = true, error = null, selectedRecordId = null, confirmationRecordId = null, staleRecordId = null, checkoutResult = null, checkoutBusy = false, onSelect, onRequestCheckout, onCancelCheckout, onConfirmCheckout, onRefreshItem }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-shop';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'ร้านค้ายังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); }
+  if (error) root.append(renderInlineNotice({ document, tone:'error', title:'ร้านค้ายังไม่พร้อมใช้งาน', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' }));
   const items = view.items || [];
 
   const search = el(document, 'label'); search.className = 'tmrw-phone-shop-search'; search.append(icon(document, 'search', 20)); const searchInput = el(document, 'input'); searchInput.type = 'search'; searchInput.placeholder = 'ค้นหาในร้าน...'; searchInput.setAttribute('aria-label', 'ค้นหาสินค้าในร้าน'); const filter = el(document, 'button'); filter.type = 'button'; filter.disabled = true; filter.setAttribute('aria-label', 'ตัวกรองยังไม่มีข้อมูล'); filter.append(icon(document, 'settings', 19)); search.append(searchInput, filter); root.append(search);

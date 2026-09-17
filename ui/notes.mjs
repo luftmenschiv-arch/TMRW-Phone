@@ -3,12 +3,13 @@ import { createPreviewIcon } from './app-icons.mjs';
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
 const TONES = Object.freeze(['peach', 'cream', 'mint', 'sky', 'sand', 'rose', 'lavender']);
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'notes', title: text, compact: true });
 
 export function renderNotes({ document, items = [], authorizationGranted = true, error = null, selectedRecordId = null, formMode = null, pendingDeleteRecordId = null, onOpen, onStartCreate, onStartEdit, onCancelForm, onSave, onRequestDelete, onCancelDelete, onConfirmDelete }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-notes tmrw-phone-personal-app tmrw-phone-notes-board';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'Notes ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'เปิด Notes ยังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
   const selected = items.find(item => item.recordId === selectedRecordId) || null;
 
   if (formMode) {

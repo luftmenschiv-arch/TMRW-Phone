@@ -234,3 +234,23 @@ Result:
 - production package: 249 files, 758 import edges
 - package verification: passed; passive import true; protected paths false; retired Preview files not copied
 - the broad legacy `test:p23-f` command reached 80 passed and 7 failed. Six failures are module-load failures from pre-existing missing fixtures (`tests/phase1/test-helpers.mjs` and `tests/phase17/notification-fixtures.mjs`); the seventh is the pre-existing legacy package-script contract expecting an absent `test:production-composition` script. No checkpoint 1–7 focused test failed.
+
+### Checkpoint 8 — 2026-09-17
+
+Closed the two mobile usability regressions found during device testing. Every empty app now uses one shared visual system with app-specific copy, artwork, compact panel variants, and a styled fallback for remaining legacy gaps; raw implementation errors are replaced with human recovery notices. Files, Notifications, Calls, Contacts, profile posts, transcripts, Calendar, Maps, Wallet, Shop, Weather, Health, Notes, Search, Voice, and locked/error variants are covered. Gallery retains its richer contact-sheet scene. Mobile write actions now revalidate and, only for an expired or missing uncontested lease caused by browser suspension, reacquire the lease, restart heartbeat, and reopen the Authoring Gate before Settings, one-click bootstrap, Guide, or Feed mutations. Ownership conflicts still fail closed.
+
+Commands:
+
+```powershell
+node --test tests/phase23/mobile-lease-resume.test.mjs tests/phase23/app-empty-state-system.test.mjs tests/phase23/gallery-empty-state.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused recovery and empty-state tests: 7 passed, 0 failed
+- expired uncontested mobile lease recovered at action time; foreign ownership remains blocked
+- production package: 250 files, 770 import edges
+- package verification passed; passive import true; protected paths false; retired Preview files not copied
+- broader legacy UI commands remain blocked at module load by the already-recorded missing `tests/phase17/notification-fixtures.mjs`; no focused checkpoint test failed

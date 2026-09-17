@@ -2,7 +2,8 @@ import { createPreviewIcon } from './app-icons.mjs';
 
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'calendar', title: text, compact: true });
 
 function dueLabel(due) {
   if (!due) return 'ยังไม่มีเวลาในเรื่อง';
@@ -21,7 +22,7 @@ function absoluteDate(item) { return item?.due?.kind === 'absolute' && item.due.
 export function renderCalendar({ document, view, recipients = [], authorizationGranted = true, error = null, activeTab = 'today', formMode = null, onStartForm, onCancelForm, onCreateReminder, onCreateInvitation, onAccept, onDecline }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-calendar';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'Calendar ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'เปิด Calendar ยังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
 
   const items = view?.items || [];
   const heading = el(document, 'section'); heading.className = 'tmrw-phone-calendar-heading'; const title = el(document, 'span'); title.append(el(document, 'h1', 'Calendar'), el(document, 'b', storyClockLabel(view?.clock))); heading.append(title); const add = el(document, 'button'); add.type = 'button'; add.dataset.calendarAction = 'new-reminder'; add.setAttribute('aria-label', 'เพิ่มรายการใน Calendar'); add.append(icon(document, 'plus', 20)); add.addEventListener('click', () => onStartForm?.('reminder')); heading.append(add); root.append(heading);

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { V3RuntimeGuard } from '../../beta/runtime-guard.mjs';
 import { LeaseHeartbeat } from '../../production/lease-heartbeat.mjs';
 import { ProductionAuthoringGate } from '../../production/authoring-gate.mjs';
+import { ProductionActiveStartupSession } from '../../production/active-startup.mjs';
 import { MemoryV3Database } from '../../storage/memory-v3-database.mjs';
 
 const prerequisites = Object.freeze({ productionHealthValid: true, previewExcluded: true, identityResolved: true, compositionServicesReady: true, uniqueListenersReady: true, uniqueGenerationInterceptorReady: true, callIntegrationReady: true, shellMountHealthy: true, heartbeatQualified: true });
@@ -35,4 +36,13 @@ test('a suspended tab still fails closed when another window took the expired le
   const tick = await context.scheduler.fire();
   assert.equal(tick.renewed, false); assert.equal(context.gate.state, 'closed'); assert.equal(context.heartbeat.running, false); assert.equal(context.guard.ownsLease, false);
   otherDatabase.close(); context.database.close();
+});
+
+test('a write action can wake an expired mobile lease and reopen the normal authoring gate', async () => {
+  const context = await owner(); context.advance(101); context.gate.close('heartbeat-renew-expired'); await context.heartbeat.stop();
+  const session = new ProductionActiveStartupSession({ ownerId: 'mobile-owner' });
+  session.runtime = { role: 'owner', composition: { runtimeGuard: context.guard, authoringGate: context.gate, heartbeat: context.heartbeat, listenerOwner: { status: { registered: true } }, generationOwner: { status: { delegateActive: true } } } };
+  session.identity = { scope: { storyId: 'story', branchId: 'branch' } }; session.mountManager = { status: { healthy: true } }; session.launcherOwner = { reconcile() {} }; session.finalHealth = { checks: prerequisites }; session.started = true;
+  assert.equal(await session.ensureAuthoringReady(), true); assert.equal(context.gate.state, 'open'); assert.equal(context.heartbeat.running, true); assert.equal(context.guard.ownsLease, true);
+  await context.heartbeat.stop(); context.database.close();
 });

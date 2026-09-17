@@ -2,12 +2,13 @@ import { createPreviewIcon } from './app-icons.mjs';
 
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'weather', title: text, compact: true });
 
 export function renderWeather({ document, items = [], authorizationGranted = true, error = null }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-weather';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'Weather ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'เปิด Weather ยังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
 
   const latest = items[0] || null;
   const hero = el(document, 'section'); hero.className = 'tmrw-phone-weather-hero';
