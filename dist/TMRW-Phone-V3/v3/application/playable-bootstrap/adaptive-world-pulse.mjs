@@ -5,6 +5,7 @@ import { createCharacterInstance } from '../../domain/identity/character-instanc
 import { createDevice } from '../../domain/identity/device.mjs';
 import { createAccount } from '../../domain/identity/account.mjs';
 import { ACTOR_CONTROL } from '../../domain/identity/control-authority.mjs';
+import { isPlayerControlled } from '../../domain/identity/control-authority.mjs';
 import { deterministicIdentityId } from '../../domain/identity/id.mjs';
 import { normalizeWorldSocialBible } from '../../ui/settings-beta.mjs';
 
@@ -84,6 +85,22 @@ function parseReplies(value) {
   } catch { return []; }
 }
 
+function parsePhoneActivity(value) {
+  try {
+    const parsed = JSON.parse(jsonCandidate(value));
+    const conversations = (Array.isArray(parsed?.conversations) ? parsed.conversations : []).slice(0, 12).map(row => ({
+      owner: bounded(row?.owner, 80),
+      contact: bounded(row?.contact, 80),
+      messages: (Array.isArray(row?.messages) ? row.messages : []).slice(0, 8).map(message => ({ sender: message?.sender === 'owner' ? 'owner' : 'contact', text: bounded(message?.text, 900) })).filter(message => message.text),
+    })).filter(row => row.owner && row.contact && row.messages.length);
+    const lives = (Array.isArray(parsed?.lives) ? parsed.lives : []).slice(0, 3).map(row => ({
+      host: bounded(row?.host, 80), title: bounded(row?.title, 160), topic: bounded(row?.topic, 100), description: bounded(row?.description, 800),
+      comments: (Array.isArray(row?.comments) ? row.comments : []).slice(0, 8).map(comment => ({ author: bounded(comment?.author, 80), text: bounded(comment?.text, 500) })).filter(comment => comment.author && comment.text),
+    })).filter(row => row.host && row.title);
+    return Object.freeze({ conversations: Object.freeze(conversations), lives: Object.freeze(lives) });
+  } catch { return Object.freeze({ conversations: Object.freeze([]), lives: Object.freeze([]) }); }
+}
+
 function fallbackBatch(bible, startIndex) {
   const facts = unique([...(bible.currentPublicEvents || []), ...(bible.tensions || []), ...(bible.publicNorms || []), bible.worldSummary]).filter(Boolean);
   return Array.from({ length: 9 }, (_, offset) => {
@@ -94,10 +111,10 @@ function fallbackBatch(bible, startIndex) {
 }
 
 export class AdaptiveWorldPulseService {
-  #unit; #social; #settings; #getContext; #now; #buffers = new Map(); #worlds = new Map();
-  constructor({ database, socialService, settingsService = null, getContext = () => ({}), now = () => new Date().toISOString() }) {
+  #unit; #social; #messages; #live; #settings; #getContext; #now; #buffers = new Map(); #worlds = new Map();
+  constructor({ database, socialService, messageService = null, liveService = null, settingsService = null, getContext = () => ({}), now = () => new Date().toISOString() }) {
     if (!database || !socialService) throw new TypeError('AdaptiveWorldPulseService requires database and Social service');
-    this.#unit = new V3UnitOfWork(database); this.#social = socialService; this.#settings = settingsService; this.#getContext = getContext; this.#now = now;
+    this.#unit = new V3UnitOfWork(database); this.#social = socialService; this.#messages = messageService; this.#live = liveService; this.#settings = settingsService; this.#getContext = getContext; this.#now = now;
   }
 
   #scopeKey(scope) { return `${scope.storyId}:${scope.branchId}`; }
@@ -156,6 +173,74 @@ export class AdaptiveWorldPulseService {
       }
       return count;
     });
+  }
+
+  async #phoneOwners(scope, deviceIds = null) {
+    const selected = Array.isArray(deviceIds) ? new Set(deviceIds.map(String)) : null;
+    return this.#unit.readonly({ stores:['devices','accounts','instances','actors'], scope }, async repositories => {
+      const rows=[];
+      for(const device of await repositories.devices.list()){
+        if(selected&&!selected.has(device.id))continue;
+        const instance=await repositories.instances.get(device.ownerInstanceId);const actor=instance&&await repositories.actors.get(instance.actorId);
+        if(!instance||!actor||isPlayerControlled(actor)||actor.sourceAuthority==='tmrw-world-social')continue;
+        const accounts=await repositories.accounts.listByIndex('by_owner_scope',[scope.storyId,scope.branchId,instance.id]);const account=accounts.find(row=>row.isPrimary&&row.deviceIds.includes(device.id))||accounts.find(row=>row.deviceIds.includes(device.id));
+        if(account)rows.push(Object.freeze({actorId:actor.id,instanceId:instance.id,deviceId:device.id,accountId:account.id,handle:actor.displayName||account.label}));
+      }
+      return Object.freeze(rows);
+    });
+  }
+
+  async #appliedPhoneActivityKeys(scope) {
+    return this.#unit.readonly({ stores:['eventIdempotency'], scope }, async repositories => new Set((await repositories.eventIdempotency.list()).filter(row=>row.producer==='adaptive-world-pulse').map(row=>row.idempotencyKey)));
+  }
+
+  async primePhoneActivity({ scope: inputScope, playerInstanceId = null, deviceIds = null, fingerprint = null } = {}) {
+    const scope=requireEventScope(inputScope);
+    if(!this.#messages&&!this.#live)return Object.freeze({conversations:0,lives:0,skipped:true});
+    const owners=await this.#phoneOwners(scope,deviceIds);if(!owners.length)return Object.freeze({conversations:0,lives:0,skipped:true});
+    const bible=await this.prepareWorld({scope,playerInstanceId});const activityFingerprint=clean(fingerprint)||bible.sourceFingerprint;const applied=await this.#appliedPhoneActivityKeys(scope);
+    const pendingOwners=this.#messages?owners.filter(owner=>!applied.has(`phone-activity:${activityFingerprint}:${owner.accountId}:message:0`)):[];
+    const liveKey=`phone-activity:${activityFingerprint}:live:0`;const needsLive=this.#live&&!applied.has(liveKey);
+    if(!pendingOwners.length&&!needsLive)return Object.freeze({conversations:0,lives:0,replayed:true});
+    const context=this.#getContext()||{};
+    const prompt=[
+      'สร้างกิจกรรมในโทรศัพท์ของตัวละครจากโลกโรลเพลย์นี้ ตอบเป็น JSON เท่านั้น',
+      'สำหรับเจ้าของเครื่องทุกคนที่ระบุ ให้สร้างแชทส่วนตัวหนึ่งห้องกับคนอื่นในโลกที่สมเหตุผล มี 3-6 ข้อความ และสลับผู้ส่งอย่างเป็นธรรมชาติ',
+      'บทสนทนาต้องเป็นสิ่งที่เจ้าของเครื่องและคู่สนทนารู้ได้จริง ห้ามใช้ความคิดในใจ ความลับ หรือบทสนทนาปิดที่พวกเขาไม่ได้เห็น',
+      'สร้างไลฟ์ 1-2 ห้อง เน้นคนในโลกหรือชาวเน็ตเป็นผู้จัด ถ้าตัวละครหลักไลฟ์เองต้องเข้ากับนิสัยและสถานการณ์ มีความคิดเห็นสด 3-6 ข้อความ',
+      'ใช้ภาษาไทยทั้งหมด ห้ามใส่ภาษาต่างประเทศแล้ววงเล็บคำแปลไทย ห้ามเขียนข้อความอธิบายระบบ',
+      'sender ใช้ได้เฉพาะ owner หรือ contact',
+      'JSON: {"conversations":[{"owner":"ชื่อเจ้าของเครื่อง","contact":"ชื่อคู่สนทนา","messages":[{"sender":"owner","text":"ข้อความ"}]}],"lives":[{"host":"ชื่อบัญชี","title":"ชื่อไลฟ์","topic":"หัวข้อ","description":"คำอธิบาย","comments":[{"author":"ชื่อบัญชี","text":"ข้อความสด"}]}]}',
+      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>row.handle).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,36),
+    ].join('\n');
+    const schema = {
+      type: 'object', additionalProperties: false, required: ['conversations', 'lives'], properties: {
+        conversations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['owner', 'contact', 'messages'], properties: {
+          owner: { type: 'string' }, contact: { type: 'string' }, messages: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['sender', 'text'], properties: { sender: { type: 'string', enum: ['owner', 'contact'] }, text: { type: 'string' } } } },
+        } } },
+        lives: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['host', 'title', 'topic', 'description', 'comments'], properties: {
+          host: { type: 'string' }, title: { type: 'string' }, topic: { type: 'string' }, description: { type: 'string' }, comments: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['author', 'text'], properties: { author: { type: 'string' }, text: { type: 'string' } } } },
+        } } },
+      },
+    };
+    let activity=Object.freeze({conversations:Object.freeze([]),lives:Object.freeze([])});
+    try { activity=parsePhoneActivity(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Phone Activity',responseLength:12288})); } catch {}
+    const byOwner=new Map(owners.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));let conversations=0;let lives=0;
+    for(const owner of pendingOwners){
+      let spec=activity.conversations.find(row=>clean(row.owner).normalize('NFKC').toLocaleLowerCase()===clean(owner.handle).normalize('NFKC').toLocaleLowerCase());
+      if(!spec)spec={owner:owner.handle,contact:fallbackHandles[(conversations+2)%fallbackHandles.length],messages:[{sender:'contact',text:`ช่วงนี้คนแถวนี้กำลังพูดถึงเรื่องนี้กันเยอะ: ${bounded(bible.currentPublicEvents?.[0]||bible.worldSummary,220)}`},{sender:'owner',text:'ไว้ฉันจะลองดูสถานการณ์อีกที'}]};
+      const contact=await this.#identity(scope,spec.contact);const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`phone-activity:${activityFingerprint}:${owner.accountId}:thread`});
+      for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:message:${index}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`phone-activity:${activityFingerprint}:${owner.accountId}:message:${index}`});}conversations+=1;
+    }
+    if(needsLive){
+      const liveSpecs=activity.lives.length?activity.lives:[{host:fallbackHandles[1],title:bounded(bible.currentPublicEvents?.[0]||'คุยข่าวจากพื้นที่',120),topic:'เรื่องที่กำลังเกิดขึ้น',description:bounded(bible.worldSummary,360),comments:[{author:fallbackHandles[2],text:'เข้ามาฟังแล้ว เล่าต่อได้เลย'},{author:fallbackHandles[3],text:'ตรงนี้คนพูดถึงกันเยอะจริง'}]}];
+      for(const [liveIndex,spec] of liveSpecs.slice(0,2).entries()){
+        const host=byOwner.get(clean(spec.host).normalize('NFKC').toLocaleLowerCase())||await this.#identity(scope,spec.host);const key=`phone-activity:${activityFingerprint}:live:${liveIndex}`;
+        const created=await this.#live.createSession({scope,hostAccountId:host.accountId,actualActorId:host.actorId,actualInstanceId:host.instanceId,deviceId:host.deviceId,title:spec.title,topic:spec.topic||'กำลังเกิดขึ้น',description:spec.description||'',audience:{kind:'public'},startImmediately:true,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:live:${liveIndex}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:key});
+        for(const [commentIndex,comment] of spec.comments.entries()){const author=clean(comment.author).normalize('NFKC').toLocaleLowerCase()===clean(host.handle).normalize('NFKC').toLocaleLowerCase()?host:await this.#identity(scope,comment.author);if(author.accountId!==host.accountId)await this.#live.join({scope,sessionId:created.session.sessionId,viewerAccountId:author.accountId,viewerActorId:author.actorId,viewerInstanceId:author.instanceId,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:live:${liveIndex}:viewer:${commentIndex}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:viewer:${commentIndex}`});await this.#live.createMessage({scope,sessionId:created.session.sessionId,authorAccountId:author.accountId,actualAuthorActorId:author.actorId,actualAuthorInstanceId:author.instanceId,deviceId:author.deviceId,text:comment.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:live:${liveIndex}:message:${commentIndex}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:message:${commentIndex}`});}lives+=1;
+      }
+    }
+    return Object.freeze({conversations,lives,replayed:false});
   }
 
   async #generateBatch(scope, bible, startIndex) {

@@ -2,6 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setupPhase15, postFrom, commentFrom } from '../phase15/social-fixtures.mjs';
 import { AdaptiveWorldPulseService } from '../../application/playable-bootstrap/adaptive-world-pulse.mjs';
+import { CanonicalEventEngine } from '../../domain/events/event-transaction.mjs';
+import { createPhase23EventTypeRegistry } from '../../domain/utilities/phone-world-event-types.mjs';
+import { createLiveProjector } from '../../domain/live/live-projector.mjs';
+import { LiveService } from '../../domain/live/live-service.mjs';
+import { createMessagingProjector } from '../../domain/messaging/messaging-projector.mjs';
+import { MessageService } from '../../domain/messaging/message-service.mjs';
 
 const feedBatch = () => ({ posts:Array.from({length:9},(_,index)=>({ author:`คนงานเขตเหนือ ${index+1}`, text:`ประกาศตลาดแรงงานครึ่งสัตว์ฉบับที่ ${index+1} กำลังถูกวิจารณ์เรื่องค่าธรรมเนียม`, likes:3, comments:[{author:'เสมียนตลาดกลาง',text:'กฎใหม่นี้กระทบทั้งนายหน้าและครอบครัวผู้ซื้อโดยตรง'},{author:'คนส่งข่าวประจำตรอก',text:'ฝั่งประตูเหนือเริ่มตรวจเอกสารเข้มขึ้นแล้ว'}] })) });
 
@@ -39,4 +45,22 @@ test('refeed survives a stale numerical slot without reusing an older canonical 
   const refreshed=await afterReload.refresh({scope:c.scope,count:1,playerInstanceId:c.user.instanceId});
   assert.equal(refreshed.created.length,1);
   assert.match(refreshed.created[0].text,/ข่าวชุด 2/u);
+});
+
+test('phone activity gives each bot a contextual DM and creates a populated public live room', async () => {
+  const c=await setupPhase15({castSize:1,manifestId:'adaptive-phone-activity'});
+  const liveEngine=new CanonicalEventEngine({database:c.database,eventTypes:createPhase23EventTypeRegistry(),projectors:[createMessagingProjector(),createLiveProjector()],now:()=> '2026-09-17T08:00:00.000Z'});await liveEngine.rebuild(c.scope);const live=new LiveService({database:c.database,eventEngine:liveEngine});const messages=new MessageService({database:c.database,eventEngine:liveEngine});
+  const context={name2:'เจเรน',scenario:'นครการค้าทาสครึ่งสัตว์',chat:[{is_user:false,name:'เจเรน',mes:'คืนนี้ตลาดกลางจะตรวจตราเข้มกว่าปกติ'}],generateQuietPrompt:async options=>{
+    if(options.quietName==='TMRW World Social Bible')return JSON.stringify({worldSummary:'นครการค้าทาสครึ่งสัตว์',socialOrder:'นายหน้าและแรงงาน',economyAndLaw:'ตลาดกลางออกใบทะเบียน',technologyAndMedia:'ใช้เครือข่ายข่าว',languageStyle:'ภาษาไทย',publicNorms:['ตรวจทะเบียน'],institutions:['ตลาดกลาง'],tensions:['ค่าธรรมเนียม'],currentPublicEvents:['คืนนี้ด่านตรวจเข้มขึ้น']});
+    if(options.quietName==='TMRW Phone Activity')return JSON.stringify({conversations:[{owner:'Character 1',contact:'เสมียนเวรดึก',messages:[{sender:'contact',text:'คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ'},{sender:'owner',text:'รับทราบ เดี๋ยวฉันหลีกทางนั้น'}]}],lives:[{host:'นักข่าวตลาดกลาง',title:'เกาะติดด่านตรวจคืนนี้',topic:'ข่าวในเมือง',description:'รายงานบรรยากาศหน้าประตูเหนือ',comments:[{author:'คนส่งของเวรดึก',text:'แถวเริ่มยาวแล้ว'},{author:'แม่ค้าร้านชา',text:'ฝั่งตะวันออกยังผ่านได้'}]}]});
+    throw new Error(`unexpected prompt ${options.quietName}`);
+  }};
+  const pulse=new AdaptiveWorldPulseService({database:c.database,socialService:c.social,messageService:messages,liveService:live,settingsService:c.settings,getContext:()=>context,now:()=> '2026-09-17T08:00:00.000Z'});
+  const result=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.user.deviceId,c.alice.deviceId],fingerprint:'phone-head-a'});
+  assert.equal(result.conversations,1);assert.equal(result.lives,1);
+  const threads=await messages.listThreads({scope:c.scope,viewerAccountId:c.alice.accountId});assert.equal(threads.length,1);
+  const dmMessages=await messages.listMessages({scope:c.scope,viewerAccountId:c.alice.accountId,threadId:threads[0].threadId});assert.deepEqual(dmMessages.map(row=>row.text),['คืนนี้ประตูเหนือเพิ่มเวรตรวจนะ','รับทราบ เดี๋ยวฉันหลีกทางนั้น']);
+  const sessions=await live.listSessions({scope:c.scope,viewerAccountId:c.user.accountId});assert.equal(sessions.items.length,1);
+  const comments=await live.listMessages({scope:c.scope,viewerAccountId:c.user.accountId,sessionId:sessions.items[0].sessionId});assert.equal(comments.items.length,2);
+  const replay=await pulse.primePhoneActivity({scope:c.scope,playerInstanceId:c.user.instanceId,deviceIds:[c.alice.deviceId],fingerprint:'phone-head-a'});assert.equal(replay.replayed,true);
 });

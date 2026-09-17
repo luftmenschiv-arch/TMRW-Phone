@@ -8,6 +8,8 @@ export class ProductionListenerOwner {
   #runtimeGuard;
   #onScopeChange;
   #scopeListener = null;
+  #scopeTransition = Promise.resolve();
+  #scopeRecoveryArmed = false;
   #registered = false;
   #lastError = null;
 
@@ -65,17 +67,29 @@ export class ProductionListenerOwner {
           this.#authoringGate.close('listener-runtime-owner-lost');
           return;
         }
-        if (!this.#authoringGate.allows('normal')) return;
-        try {
-          await this.#onScopeChange(...args);
-        } catch (error) {
-          this.#lastError = String(error?.message || error || 'unknown-listener-error');
-          this.#authoringGate.close('listener-critical-error');
-        }
+        // A failed remount deliberately closes authoring. The next CHAT_CHANGED
+        // event must still be allowed to repair that scope; otherwise one bad
+        // transition permanently leaves the phone bound to the previous chat.
+        if (!this.#authoringGate.allows('normal') && !this.#scopeRecoveryArmed) return;
+        const transition = async () => {
+          if (!this.#registered || this.#runtimeGuard.ownsLease !== true) return;
+          try {
+            await this.#onScopeChange(...args);
+            this.#lastError = null;
+            this.#scopeRecoveryArmed = false;
+          } catch (error) {
+            this.#lastError = String(error?.message || error || 'unknown-listener-error');
+            this.#scopeRecoveryArmed = true;
+            this.#authoringGate.close('listener-critical-error');
+          }
+        };
+        this.#scopeTransition = this.#scopeTransition.then(transition, transition);
+        await this.#scopeTransition;
       };
       this.#eventSource.on(this.#eventTypes.CHAT_CHANGED, this.#scopeListener);
       this.#registered = true;
       this.#lastError = null;
+      this.#scopeRecoveryArmed = false;
       return true;
     } catch (error) {
       this.#lastError = String(error?.message || error || 'listener-registration-error');
@@ -93,6 +107,7 @@ export class ProductionListenerOwner {
   unregister() {
     if (!this.#registered) return false;
     this.#registered = false;
+    this.#scopeRecoveryArmed = false;
     try {
       if (this.#scopeListener) this.#eventSource.removeListener(this.#eventTypes.CHAT_CHANGED, this.#scopeListener);
       this.#scopeListener = null;

@@ -7,7 +7,9 @@ const modes = new Set(Object.values(PHONE_ACCESS_MODE));
 
 export function normalizePhoneAccessSettings(input = {}) {
   const preset = input.preset || EXPERIENCE_PRESET.STORY;
-  const mode = input.mode || (preset === EXPERIENCE_PRESET.IMMERSIVE ? PHONE_ACCESS_MODE.IMMERSIVE : PHONE_ACCESS_MODE.ASSISTED);
+  // SettingsService persists this value as `phoneAccessMode`. Keep accepting the
+  // older `mode` spelling for callers that construct the policy input directly.
+  const mode = input.phoneAccessMode || input.mode || (preset === EXPERIENCE_PRESET.IMMERSIVE ? PHONE_ACCESS_MODE.IMMERSIVE : PHONE_ACCESS_MODE.ASSISTED);
   if (!modes.has(mode)) throw new TypeError(`Unsupported Phone Access Mode: ${mode}`);
   return Object.freeze({ preset, mode });
 }

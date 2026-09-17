@@ -65,7 +65,7 @@ export class PlayableBootstrapService {
       }
       if (this.#worldPulse) {
         await progress('world-pulse', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: totalMessages });
-        try { await this.#worldPulse.prepareWorld({ scope, playerInstanceId, force: !replayed }); await this.#worldPulse.prime({ scope, minimum: 6, playerInstanceId }); }
+        try { await this.#worldPulse.prepareWorld({ scope, playerInstanceId, force: !replayed }); await this.#worldPulse.prime({ scope, minimum: 6, playerInstanceId }); await this.#worldPulse.primePhoneActivity?.({ scope, playerInstanceId, deviceIds: identity.deviceIds, fingerprint: fullHistory.headFingerprint }); }
         catch (error) { enrichmentWarnings.push(Object.freeze({ stage: 'world-pulse', message: error instanceof Error ? error.message : String(error) })); }
       }
       let state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.QUICK_READY, stage: 'quick-ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, lastError: null }); emit(onProgress, state);
