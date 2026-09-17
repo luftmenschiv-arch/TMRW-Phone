@@ -7,7 +7,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "TMRW",
-  "version": "0.0.0-s04-passive.15",
+  "version": "0.0.0-s04-passive.16",
   "auto_update": false,
   "minimum_client_version": "1.12.0",
   "hooks": {
