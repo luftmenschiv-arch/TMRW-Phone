@@ -14,6 +14,9 @@ if ! "$TERMUX_PREFIX/bin/curl" --silent --fail --max-time 2 "$MANAGER_HEALTH" >/
     fi
   fi
   "$TERMUX_PREFIX/bin/mkdir" -p "$VOICE_HOME/logs"
+  GENIE_DATA_DIR="$TERMUX_HOME/genie-tts-portable/GenieData" \
+  PYTHONPATH="$VOICE_HOME/current/tools:$TERMUX_HOME/genie-onnx-private/site-packages" \
+  LD_LIBRARY_PATH="$TERMUX_HOME/genie-python313/data/data/com.termux/files/usr/lib:$TERMUX_HOME/genie-onnx-private/lib:$TERMUX_HOME/genie-tts-portable/venv/lib:$TERMUX_PREFIX/lib" \
   TMRW_VOICE_HOME="$VOICE_HOME" "$TERMUX_PREFIX/bin/nohup" \
     "$TERMUX_PREFIX/bin/node" "$VOICE_HOME/app/voice-manager/src/server.mjs" \
     >"$VOICE_HOME/logs/manager.log" 2>&1 </dev/null &
@@ -28,4 +31,3 @@ for _ in $("$TERMUX_PREFIX/bin/seq" 1 20); do
 done
 
 "$VOICE_HOME/current/bin/START-TMRW-VOICE-MOBILE.sh"
-

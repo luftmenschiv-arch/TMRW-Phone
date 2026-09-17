@@ -63,6 +63,9 @@ fi
 if [[ -f "$VOICE_HOME/manager.pid" ]]; then
   kill "$(cat "$VOICE_HOME/manager.pid")" 2>/dev/null || true
 fi
+GENIE_DATA_DIR="$HOME/genie-tts-portable/GenieData" \
+PYTHONPATH="$VOICE_HOME/current/tools:$HOME/genie-onnx-private/site-packages" \
+LD_LIBRARY_PATH="$HOME/genie-python313/data/data/com.termux/files/usr/lib:$HOME/genie-onnx-private/lib:$HOME/genie-tts-portable/venv/lib:$PREFIX/lib" \
 TMRW_VOICE_HOME="$VOICE_HOME" nohup node "$APP_DIR/voice-manager/src/server.mjs" >"$VOICE_HOME/logs/manager.log" 2>&1 </dev/null &
 echo $! > "$VOICE_HOME/manager.pid"
 
