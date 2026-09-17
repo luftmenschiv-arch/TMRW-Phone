@@ -29,3 +29,25 @@ test('failed bootstrap persists retryable failure without erasing the previous c
   await assert.rejects(() => service.run({ scope: c.scope, playerInstanceId: c.user.instanceId }), /No important character/);
   const state = await service.status({ scope: c.scope, playerInstanceId: c.user.instanceId }); assert.equal(state.status, PLAYABLE_BOOTSTRAP_STATUS.FAILED); assert.match(state.lastError, /No important character/);
 });
+
+test('retrying with a revised cast initializes only missing phones without replaying old lifecycle events', async () => {
+  const c = await setupPhase9({ castSize: 1, manifestId: 'playable-bootstrap-revised-cast' });
+  const context = {
+    chatId: 'revised-cast-chat', characterId: 0, name1: 'Player', name2: 'Ensemble Card',
+    characters: [{ name: 'Ensemble Card', data: { extensions: { tmrw_phone: { cast: ['Character 1'] } } } }],
+    chat: [{ is_user: false, name: 'Character 1', mes: 'first timeline' }],
+  };
+  let tick = 0;
+  const service = new PlayableBootstrapService({ database: c.database, identityKernel: c.kernel, phoneStateService: c.phones, settingsService: c.settings, getContext: () => context, now: () => `2026-09-17T05:00:0${tick++}.000Z` });
+  await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, deepBackfill: false });
+
+  const playerStateBefore = await c.phones.getPhoneState(c.scope, c.user.deviceId);
+  context.characters[0].data.extensions.tmrw_phone.cast = ['Character 1', 'New Scene Actor'];
+  context.chat.push({ is_user: false, name: 'New Scene Actor', mes: 'I joined this timeline.' });
+
+  const result = await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, deepBackfill: false });
+  assert.equal(result.state.status, PLAYABLE_BOOTSTRAP_STATUS.READY);
+  assert.equal(result.state.castCount, 2);
+  assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label).sort(), ['Character 1', 'New Scene Actor']);
+  assert.deepEqual(await c.phones.getPhoneState(c.scope, c.user.deviceId), playerStateBefore);
+});

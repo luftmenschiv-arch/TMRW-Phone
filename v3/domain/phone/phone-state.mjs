@@ -36,18 +36,25 @@ export class PhoneStateService {
       return { actor, instance };
     });
   }
-  async initializeScope(scopeInput) {
+  async initializeScope(scopeInput, { deviceIds = null, accountIds = null } = {}) {
     const scope = requireEventScope(scopeInput);
-    const identities = await this.#unitOfWork.readonly({ stores: ['devices', 'accounts', 'instances', 'actors'], scope }, async repositories => {
-      const devices = await repositories.devices.list(); const accounts = await repositories.accounts.list();
+    const selectedDeviceIds = Array.isArray(deviceIds) ? new Set(deviceIds.map(id => requireText(id, 'deviceId'))) : null;
+    const selectedAccountIds = Array.isArray(accountIds) ? new Set(accountIds.map(id => requireText(id, 'accountId'))) : null;
+    const identities = await this.#unitOfWork.readonly({ stores: ['devices', 'accounts', 'instances', 'actors', 'phoneStates', 'accountSessions'], scope }, async repositories => {
+      const devices = (await repositories.devices.list()).filter(device => !selectedDeviceIds || selectedDeviceIds.has(device.id));
+      const accounts = (await repositories.accounts.list()).filter(account => !selectedAccountIds || selectedAccountIds.has(account.id));
+      const initializedDeviceIds = new Set((await repositories.phoneStates.list()).map(state => state.deviceId));
+      const initializedAccountIds = new Set((await repositories.accountSessions.list()).map(session => session.accountId));
       const owners = new Map(); for (const device of devices) { const instance = await repositories.instances.get(device.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId); if (!instance || !actor) throw new Error('Device ownership identity chain is incomplete'); owners.set(device.id, { device, instance, actor }); }
-      return { devices, accounts, owners };
+      return { devices, accounts, owners, initializedDeviceIds, initializedAccountIds };
     });
     const results = [];
     for (const device of identities.devices) {
+      if (identities.initializedDeviceIds.has(device.id)) continue;
       const owner = identities.owners.get(device.id); results.push(await this.#events.append({ scope, eventType: PHONE_EVENT_TYPES.DEVICE_STATE, payload: { state: initialPhoneState({ deviceId: device.id, ownerActorId: owner.actor.id, ownerInstanceId: owner.instance.id }) }, references: refs(device, owner.instance, owner.actor), source: { authority: 'tmrw-v3-phone-lifecycle', kind: 'internal', recordId: `initialize-device:${device.id}` }, producer: 'phone-state-service', idempotencyKey: `initialize-device:${device.id}` }));
     }
     for (const account of identities.accounts) {
+      if (identities.initializedAccountIds.has(account.id)) continue;
       const owner = identities.owners.get(account.deviceIds[0]); if (!owner) throw new Error('Account is not associated with a scoped Device');
       results.push(await this.#events.append({ scope, eventType: PHONE_EVENT_TYPES.ACCOUNT_SESSION, payload: { session: initialAccountSession({ accountId: account.id, ownerActorId: owner.actor.id, ownerInstanceId: owner.instance.id, deviceId: owner.device.id }) }, references: refs(account, owner.device, owner.instance, owner.actor), source: { authority: 'tmrw-v3-phone-lifecycle', kind: 'internal', recordId: `initialize-account:${account.id}` }, producer: 'phone-state-service', idempotencyKey: `initialize-account:${account.id}` }));
     }

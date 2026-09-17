@@ -317,3 +317,22 @@ Result:
 - recurring roles outside the current 160-message window are excluded
 - incidental scene-roster entries seen only three or four times are excluded
 - stale card headings absent from the current story window are excluded
+
+### Checkpoint 12 — 2026-09-17
+
+Fixed the post-confirm bootstrap failure observed on the live mobile database. Repeated cast scans had correctly retired obsolete card memberships but retained their historical Device and Account identities. `PhoneStateService.initializeScope` consequently attempted to replay lifecycle initialization for every historical identity and collided with an older canonical Event whose semantic payload no longer matched. Initialization is now additive: existing Phone State and Account Session projections are preserved, only missing projections are created, and the one-click bootstrap passes the exact Device and Account IDs returned by the newly approved identity manifest instead of walking every historical identity in the Story/Branch. Retrying with a revised cast is therefore safe, does not reset an existing phone, and creates only newly selected phones.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused cast/bootstrap/settings tests: 9 passed, 0 failed
+- revised-cast retry adds the missing phone without replaying old lifecycle Events
+- existing player Phone State is byte-for-byte preserved across the retry
+- production package: 250 files, 770 import edges; verification passed
