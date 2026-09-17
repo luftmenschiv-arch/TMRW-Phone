@@ -98,6 +98,21 @@
 #tmrw-phone-root [data-voice-runtime-health="ready"] { color: #23805b; }
 #tmrw-phone-root [data-voice-runtime-health="unavailable"] { color: #a64c52; }
 #tmrw-phone-root .tmrw-v3-voice-test-card { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; align-items: center; }
+#tmrw-phone-root .tmrw-v3-voice-preset-selector { display: grid; gap: 10px; margin-top: 10px; }
+#tmrw-phone-root .tmrw-v3-voice-preset-group { display: grid; gap: 6px; }
+#tmrw-phone-root .tmrw-v3-voice-preset-group > h5 { margin: 0; color: #737b86; font-size: 9px; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; max-height: 250px; overflow: auto; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards > button { min-width: 0; display: grid; gap: 3px; padding: 10px; border: 1px solid #dde2e7; border-radius: 13px; background: #fff; color: #25282d; text-align: left; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards > button[aria-pressed=true] { border-color: #25282d; box-shadow: inset 0 0 0 1px #25282d; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards strong { font-size: 10px; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards small { color: #646b75; font-size: 8px; line-height: 1.35; }
+#tmrw-phone-root .tmrw-v3-voice-preset-cards i { color: #8a8f98; font-size: 7px; font-style: normal; }
+#tmrw-phone-root .tmrw-v3-voice-clone { display: grid; gap: 5px; margin-top: 9px; }
+#tmrw-phone-root .tmrw-v3-voice-clone > button { min-height: 38px; border: 0; border-radius: 12px; background: #e9f3f9; color: #316b91; font-size: 9px; font-weight: 750; }
+#tmrw-phone-root .tmrw-v3-voice-clone > small { color: #737b86; font-size: 8px; line-height: 1.4; }
+#tmrw-phone-root .tmrw-v3-voice-install > div:last-child { display: grid; grid-template-columns: 1fr 1.25fr; gap: 7px; margin-top: 10px; }
+#tmrw-phone-root .tmrw-v3-voice-install button { min-height: 38px; border: 0; border-radius: 12px; background: #eef1f4; color: #3f4650; font-size: 9px; font-weight: 750; }
+#tmrw-phone-root .tmrw-v3-voice-install button:last-child { background: #25282d; color: #fff; }
 
 /* Production Theme preference applies only through Preview37's existing surface tokens. */
 #tmrw-phone-root[data-theme="light-blue"] { --tmrw-paper:#f8fbfd; --tmrw-card:#ffffff; --tmrw-ink:#17191e; --tmrw-muted:#737b86; --tmrw-line:#e1e8ee; }

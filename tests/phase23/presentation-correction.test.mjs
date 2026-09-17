@@ -63,18 +63,18 @@ test('Voice settings expose one authoritative call language and do not advertise
     document,
     settings: { voiceCallsEnabled: true, botCallsWithVoice: true, voiceCaptionsEnabled: true, voiceLanguagePreference: 'ja', voiceDefaultDelivery: 'expressive' },
     capability: { configured: true, runtimeAvailable: true, runtimeStatus: 'available', testVoiceEnabled: true },
-    runtimeHealth: { ready: true, voice: 'Puzzle' },
+    runtimeHealth: { ready: true, voice: 'TMRW Local Voice' },
     roster: [{ actorId: 'actor-kaelan', instanceId: 'instance-kaelan', label: 'Kaelan' }],
     selectedActorId: 'actor-kaelan',
     selectedIdentity: { actorId: 'actor-kaelan', instanceId: 'instance-kaelan', label: 'Kaelan' },
-    baseProfile: { profileName: 'Puzzle', language: 'en', lockedByUser: true },
-    instanceOverride: { enabled: true, fields: { profileName: 'Puzzle', language: 'en' } },
-    resolvedProfile: { profileName: 'Puzzle', language: 'en' },
+    baseProfile: { profileName: 'male-polite-dangerous', language: 'en', lockedByUser: true },
+    instanceOverride: { enabled: true, fields: { profileName: 'male-polite-dangerous', language: 'en' } },
+    resolvedProfile: { profileName: 'male-polite-dangerous', language: 'en' },
   });
   const text = allText(voice);
   assert.match(text, /ภาษาที่ใช้ในการโทรตอนนี้/);
   assert.match(text, /ใช้กับตัวละครทุกคน/);
-  assert.doesNotMatch(text, /Local Voice Runtime|Natural|Soft|Expressive|เสียงจากประวัติการโทร|ภาษาเสียง/);
+  assert.doesNotMatch(text, /Local Voice Runtime|เสียงจากประวัติการโทร|ภาษาเสียง/);
   assert.equal(findAll(voice, node => node.dataset?.voiceLanguage).length, 2);
   assert.equal(findAll(voice, node => node.dataset?.baseVoiceLanguage || node.dataset?.overrideVoiceLanguage || node.dataset?.voiceDelivery).length, 0);
 });

@@ -25,10 +25,10 @@ An active outbound call now has one bounded turn pipeline:
 - the caller's typed line is committed first, then the composer locks and immediately shows `กำลังคิด…`;
 - quiet generation has a 30-second deadline and must return one to three paired segments containing a Thai subtitle plus English or Japanese spoken text with matching meaning, names, address, and emotion;
 - invalid one-language or malformed output fails closed and exposes a retry action without creating a new call;
-- Puzzle synthesis uses one multi-chunk runtime turn, starts the first playable segment while later chunks continue in the background, applies a 20-second deadline per audio request, and retries a failed segment once;
+- TMRW Local Voice synthesis uses one multi-chunk runtime turn, starts the first playable segment while later chunks continue in the background, applies a 20-second deadline per audio request, and retries a failed segment once;
 - no bot transcript is exposed until the first real audio artifact is ready; captions and audio then advance together while user input remains locked;
 - hangup stays available and cancels generation, synthesis, retry, and playback;
-- a missing Character Voice Profile uses the existing Puzzle voice as the temporary playable fallback.
+- a missing Character Voice Profile uses TMRW Male Core as the temporary playable fallback.
 
 Voice Calls, bot voice, the mutually exclusive English/Japanese selection, delivery, Thai captions, and the runtime origin are stored as device-global preferences. They survive chat, branch, and reload changes. A detected ready runtime enables the initial defaults only once; later manual disables are preserved. Character Voice Profiles remain character-scoped.
 

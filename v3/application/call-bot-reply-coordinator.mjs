@@ -295,4 +295,4 @@ export class CallBotReplyCoordinator {
   }
 }
 
-export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'Puzzle', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT, maxReplySegments: MAX_REPLY_SEGMENTS, llmDeadlineMs: CALL_LLM_DEADLINE_MS, deliveryMode: CALL_LLM_DELIVERY_MODE.COMPLETE_RESPONSE, incremental: false, incrementalReason: CALL_LLM_INCREMENTAL_REASON });
+export const voiceV1BotReplyPolicy = Object.freeze({ voiceProfileRequiredForText: false, voiceProfileName: 'male-polite-dangerous', directCharacterOnly: true, maxTranscriptEntries: MAX_PROMPT_TRANSCRIPT, maxReplySegments: MAX_REPLY_SEGMENTS, llmDeadlineMs: CALL_LLM_DEADLINE_MS, deliveryMode: CALL_LLM_DELIVERY_MODE.COMPLETE_RESPONSE, incremental: false, incrementalReason: CALL_LLM_INCREMENTAL_REASON });

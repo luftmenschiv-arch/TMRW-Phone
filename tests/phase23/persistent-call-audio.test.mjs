@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { VoiceAudioHistoryService } from '../../application/voice-audio-history-service.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../../platform/voice/tmrw-local-voice-adapter.mjs';
 import { setupPhase9, startCall, transitionCall, addCallText } from '../phase9/call-fixtures.mjs';
 
 const wav = marker => new Blob([new Uint8Array(64).fill(marker)], { type: 'audio/wav' });
@@ -12,8 +12,8 @@ const pcmWav = samples => {
   write(0, 'RIFF'); view.setUint32(4, 36 + samples.length, true); write(8, 'WAVE'); write(12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 8000, true); view.setUint32(28, 8000, true); view.setUint16(32, 1, true); view.setUint16(34, 8, true); write(36, 'data'); view.setUint32(40, samples.length, true); bytes.set(samples, 44); return new Blob([buffer], { type: 'audio/wav' });
 };
 
-test('Puzzle archive combines same-format WAV segments into one playable file', async () => {
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl: async () => { throw new Error('unused'); }, createObjectURL: () => 'blob:combined', revokeObjectURL: () => {} });
+test('TMRW Local Voice archive combines same-format WAV segments into one playable file', async () => {
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl: async () => { throw new Error('unused'); }, createObjectURL: () => 'blob:combined', revokeObjectURL: () => {} });
   const merged = await adapter.combineStoredBlobs([pcmWav(Uint8Array.from([1, 2])), pcmWav(Uint8Array.from([3, 4, 5]))]);
   const view = new DataView(await merged.arrayBuffer());
   assert.equal(merged.type, 'audio/wav');
@@ -108,7 +108,7 @@ test('production presenter persists runtime bytes after canonical bot transcript
   const stored = [];
   const blob = wav(9);
   const presenter = new CallVoicePresenter({
-    voiceProfileService: { resolve: async () => ({ profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    voiceProfileService: { resolve: async () => ({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
     settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en', voiceDefaultDelivery: 'natural' }) },
     adapter: {
       render: async () => ({ status: 'ready', audioArtifactRef: 'blob:runtime', audioBlob: blob, mimeType: 'audio/wav', durationMs: 700 }),

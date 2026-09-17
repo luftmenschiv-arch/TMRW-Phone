@@ -26,7 +26,7 @@ export function createProductionVoiceV1CapabilityState() {
     testVoiceEnabled: false,
     textCallsReady: true,
     supportedLanguages: Object.freeze(['en', 'ja']),
-    unavailableReason: 'Puzzle local Voice is configured and health-checked on each eligible Call turn. Text Call remains available if the runtime is offline.',
+    unavailableReason: 'TMRW Local Voice is health-checked on each eligible Call turn. Text Call remains available if the local service is offline.',
     providerNeutral: true,
     modelLoaded: false,
     warmActive: false,

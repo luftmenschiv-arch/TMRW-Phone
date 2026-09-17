@@ -1,0 +1,2891 @@
+{
+  "schema": "tmrw-voice-presets-v1",
+  "version": 1,
+  "stableVariation": "sha256(presetId + characterInstanceId + schemaVersion)",
+  "languages": [
+    "en",
+    "ja"
+  ],
+  "presets": [
+    {
+      "id": "male-soft-youth",
+      "family": "male",
+      "order": 1,
+      "name": "Soft Youth",
+      "description": {
+        "en": "Soft, reserved, gentle young-adult voice; clear and calm without sounding childish.",
+        "th": "นุ่ม สุภาพ เก็บตัวแบบวัยหนุ่ม แต่ชัดเจนและไม่เด็กเกินไป"
+      },
+      "tags": {
+        "en": [
+          "Soft",
+          "Reserved",
+          "Young"
+        ],
+        "th": [
+          "นุ่ม",
+          "เก็บอารมณ์",
+          "วัยหนุ่ม"
+        ]
+      },
+      "apparentAge": "18–24",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 18,
+          "min": -5,
+          "max": 35
+        },
+        "PITCH_RANGE": {
+          "value": 18,
+          "min": -10,
+          "max": 40
+        },
+        "VOCAL_WEIGHT": {
+          "value": -28,
+          "min": -45,
+          "max": -5
+        },
+        "WARMTH": {
+          "value": 25,
+          "min": 10,
+          "max": 45
+        },
+        "BRIGHTNESS": {
+          "value": 18,
+          "min": 0,
+          "max": 35
+        },
+        "BREATHINESS": {
+          "value": 12,
+          "min": 0,
+          "max": 30
+        },
+        "ROUGHNESS": {
+          "value": -55,
+          "min": -70,
+          "max": -30
+        },
+        "RESONANCE_DEPTH": {
+          "value": -10,
+          "min": -25,
+          "max": 10
+        },
+        "NASALITY": {
+          "value": -20,
+          "min": -35,
+          "max": 0
+        },
+        "ARTICULATION": {
+          "value": 10,
+          "min": -5,
+          "max": 30
+        },
+        "PACE": {
+          "value": -5,
+          "min": -20,
+          "max": 15
+        },
+        "ENERGY": {
+          "value": -18,
+          "min": -30,
+          "max": 5
+        },
+        "EXPRESSIVENESS": {
+          "value": 5,
+          "min": -10,
+          "max": 25
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 25,
+          "min": 10,
+          "max": 45
+        },
+        "INTIMACY": {
+          "value": 22,
+          "min": 5,
+          "max": 40
+        },
+        "AUTHORITY": {
+          "value": -35,
+          "min": -50,
+          "max": -15
+        },
+        "CADENCE_VARIATION": {
+          "value": 5,
+          "min": -10,
+          "max": 20
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": -18,
+          "min": -35,
+          "max": 0
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-cool-youth",
+      "family": "male",
+      "order": 2,
+      "name": "Cool Youth",
+      "description": {
+        "en": "Dry, intelligent, controlled young voice with clean diction and little emotional decoration.",
+        "th": "คูล ฉลาด สุขุม พูดคมชัดและไม่ประดับอารมณ์เกินจำเป็น"
+      },
+      "tags": {
+        "en": [
+          "Cool",
+          "Dry",
+          "Precise"
+        ],
+        "th": [
+          "คูล",
+          "แห้งนิดๆ",
+          "คมชัด"
+        ]
+      },
+      "apparentAge": "20–27",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "PITCH_RANGE": {
+          "value": -8,
+          "min": -28,
+          "max": 15
+        },
+        "VOCAL_WEIGHT": {
+          "value": -8,
+          "min": -25,
+          "max": 12
+        },
+        "WARMTH": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "BRIGHTNESS": {
+          "value": 8,
+          "min": -8,
+          "max": 25
+        },
+        "BREATHINESS": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "ROUGHNESS": {
+          "value": -35,
+          "min": -58,
+          "max": -12
+        },
+        "RESONANCE_DEPTH": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "NASALITY": {
+          "value": -15,
+          "min": -30,
+          "max": 5
+        },
+        "ARTICULATION": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "PACE": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "ENERGY": {
+          "value": -20,
+          "min": -35,
+          "max": 0
+        },
+        "EXPRESSIVENESS": {
+          "value": -20,
+          "min": -38,
+          "max": 3
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 55,
+          "min": 38,
+          "max": 70
+        },
+        "INTIMACY": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "AUTHORITY": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "CADENCE_VARIATION": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 10,
+          "min": -8,
+          "max": 28
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-low-calm",
+      "family": "male",
+      "order": 3,
+      "name": "Low Calm",
+      "description": {
+        "en": "Low, substantial, calm adult voice whose depth comes from resonance and weight—not forced bass.",
+        "th": "ทุ้ม สุขุม มีมวลเสียง ความลึกมาจากเรโซแนนซ์ ไม่ใช่กดเสียงให้ต่ำ"
+      },
+      "tags": {
+        "en": [
+          "Low",
+          "Calm",
+          "Substantial"
+        ],
+        "th": [
+          "ทุ้ม",
+          "สุขุม",
+          "มีน้ำหนัก"
+        ]
+      },
+      "apparentAge": "30–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -45,
+          "min": -60,
+          "max": -30
+        },
+        "PITCH_RANGE": {
+          "value": -22,
+          "min": -40,
+          "max": 0
+        },
+        "VOCAL_WEIGHT": {
+          "value": 45,
+          "min": 25,
+          "max": 60
+        },
+        "WARMTH": {
+          "value": 15,
+          "min": -5,
+          "max": 35
+        },
+        "BRIGHTNESS": {
+          "value": -30,
+          "min": -48,
+          "max": -12
+        },
+        "BREATHINESS": {
+          "value": -12,
+          "min": -28,
+          "max": 5
+        },
+        "ROUGHNESS": {
+          "value": -20,
+          "min": -42,
+          "max": 5
+        },
+        "RESONANCE_DEPTH": {
+          "value": 60,
+          "min": 42,
+          "max": 72
+        },
+        "NASALITY": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "ARTICULATION": {
+          "value": 15,
+          "min": 0,
+          "max": 35
+        },
+        "PACE": {
+          "value": -25,
+          "min": -38,
+          "max": -10
+        },
+        "ENERGY": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "EXPRESSIVENESS": {
+          "value": -22,
+          "min": -40,
+          "max": 0
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 45,
+          "min": 28,
+          "max": 62
+        },
+        "INTIMACY": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "AUTHORITY": {
+          "value": 50,
+          "min": 32,
+          "max": 65
+        },
+        "CADENCE_VARIATION": {
+          "value": -10,
+          "min": -28,
+          "max": 10
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-warm-authority",
+      "family": "male",
+      "order": 4,
+      "name": "Warm Authority",
+      "description": {
+        "en": "Warm, mature, unhurried authority; confident and substantial without sounding controlling.",
+        "th": "อบอุ่น สุขุม มีอำนาจแบบผ่อนคลาย มั่นใจโดยไม่กดหรือข่ม"
+      },
+      "tags": {
+        "en": [
+          "Warm",
+          "Mature",
+          "Relaxed"
+        ],
+        "th": [
+          "อบอุ่น",
+          "เป็นผู้ใหญ่",
+          "ผ่อนคลาย"
+        ]
+      },
+      "apparentAge": "28–38",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -28,
+          "min": -45,
+          "max": -12
+        },
+        "PITCH_RANGE": {
+          "value": -5,
+          "min": -22,
+          "max": 18
+        },
+        "VOCAL_WEIGHT": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "WARMTH": {
+          "value": 58,
+          "min": 40,
+          "max": 72
+        },
+        "BRIGHTNESS": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "BREATHINESS": {
+          "value": -5,
+          "min": -20,
+          "max": 12
+        },
+        "ROUGHNESS": {
+          "value": -28,
+          "min": -48,
+          "max": -8
+        },
+        "RESONANCE_DEPTH": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "NASALITY": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "ARTICULATION": {
+          "value": 20,
+          "min": 5,
+          "max": 38
+        },
+        "PACE": {
+          "value": -18,
+          "min": -32,
+          "max": -3
+        },
+        "ENERGY": {
+          "value": -12,
+          "min": -28,
+          "max": 8
+        },
+        "EXPRESSIVENESS": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "INTIMACY": {
+          "value": 15,
+          "min": -2,
+          "max": 32
+        },
+        "AUTHORITY": {
+          "value": 58,
+          "min": 40,
+          "max": 72
+        },
+        "CADENCE_VARIATION": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 20,
+          "min": 2,
+          "max": 38
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-gentle-mature",
+      "family": "male",
+      "order": 5,
+      "name": "Gentle Mature",
+      "description": {
+        "en": "Clean, mature and gentle with soft authority and a more intimate, reassuring presence.",
+        "th": "สะอาด เป็นผู้ใหญ่ อ่อนโยน มีอำนาจนุ่มๆ และให้ความรู้สึกใกล้ชิดกว่า"
+      },
+      "tags": {
+        "en": [
+          "Gentle",
+          "Clean",
+          "Mature"
+        ],
+        "th": [
+          "อ่อนโยน",
+          "สะอาด",
+          "เป็นผู้ใหญ่"
+        ]
+      },
+      "apparentAge": "27–40",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -18,
+          "min": -35,
+          "max": -2
+        },
+        "PITCH_RANGE": {
+          "value": 2,
+          "min": -18,
+          "max": 22
+        },
+        "VOCAL_WEIGHT": {
+          "value": 15,
+          "min": -2,
+          "max": 32
+        },
+        "WARMTH": {
+          "value": 48,
+          "min": 30,
+          "max": 65
+        },
+        "BRIGHTNESS": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "BREATHINESS": {
+          "value": 8,
+          "min": -8,
+          "max": 25
+        },
+        "ROUGHNESS": {
+          "value": -50,
+          "min": -68,
+          "max": -30
+        },
+        "RESONANCE_DEPTH": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "NASALITY": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "ARTICULATION": {
+          "value": 28,
+          "min": 12,
+          "max": 45
+        },
+        "PACE": {
+          "value": -15,
+          "min": -30,
+          "max": 2
+        },
+        "ENERGY": {
+          "value": -15,
+          "min": -30,
+          "max": 5
+        },
+        "EXPRESSIVENESS": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 20,
+          "min": 5,
+          "max": 38
+        },
+        "INTIMACY": {
+          "value": 40,
+          "min": 22,
+          "max": 58
+        },
+        "AUTHORITY": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "CADENCE_VARIATION": {
+          "value": 10,
+          "min": -8,
+          "max": 28
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-elegant-controlled",
+      "family": "male",
+      "order": 6,
+      "name": "Elegant Controlled",
+      "description": {
+        "en": "Polished, precise and restrained; elegant distance with a subtle edge beneath immaculate diction.",
+        "th": "เนี้ยบ แม่นยำ เก็บอารมณ์ มีระยะห่างแบบสง่างามและคมอันตรายเล็กๆ"
+      },
+      "tags": {
+        "en": [
+          "Elegant",
+          "Precise",
+          "Restrained"
+        ],
+        "th": [
+          "สง่างาม",
+          "แม่นยำ",
+          "เก็บอารมณ์"
+        ]
+      },
+      "apparentAge": "25–36",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "PITCH_RANGE": {
+          "value": -12,
+          "min": -32,
+          "max": 8
+        },
+        "VOCAL_WEIGHT": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "WARMTH": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "BRIGHTNESS": {
+          "value": 12,
+          "min": -5,
+          "max": 30
+        },
+        "BREATHINESS": {
+          "value": -12,
+          "min": -28,
+          "max": 5
+        },
+        "ROUGHNESS": {
+          "value": -60,
+          "min": -75,
+          "max": -40
+        },
+        "RESONANCE_DEPTH": {
+          "value": 10,
+          "min": -8,
+          "max": 28
+        },
+        "NASALITY": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "ARTICULATION": {
+          "value": 62,
+          "min": 45,
+          "max": 75
+        },
+        "PACE": {
+          "value": -8,
+          "min": -22,
+          "max": 8
+        },
+        "ENERGY": {
+          "value": -20,
+          "min": -35,
+          "max": -3
+        },
+        "EXPRESSIVENESS": {
+          "value": -18,
+          "min": -35,
+          "max": 2
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 65,
+          "min": 48,
+          "max": 80
+        },
+        "INTIMACY": {
+          "value": -5,
+          "min": -22,
+          "max": 12
+        },
+        "AUTHORITY": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "CADENCE_VARIATION": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-elegant-youthful",
+      "family": "male",
+      "order": 7,
+      "name": "Elegant Youthful",
+      "description": {
+        "en": "Refined and youthful with beautiful resonance, clever charm and only a light theatrical tint.",
+        "th": "วัยหนุ่มที่ประณีต เสียงสวย ฉลาดมีเสน่ห์ และมีสีสันละครเพียงบางๆ"
+      },
+      "tags": {
+        "en": [
+          "Refined",
+          "Youthful",
+          "Charming"
+        ],
+        "th": [
+          "ประณีต",
+          "วัยหนุ่ม",
+          "มีเสน่ห์"
+        ]
+      },
+      "apparentAge": "20–29",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 8,
+          "min": -8,
+          "max": 25
+        },
+        "PITCH_RANGE": {
+          "value": 15,
+          "min": -5,
+          "max": 35
+        },
+        "VOCAL_WEIGHT": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "WARMTH": {
+          "value": 15,
+          "min": -2,
+          "max": 35
+        },
+        "BRIGHTNESS": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "BREATHINESS": {
+          "value": -5,
+          "min": -20,
+          "max": 12
+        },
+        "ROUGHNESS": {
+          "value": -58,
+          "min": -72,
+          "max": -38
+        },
+        "RESONANCE_DEPTH": {
+          "value": 0,
+          "min": -18,
+          "max": 18
+        },
+        "NASALITY": {
+          "value": -25,
+          "min": -42,
+          "max": -8
+        },
+        "ARTICULATION": {
+          "value": 50,
+          "min": 32,
+          "max": 65
+        },
+        "PACE": {
+          "value": 0,
+          "min": -15,
+          "max": 18
+        },
+        "ENERGY": {
+          "value": -5,
+          "min": -20,
+          "max": 15
+        },
+        "EXPRESSIVENESS": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 35,
+          "min": 18,
+          "max": 55
+        },
+        "INTIMACY": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "AUTHORITY": {
+          "value": 12,
+          "min": -5,
+          "max": 30
+        },
+        "CADENCE_VARIATION": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 12,
+          "min": -5,
+          "max": 30
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-playful",
+      "family": "male",
+      "order": 8,
+      "name": "Playful",
+      "description": {
+        "en": "Confident, agile and lightly mischievous with a smiling undertone that can still turn serious.",
+        "th": "มั่นใจ คล่องแคล่ว ขี้เล่นนิดๆ มีรอยยิ้มในเสียง แต่เปลี่ยนโหมดจริงจังได้"
+      },
+      "tags": {
+        "en": [
+          "Playful",
+          "Agile",
+          "Charming"
+        ],
+        "th": [
+          "ขี้เล่น",
+          "คล่อง",
+          "มีเสน่ห์"
+        ]
+      },
+      "apparentAge": "22–32",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 2,
+          "min": -15,
+          "max": 20
+        },
+        "PITCH_RANGE": {
+          "value": 35,
+          "min": 15,
+          "max": 55
+        },
+        "VOCAL_WEIGHT": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "WARMTH": {
+          "value": 22,
+          "min": 5,
+          "max": 42
+        },
+        "BRIGHTNESS": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "BREATHINESS": {
+          "value": 0,
+          "min": -15,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": -35,
+          "min": -55,
+          "max": -15
+        },
+        "RESONANCE_DEPTH": {
+          "value": 0,
+          "min": -18,
+          "max": 18
+        },
+        "NASALITY": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "ARTICULATION": {
+          "value": 28,
+          "min": 10,
+          "max": 48
+        },
+        "PACE": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "ENERGY": {
+          "value": 28,
+          "min": 10,
+          "max": 48
+        },
+        "EXPRESSIVENESS": {
+          "value": 52,
+          "min": 32,
+          "max": 68
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": -10,
+          "min": -30,
+          "max": 10
+        },
+        "INTIMACY": {
+          "value": 15,
+          "min": -2,
+          "max": 35
+        },
+        "AUTHORITY": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "CADENCE_VARIATION": {
+          "value": 55,
+          "min": 35,
+          "max": 70
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": -5,
+          "min": -25,
+          "max": 15
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-rough-low",
+      "family": "male",
+      "order": 9,
+      "name": "Rough Low",
+      "description": {
+        "en": "Low, casual and masculine with light grit and lived-in texture, never a forced growl.",
+        "th": "ทุ้ม สบายๆ แมน มีผิวเสียงสากเล็กน้อย แต่ไม่ขู่คำรามหรือกดเบส"
+      },
+      "tags": {
+        "en": [
+          "Low",
+          "Casual",
+          "Textured"
+        ],
+        "th": [
+          "ทุ้ม",
+          "สบายๆ",
+          "มีเท็กซ์เจอร์"
+        ]
+      },
+      "apparentAge": "27–40",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -38,
+          "min": -55,
+          "max": -22
+        },
+        "PITCH_RANGE": {
+          "value": -8,
+          "min": -28,
+          "max": 12
+        },
+        "VOCAL_WEIGHT": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "WARMTH": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "BRIGHTNESS": {
+          "value": -28,
+          "min": -45,
+          "max": -10
+        },
+        "BREATHINESS": {
+          "value": -5,
+          "min": -22,
+          "max": 10
+        },
+        "ROUGHNESS": {
+          "value": 38,
+          "min": 18,
+          "max": 55
+        },
+        "RESONANCE_DEPTH": {
+          "value": 50,
+          "min": 32,
+          "max": 65
+        },
+        "NASALITY": {
+          "value": -20,
+          "min": -38,
+          "max": -2
+        },
+        "ARTICULATION": {
+          "value": 0,
+          "min": -18,
+          "max": 20
+        },
+        "PACE": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "ENERGY": {
+          "value": -5,
+          "min": -22,
+          "max": 18
+        },
+        "EXPRESSIVENESS": {
+          "value": 5,
+          "min": -12,
+          "max": 28
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 20,
+          "min": 3,
+          "max": 40
+        },
+        "INTIMACY": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "AUTHORITY": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "CADENCE_VARIATION": {
+          "value": 12,
+          "min": -5,
+          "max": 32
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 15,
+          "min": -2,
+          "max": 35
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-dark-cold",
+      "family": "male",
+      "order": 10,
+      "name": "Dark Cold",
+      "description": {
+        "en": "Dark, low and minimal with quiet danger and micro-expression under strong restraint.",
+        "th": "มืด ทุ้ม พูดน้อย อันตรายแบบเงียบๆ แต่ยังมีไมโครเอ็กซ์เพรสชัน ไม่ใช่โมโนโทน"
+      },
+      "tags": {
+        "en": [
+          "Dark",
+          "Restrained",
+          "Dangerous"
+        ],
+        "th": [
+          "มืด",
+          "เก็บอารมณ์",
+          "อันตราย"
+        ]
+      },
+      "apparentAge": "27–40",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -42,
+          "min": -58,
+          "max": -28
+        },
+        "PITCH_RANGE": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "VOCAL_WEIGHT": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "WARMTH": {
+          "value": -45,
+          "min": -60,
+          "max": -25
+        },
+        "BRIGHTNESS": {
+          "value": -45,
+          "min": -60,
+          "max": -28
+        },
+        "BREATHINESS": {
+          "value": -18,
+          "min": -32,
+          "max": 0
+        },
+        "ROUGHNESS": {
+          "value": 5,
+          "min": -18,
+          "max": 25
+        },
+        "RESONANCE_DEPTH": {
+          "value": 50,
+          "min": 32,
+          "max": 65
+        },
+        "NASALITY": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "ARTICULATION": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "PACE": {
+          "value": -28,
+          "min": -42,
+          "max": -15
+        },
+        "ENERGY": {
+          "value": -38,
+          "min": -52,
+          "max": -20
+        },
+        "EXPRESSIVENESS": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 75,
+          "min": 60,
+          "max": 88
+        },
+        "INTIMACY": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "AUTHORITY": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "CADENCE_VARIATION": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-polite-dangerous",
+      "family": "male",
+      "order": 11,
+      "name": "Polite Dangerous",
+      "description": {
+        "en": "Polite, composed and socially smooth; threat comes from precision, restraint and confidence.",
+        "th": "สุภาพ เนี้ยบ เข้าสังคมลื่นไหล ความอันตรายมาจากความแม่นและความมั่นใจ ไม่ใช่เสียงขู่"
+      },
+      "tags": {
+        "en": [
+          "Polite",
+          "Composed",
+          "Dangerous"
+        ],
+        "th": [
+          "สุภาพ",
+          "สุขุม",
+          "อันตราย"
+        ]
+      },
+      "apparentAge": "27–40",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -22,
+          "min": -38,
+          "max": -8
+        },
+        "PITCH_RANGE": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "VOCAL_WEIGHT": {
+          "value": 10,
+          "min": -8,
+          "max": 28
+        },
+        "WARMTH": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "BRIGHTNESS": {
+          "value": -5,
+          "min": -22,
+          "max": 12
+        },
+        "BREATHINESS": {
+          "value": -18,
+          "min": -32,
+          "max": -2
+        },
+        "ROUGHNESS": {
+          "value": -50,
+          "min": -68,
+          "max": -30
+        },
+        "RESONANCE_DEPTH": {
+          "value": 20,
+          "min": 2,
+          "max": 38
+        },
+        "NASALITY": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "ARTICULATION": {
+          "value": 60,
+          "min": 42,
+          "max": 75
+        },
+        "PACE": {
+          "value": -12,
+          "min": -28,
+          "max": 5
+        },
+        "ENERGY": {
+          "value": -22,
+          "min": -38,
+          "max": -5
+        },
+        "EXPRESSIVENESS": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 70,
+          "min": 52,
+          "max": 84
+        },
+        "INTIMACY": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "AUTHORITY": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "CADENCE_VARIATION": {
+          "value": -18,
+          "min": -35,
+          "max": 2
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 45,
+          "min": 28,
+          "max": 60
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "male-clever-charmer",
+      "family": "male",
+      "order": 12,
+      "name": "Clever Charmer",
+      "description": {
+        "en": "Warm, clever and socially agile, with relaxed confidence and a playful edge that never becomes cartoonish.",
+        "th": "อบอุ่น ฉลาด ไหวพริบดี มั่นใจแบบสบายๆ และขี้เล่นอย่างมีชั้นเชิงโดยไม่กลายเป็นเสียงการ์ตูน"
+      },
+      "tags": {
+        "en": [
+          "Clever",
+          "Warm",
+          "Charming"
+        ],
+        "th": [
+          "ฉลาด",
+          "อบอุ่น",
+          "มีเสน่ห์"
+        ]
+      },
+      "apparentAge": "22–34",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 4,
+          "min": -12,
+          "max": 20
+        },
+        "PITCH_RANGE": {
+          "value": 22,
+          "min": 4,
+          "max": 40
+        },
+        "VOCAL_WEIGHT": {
+          "value": -2,
+          "min": -18,
+          "max": 16
+        },
+        "WARMTH": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "BRIGHTNESS": {
+          "value": 16,
+          "min": 0,
+          "max": 32
+        },
+        "BREATHINESS": {
+          "value": -3,
+          "min": -18,
+          "max": 14
+        },
+        "ROUGHNESS": {
+          "value": -48,
+          "min": -65,
+          "max": -28
+        },
+        "RESONANCE_DEPTH": {
+          "value": 8,
+          "min": -8,
+          "max": 26
+        },
+        "NASALITY": {
+          "value": -20,
+          "min": -36,
+          "max": -4
+        },
+        "ARTICULATION": {
+          "value": 32,
+          "min": 15,
+          "max": 48
+        },
+        "PACE": {
+          "value": 14,
+          "min": -2,
+          "max": 30
+        },
+        "ENERGY": {
+          "value": 8,
+          "min": -10,
+          "max": 26
+        },
+        "EXPRESSIVENESS": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 24,
+          "min": 8,
+          "max": 42
+        },
+        "INTIMACY": {
+          "value": 20,
+          "min": 2,
+          "max": 38
+        },
+        "AUTHORITY": {
+          "value": 8,
+          "min": -10,
+          "max": 26
+        },
+        "CADENCE_VARIATION": {
+          "value": 42,
+          "min": 24,
+          "max": 58
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 0,
+          "min": -18,
+          "max": 20
+        }
+      },
+      "baseProfile": "tmrw-male-core"
+    },
+    {
+      "id": "female-gentle-soft",
+      "family": "female",
+      "order": 1,
+      "name": "Gentle Soft",
+      "description": {
+        "en": "Very gentle and naturally soft, with a close reassuring presence that stays clear in long conversation.",
+        "th": "อ่อนโยนเป็นธรรมชาติ นุ่มและใกล้ชิด ฟังสบายแต่ยังชัดเจนเวลาคุยนานๆ"
+      },
+      "tags": {
+        "en": [
+          "Gentle",
+          "Close",
+          "Soft"
+        ],
+        "th": [
+          "อ่อนโยน",
+          "ใกล้ชิด",
+          "นุ่ม"
+        ]
+      },
+      "apparentAge": "20–30",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "PITCH_RANGE": {
+          "value": 10,
+          "min": -10,
+          "max": 30
+        },
+        "VOCAL_WEIGHT": {
+          "value": -22,
+          "min": -38,
+          "max": -5
+        },
+        "WARMTH": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "BRIGHTNESS": {
+          "value": 20,
+          "min": 5,
+          "max": 38
+        },
+        "BREATHINESS": {
+          "value": 18,
+          "min": 5,
+          "max": 32
+        },
+        "ROUGHNESS": {
+          "value": -60,
+          "min": -72,
+          "max": -40
+        },
+        "RESONANCE_DEPTH": {
+          "value": -5,
+          "min": -20,
+          "max": 12
+        },
+        "NASALITY": {
+          "value": -22,
+          "min": -38,
+          "max": -5
+        },
+        "ARTICULATION": {
+          "value": 15,
+          "min": 0,
+          "max": 32
+        },
+        "PACE": {
+          "value": -10,
+          "min": -25,
+          "max": 8
+        },
+        "ENERGY": {
+          "value": -18,
+          "min": -32,
+          "max": 2
+        },
+        "EXPRESSIVENESS": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 20,
+          "min": 2,
+          "max": 40
+        },
+        "INTIMACY": {
+          "value": 55,
+          "min": 38,
+          "max": 68
+        },
+        "AUTHORITY": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "CADENCE_VARIATION": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": -20,
+          "min": -38,
+          "max": -2
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-clear-soft",
+      "family": "female",
+      "order": 2,
+      "name": "Clear Soft",
+      "description": {
+        "en": "Soft, clean and polished, with clear diction and a little more composure and distance than Gentle Soft.",
+        "th": "นุ่ม สะอาด เนี้ยบ ออกเสียงชัด และสุขุมมีระยะกว่ากลุ่ม Gentle Soft เล็กน้อย"
+      },
+      "tags": {
+        "en": [
+          "Clean",
+          "Soft",
+          "Composed"
+        ],
+        "th": [
+          "สะอาด",
+          "นุ่ม",
+          "สุขุม"
+        ]
+      },
+      "apparentAge": "22–32",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 20,
+          "min": 4,
+          "max": 38
+        },
+        "PITCH_RANGE": {
+          "value": 0,
+          "min": -18,
+          "max": 20
+        },
+        "VOCAL_WEIGHT": {
+          "value": -15,
+          "min": -30,
+          "max": 2
+        },
+        "WARMTH": {
+          "value": 18,
+          "min": 2,
+          "max": 38
+        },
+        "BRIGHTNESS": {
+          "value": 15,
+          "min": 0,
+          "max": 32
+        },
+        "BREATHINESS": {
+          "value": 8,
+          "min": -5,
+          "max": 24
+        },
+        "ROUGHNESS": {
+          "value": -65,
+          "min": -75,
+          "max": -45
+        },
+        "RESONANCE_DEPTH": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "NASALITY": {
+          "value": -25,
+          "min": -40,
+          "max": -8
+        },
+        "ARTICULATION": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "PACE": {
+          "value": -12,
+          "min": -28,
+          "max": 5
+        },
+        "ENERGY": {
+          "value": -22,
+          "min": -38,
+          "max": -5
+        },
+        "EXPRESSIVENESS": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 45,
+          "min": 28,
+          "max": 62
+        },
+        "INTIMACY": {
+          "value": 20,
+          "min": 4,
+          "max": 38
+        },
+        "AUTHORITY": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "CADENCE_VARIATION": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-cool-reserved",
+      "family": "female",
+      "order": 3,
+      "name": "Cool Reserved",
+      "description": {
+        "en": "Cool, capable and emotionally economical, with calm professional clarity but no built-in menace.",
+        "th": "คูล สุขุม ดูมีความสามารถ เก็บอารมณ์และชัดเจนแบบมืออาชีพ โดยไม่มืดหรืออันตรายเป็นค่าเริ่มต้น"
+      },
+      "tags": {
+        "en": [
+          "Cool",
+          "Calm",
+          "Capable"
+        ],
+        "th": [
+          "คูล",
+          "สุขุม",
+          "มืออาชีพ"
+        ]
+      },
+      "apparentAge": "23–34",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 8,
+          "min": -10,
+          "max": 25
+        },
+        "PITCH_RANGE": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "VOCAL_WEIGHT": {
+          "value": 0,
+          "min": -18,
+          "max": 20
+        },
+        "WARMTH": {
+          "value": -28,
+          "min": -45,
+          "max": -10
+        },
+        "BRIGHTNESS": {
+          "value": 3,
+          "min": -15,
+          "max": 20
+        },
+        "BREATHINESS": {
+          "value": -10,
+          "min": -25,
+          "max": 8
+        },
+        "ROUGHNESS": {
+          "value": -50,
+          "min": -68,
+          "max": -30
+        },
+        "RESONANCE_DEPTH": {
+          "value": 15,
+          "min": -3,
+          "max": 32
+        },
+        "NASALITY": {
+          "value": -25,
+          "min": -42,
+          "max": -8
+        },
+        "ARTICULATION": {
+          "value": 38,
+          "min": 22,
+          "max": 55
+        },
+        "PACE": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "ENERGY": {
+          "value": -28,
+          "min": -45,
+          "max": -10
+        },
+        "EXPRESSIVENESS": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 62,
+          "min": 45,
+          "max": 76
+        },
+        "INTIMACY": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "AUTHORITY": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "CADENCE_VARIATION": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-bright-natural",
+      "family": "female",
+      "order": 4,
+      "name": "Bright Natural",
+      "description": {
+        "en": "Bright, friendly and lively in an everyday way—youthful, open and expressive without sounding juvenile.",
+        "th": "สดใส เป็นมิตร มีชีวิตชีวาแบบคุยจริง วัยสาวแต่ไม่เด็ก และแสดงอารมณ์ได้โดยไม่เวอร์"
+      },
+      "tags": {
+        "en": [
+          "Bright",
+          "Friendly",
+          "Natural"
+        ],
+        "th": [
+          "สดใส",
+          "เป็นมิตร",
+          "ธรรมชาติ"
+        ]
+      },
+      "apparentAge": "18–27",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 38,
+          "min": 20,
+          "max": 52
+        },
+        "PITCH_RANGE": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "VOCAL_WEIGHT": {
+          "value": -28,
+          "min": -42,
+          "max": -10
+        },
+        "WARMTH": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "BRIGHTNESS": {
+          "value": 48,
+          "min": 30,
+          "max": 60
+        },
+        "BREATHINESS": {
+          "value": 2,
+          "min": -12,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": -60,
+          "min": -72,
+          "max": -40
+        },
+        "RESONANCE_DEPTH": {
+          "value": -20,
+          "min": -35,
+          "max": -3
+        },
+        "NASALITY": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "ARTICULATION": {
+          "value": 15,
+          "min": -2,
+          "max": 32
+        },
+        "PACE": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "ENERGY": {
+          "value": 38,
+          "min": 20,
+          "max": 55
+        },
+        "EXPRESSIVENESS": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": -10,
+          "min": -30,
+          "max": 8
+        },
+        "INTIMACY": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "AUTHORITY": {
+          "value": -20,
+          "min": -38,
+          "max": -2
+        },
+        "CADENCE_VARIATION": {
+          "value": 38,
+          "min": 20,
+          "max": 55
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-bright-theatrical",
+      "family": "female",
+      "order": 5,
+      "name": "Bright Theatrical",
+      "description": {
+        "en": "Colorful, energetic and confidently expressive, with bigger cadence movement and a serious mode that still works.",
+        "th": "สีสันชัด พลังเยอะ แสดงออกเก่ง จังหวะพูดเด่น แต่ยังลดโหมดละครลงเพื่อคุยจริงจังได้"
+      },
+      "tags": {
+        "en": [
+          "Colorful",
+          "Expressive",
+          "Bold"
+        ],
+        "th": [
+          "มีสีสัน",
+          "แสดงออก",
+          "มั่นใจ"
+        ]
+      },
+      "apparentAge": "20–30",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 42,
+          "min": 22,
+          "max": 58
+        },
+        "PITCH_RANGE": {
+          "value": 52,
+          "min": 30,
+          "max": 68
+        },
+        "VOCAL_WEIGHT": {
+          "value": -22,
+          "min": -38,
+          "max": -5
+        },
+        "WARMTH": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "BRIGHTNESS": {
+          "value": 55,
+          "min": 35,
+          "max": 68
+        },
+        "BREATHINESS": {
+          "value": 0,
+          "min": -15,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": -55,
+          "min": -70,
+          "max": -35
+        },
+        "RESONANCE_DEPTH": {
+          "value": -18,
+          "min": -35,
+          "max": 0
+        },
+        "NASALITY": {
+          "value": -5,
+          "min": -22,
+          "max": 12
+        },
+        "ARTICULATION": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "PACE": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "ENERGY": {
+          "value": 55,
+          "min": 35,
+          "max": 68
+        },
+        "EXPRESSIVENESS": {
+          "value": 70,
+          "min": 50,
+          "max": 82
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": -28,
+          "min": -48,
+          "max": -8
+        },
+        "INTIMACY": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "AUTHORITY": {
+          "value": 0,
+          "min": -18,
+          "max": 20
+        },
+        "CADENCE_VARIATION": {
+          "value": 68,
+          "min": 48,
+          "max": 80
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-warm-mature",
+      "family": "female",
+      "order": 6,
+      "name": "Warm Mature",
+      "description": {
+        "en": "Warm, mature and composed, with confident presence and substance without sounding old, matronly or seductive by default.",
+        "th": "อบอุ่น เป็นผู้ใหญ่ สุขุมและมั่นใจ มีน้ำหนักโดยไม่แก่ ไม่เป็นแม่ใหญ่ และไม่ยั่วยวนเป็นค่าเริ่มต้น"
+      },
+      "tags": {
+        "en": [
+          "Warm",
+          "Mature",
+          "Confident"
+        ],
+        "th": [
+          "อบอุ่น",
+          "เป็นผู้ใหญ่",
+          "มั่นใจ"
+        ]
+      },
+      "apparentAge": "30–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -5,
+          "min": -22,
+          "max": 12
+        },
+        "PITCH_RANGE": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "VOCAL_WEIGHT": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "WARMTH": {
+          "value": 55,
+          "min": 38,
+          "max": 70
+        },
+        "BRIGHTNESS": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "BREATHINESS": {
+          "value": 0,
+          "min": -15,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": -45,
+          "min": -62,
+          "max": -25
+        },
+        "RESONANCE_DEPTH": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "NASALITY": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "ARTICULATION": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "PACE": {
+          "value": -18,
+          "min": -32,
+          "max": -3
+        },
+        "ENERGY": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "EXPRESSIVENESS": {
+          "value": 10,
+          "min": -8,
+          "max": 30
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "INTIMACY": {
+          "value": 15,
+          "min": -3,
+          "max": 35
+        },
+        "AUTHORITY": {
+          "value": 40,
+          "min": 22,
+          "max": 58
+        },
+        "CADENCE_VARIATION": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-elegant-alluring",
+      "family": "female",
+      "order": 7,
+      "name": "Elegant Alluring",
+      "description": {
+        "en": "Smooth, polished and mature with effortless allure; attractive in ordinary conversation without performing seduction.",
+        "th": "เรียบลื่น เนี้ยบ เป็นผู้ใหญ่ มีเสน่ห์แบบไม่ต้องพยายาม คุยธรรมดาก็สวยโดยไม่ต้องยั่วตลอดเวลา"
+      },
+      "tags": {
+        "en": [
+          "Elegant",
+          "Smooth",
+          "Alluring"
+        ],
+        "th": [
+          "สง่างาม",
+          "ลื่นไหล",
+          "มีเสน่ห์"
+        ]
+      },
+      "apparentAge": "28–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -8,
+          "min": -25,
+          "max": 8
+        },
+        "PITCH_RANGE": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "VOCAL_WEIGHT": {
+          "value": 18,
+          "min": 0,
+          "max": 35
+        },
+        "WARMTH": {
+          "value": 25,
+          "min": 8,
+          "max": 45
+        },
+        "BRIGHTNESS": {
+          "value": -15,
+          "min": -32,
+          "max": 5
+        },
+        "BREATHINESS": {
+          "value": 12,
+          "min": -3,
+          "max": 30
+        },
+        "ROUGHNESS": {
+          "value": -50,
+          "min": -68,
+          "max": -30
+        },
+        "RESONANCE_DEPTH": {
+          "value": 38,
+          "min": 20,
+          "max": 55
+        },
+        "NASALITY": {
+          "value": -28,
+          "min": -45,
+          "max": -10
+        },
+        "ARTICULATION": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "PACE": {
+          "value": -25,
+          "min": -40,
+          "max": -10
+        },
+        "ENERGY": {
+          "value": -20,
+          "min": -38,
+          "max": -2
+        },
+        "EXPRESSIVENESS": {
+          "value": 15,
+          "min": -5,
+          "max": 35
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 45,
+          "min": 28,
+          "max": 62
+        },
+        "INTIMACY": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "AUTHORITY": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "CADENCE_VARIATION": {
+          "value": 12,
+          "min": -5,
+          "max": 32
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-playful-mischievous",
+      "family": "female",
+      "order": 8,
+      "name": "Playful Mischievous",
+      "description": {
+        "en": "Lively, mischievous and charming, with quick emotional turns and playful rhythm that can become serious fast.",
+        "th": "ขี้เล่น เจ้าเล่ห์นิดๆ มีเสน่ห์ เปลี่ยนอารมณ์ไวและจังหวะสนุก แต่เข้าโหมดจริงจังได้ทันที"
+      },
+      "tags": {
+        "en": [
+          "Playful",
+          "Mischievous",
+          "Agile"
+        ],
+        "th": [
+          "ขี้เล่น",
+          "เจ้าเล่ห์",
+          "คล่อง"
+        ]
+      },
+      "apparentAge": "20–30",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "PITCH_RANGE": {
+          "value": 45,
+          "min": 25,
+          "max": 62
+        },
+        "VOCAL_WEIGHT": {
+          "value": -18,
+          "min": -35,
+          "max": 0
+        },
+        "WARMTH": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "BRIGHTNESS": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "BREATHINESS": {
+          "value": 2,
+          "min": -12,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": -55,
+          "min": -70,
+          "max": -35
+        },
+        "RESONANCE_DEPTH": {
+          "value": -10,
+          "min": -28,
+          "max": 8
+        },
+        "NASALITY": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "ARTICULATION": {
+          "value": 22,
+          "min": 5,
+          "max": 40
+        },
+        "PACE": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "ENERGY": {
+          "value": 48,
+          "min": 30,
+          "max": 64
+        },
+        "EXPRESSIVENESS": {
+          "value": 62,
+          "min": 42,
+          "max": 76
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": -20,
+          "min": -40,
+          "max": 0
+        },
+        "INTIMACY": {
+          "value": 20,
+          "min": 2,
+          "max": 40
+        },
+        "AUTHORITY": {
+          "value": -5,
+          "min": -25,
+          "max": 15
+        },
+        "CADENCE_VARIATION": {
+          "value": 65,
+          "min": 45,
+          "max": 78
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": -10,
+          "min": -30,
+          "max": 10
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-elegant-tease",
+      "family": "female",
+      "order": 9,
+      "name": "Elegant Tease",
+      "description": {
+        "en": "Mature, polished and knowingly playful, with social confidence and teasing charm carried through subtext.",
+        "th": "พี่สาวสุขุม สวยเนี้ยบ รู้ทันคนและขี้แกล้งแบบมีชั้นเชิง เสน่ห์อยู่ในน้ำเสียงมากกว่าความไฮเปอร์"
+      },
+      "tags": {
+        "en": [
+          "Elegant",
+          "Teasing",
+          "Knowing"
+        ],
+        "th": [
+          "สง่างาม",
+          "ขี้แกล้ง",
+          "รู้ทัน"
+        ]
+      },
+      "apparentAge": "27–40",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": 2,
+          "min": -15,
+          "max": 20
+        },
+        "PITCH_RANGE": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "VOCAL_WEIGHT": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "WARMTH": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "BRIGHTNESS": {
+          "value": 8,
+          "min": -10,
+          "max": 28
+        },
+        "BREATHINESS": {
+          "value": 4,
+          "min": -10,
+          "max": 22
+        },
+        "ROUGHNESS": {
+          "value": -55,
+          "min": -70,
+          "max": -35
+        },
+        "RESONANCE_DEPTH": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        },
+        "NASALITY": {
+          "value": -20,
+          "min": -38,
+          "max": -3
+        },
+        "ARTICULATION": {
+          "value": 38,
+          "min": 20,
+          "max": 55
+        },
+        "PACE": {
+          "value": 5,
+          "min": -12,
+          "max": 22
+        },
+        "ENERGY": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "EXPRESSIVENESS": {
+          "value": 28,
+          "min": 10,
+          "max": 48
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 32,
+          "min": 15,
+          "max": 50
+        },
+        "INTIMACY": {
+          "value": 22,
+          "min": 5,
+          "max": 42
+        },
+        "AUTHORITY": {
+          "value": 28,
+          "min": 10,
+          "max": 45
+        },
+        "CADENCE_VARIATION": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-low-husky",
+      "family": "female",
+      "order": 10,
+      "name": "Low Husky",
+      "description": {
+        "en": "Lower, grounded and mature with natural body and light husky texture—confident without growl or forced bass.",
+        "th": "โทนต่ำกว่า มีเนื้อเสียงและความฮัสกี้แบบธรรมชาติ สุขุมมั่นใจโดยไม่คำรามหรือกดเสียงให้แมนเกินจริง"
+      },
+      "tags": {
+        "en": [
+          "Low",
+          "Husky",
+          "Grounded"
+        ],
+        "th": [
+          "ต่ำ",
+          "ฮัสกี้",
+          "มั่นคง"
+        ]
+      },
+      "apparentAge": "28–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -35,
+          "min": -50,
+          "max": -20
+        },
+        "PITCH_RANGE": {
+          "value": -5,
+          "min": -22,
+          "max": 15
+        },
+        "VOCAL_WEIGHT": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "WARMTH": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "BRIGHTNESS": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "BREATHINESS": {
+          "value": 2,
+          "min": -12,
+          "max": 18
+        },
+        "ROUGHNESS": {
+          "value": 30,
+          "min": 12,
+          "max": 48
+        },
+        "RESONANCE_DEPTH": {
+          "value": 58,
+          "min": 42,
+          "max": 70
+        },
+        "NASALITY": {
+          "value": -25,
+          "min": -42,
+          "max": -8
+        },
+        "ARTICULATION": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "PACE": {
+          "value": -8,
+          "min": -25,
+          "max": 10
+        },
+        "ENERGY": {
+          "value": 0,
+          "min": -18,
+          "max": 22
+        },
+        "EXPRESSIVENESS": {
+          "value": 8,
+          "min": -10,
+          "max": 30
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 22,
+          "min": 5,
+          "max": 42
+        },
+        "INTIMACY": {
+          "value": 5,
+          "min": -12,
+          "max": 25
+        },
+        "AUTHORITY": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "CADENCE_VARIATION": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 22,
+          "min": 5,
+          "max": 40
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-dark-restrained",
+      "family": "female",
+      "order": 11,
+      "name": "Dark Restrained",
+      "description": {
+        "en": "Dark, cool and tightly restrained, with quiet danger carried by stillness, precision and micro-expression.",
+        "th": "มืด เย็น เก็บอารมณ์มาก อันตรายจากความนิ่ง ความแน่นอน และไมโครเอ็กซ์เพรสชัน ไม่ใช่เสียงสาก"
+      },
+      "tags": {
+        "en": [
+          "Dark",
+          "Restrained",
+          "Precise"
+        ],
+        "th": [
+          "มืด",
+          "เก็บอารมณ์",
+          "แม่นยำ"
+        ]
+      },
+      "apparentAge": "28–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -18,
+          "min": -35,
+          "max": -3
+        },
+        "PITCH_RANGE": {
+          "value": -30,
+          "min": -45,
+          "max": -12
+        },
+        "VOCAL_WEIGHT": {
+          "value": 18,
+          "min": 0,
+          "max": 35
+        },
+        "WARMTH": {
+          "value": -48,
+          "min": -62,
+          "max": -30
+        },
+        "BRIGHTNESS": {
+          "value": -40,
+          "min": -55,
+          "max": -22
+        },
+        "BREATHINESS": {
+          "value": -12,
+          "min": -28,
+          "max": 5
+        },
+        "ROUGHNESS": {
+          "value": -30,
+          "min": -50,
+          "max": -10
+        },
+        "RESONANCE_DEPTH": {
+          "value": 35,
+          "min": 18,
+          "max": 52
+        },
+        "NASALITY": {
+          "value": -35,
+          "min": -50,
+          "max": -18
+        },
+        "ARTICULATION": {
+          "value": 48,
+          "min": 30,
+          "max": 62
+        },
+        "PACE": {
+          "value": -28,
+          "min": -42,
+          "max": -15
+        },
+        "ENERGY": {
+          "value": -45,
+          "min": -58,
+          "max": -28
+        },
+        "EXPRESSIVENESS": {
+          "value": -30,
+          "min": -48,
+          "max": -12
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 78,
+          "min": 62,
+          "max": 88
+        },
+        "INTIMACY": {
+          "value": -20,
+          "min": -38,
+          "max": 0
+        },
+        "AUTHORITY": {
+          "value": 45,
+          "min": 28,
+          "max": 60
+        },
+        "CADENCE_VARIATION": {
+          "value": -25,
+          "min": -42,
+          "max": -8
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    },
+    {
+      "id": "female-seductive-dangerous",
+      "family": "female",
+      "order": 12,
+      "name": "Seductive Dangerous",
+      "description": {
+        "en": "Smooth, mature and socially powerful, with controlled sensuality and danger carried through confidence and interpersonal control.",
+        "th": "ลื่นไหล เป็นผู้ใหญ่ คุมบรรยากาศเก่ง มีความเย้ายวนแบบควบคุมได้ และอันตรายจากความมั่นใจต่อคนตรงหน้า"
+      },
+      "tags": {
+        "en": [
+          "Smooth",
+          "Sensual",
+          "Dangerous"
+        ],
+        "th": [
+          "ลื่นไหล",
+          "เย้ายวน",
+          "อันตราย"
+        ]
+      },
+      "apparentAge": "28–42",
+      "preview": {
+        "en": "I am here. Take your time, and tell me what happened from the beginning.",
+        "ja": "ここにいるよ。焦らなくていいから、最初からゆっくり話して。"
+      },
+      "parameters": {
+        "PITCH_CENTER": {
+          "value": -12,
+          "min": -30,
+          "max": 5
+        },
+        "PITCH_RANGE": {
+          "value": 5,
+          "min": -15,
+          "max": 25
+        },
+        "VOCAL_WEIGHT": {
+          "value": 22,
+          "min": 5,
+          "max": 40
+        },
+        "WARMTH": {
+          "value": 10,
+          "min": -8,
+          "max": 30
+        },
+        "BRIGHTNESS": {
+          "value": -20,
+          "min": -38,
+          "max": -3
+        },
+        "BREATHINESS": {
+          "value": 16,
+          "min": 0,
+          "max": 34
+        },
+        "ROUGHNESS": {
+          "value": -38,
+          "min": -58,
+          "max": -18
+        },
+        "RESONANCE_DEPTH": {
+          "value": 45,
+          "min": 28,
+          "max": 60
+        },
+        "NASALITY": {
+          "value": -25,
+          "min": -42,
+          "max": -8
+        },
+        "ARTICULATION": {
+          "value": 40,
+          "min": 22,
+          "max": 56
+        },
+        "PACE": {
+          "value": -22,
+          "min": -38,
+          "max": -7
+        },
+        "ENERGY": {
+          "value": -18,
+          "min": -35,
+          "max": 0
+        },
+        "EXPRESSIVENESS": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "EMOTIONAL_RESTRAINT": {
+          "value": 48,
+          "min": 30,
+          "max": 64
+        },
+        "INTIMACY": {
+          "value": 42,
+          "min": 25,
+          "max": 58
+        },
+        "AUTHORITY": {
+          "value": 40,
+          "min": 22,
+          "max": 58
+        },
+        "CADENCE_VARIATION": {
+          "value": 18,
+          "min": 0,
+          "max": 38
+        },
+        "SENTENCE_END_FIRMNESS": {
+          "value": 25,
+          "min": 8,
+          "max": 42
+        }
+      },
+      "baseProfile": "tmrw-female-core"
+    }
+  ]
+}

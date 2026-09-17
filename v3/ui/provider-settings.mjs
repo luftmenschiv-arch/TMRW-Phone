@@ -11,5 +11,5 @@ export function renderImageProviderSettings({ document, capability = {}, configu
 }
 
 export function renderVoiceProviderHeading({ document, configured = false } = {}) {
-  const root = node(document, 'section'); root.className = 'tmrw-v3-provider-heading'; root.dataset.providerArea = 'voice'; const mark = node(document, 'i'); mark.append(createPreviewIcon({ document, name: 'voice', size: 21 })); const copy = node(document, 'span'); copy.append(node(document, 'small', 'VOICE API'), node(document, 'strong', 'TMRW Voice Companion'), node(document, 'p', configured ? 'ตั้งค่าเสียงโทรศัพท์และโปรไฟล์ตัวละคร' : 'ไม่บังคับ • โทรแบบข้อความยังใช้ได้')); root.append(mark, copy); return root;
+  const root = node(document, 'section'); root.className = 'tmrw-v3-provider-heading'; root.dataset.providerArea = 'voice'; const mark = node(document, 'i'); mark.append(createPreviewIcon({ document, name: 'voice', size: 21 })); const copy = node(document, 'span'); copy.append(node(document, 'small', 'LOCAL VOICE'), node(document, 'strong', 'TMRW Local Voice'), node(document, 'p', configured ? 'ฟรีถาวร • ตั้งค่าเสียงและโปรไฟล์ตัวละครในเครื่อง' : 'โทรแบบข้อความยังใช้ได้แม้ยังไม่ติดตั้ง')); root.append(mark, copy); return root;
 }

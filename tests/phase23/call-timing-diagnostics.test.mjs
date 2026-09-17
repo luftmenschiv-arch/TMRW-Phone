@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CallTimingDiagnostics } from '../../application/call-timing-diagnostics.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../../platform/voice/tmrw-local-voice-adapter.mjs';
 
 test('call timing diagnostics exposes bounded content-free latency evidence', () => {
   let mono = 100;
@@ -31,18 +31,18 @@ test('call timing diagnostics exposes bounded content-free latency evidence', ()
   assert.equal(record.status, 'played');
 });
 
-test('Puzzle runtime emits phase timings without leaking submitted text', async () => {
+test('TMRW Local Voice runtime emits phase timings without leaking submitted text', async () => {
   const phases = [];
   const fetchImpl = async url => {
-    if (url.endsWith('/health')) return new Response(JSON.stringify({ ok: true, ready: true, voice: 'Puzzle' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (url.endsWith('/health')) return new Response(JSON.stringify({ ok: true, ready: true, voice: 'TMRW Local Voice' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.endsWith('/turn/start')) return new Response(JSON.stringify({ ok: true, turn_id: 'runtime-turn' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.endsWith('/turn/push')) return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.includes('/turn/audio?')) return new Response(new Uint8Array(64), { status: 200, headers: { 'Content-Type': 'audio/wav', 'X-TMRW-Duration': '0.25' } });
     throw new Error(`unexpected-url:${url}`);
   };
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:test-audio', revokeObjectURL: () => {} });
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:test-audio', revokeObjectURL: () => {} });
   const sequence = await adapter.openSequence([{
-    actorId: 'actor-1', instanceId: 'instance-1', callSessionId: 'call-1', canonicalText: 'TOP SECRET SPOKEN TEXT', subtitleText: 'ข้อความลับ', language: 'en', resolvedProfile: { profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }, delivery: { preset: 'natural' },
+    actorId: 'actor-1', instanceId: 'instance-1', callSessionId: 'call-1', canonicalText: 'TOP SECRET SPOKEN TEXT', subtitleText: 'ข้อความลับ', language: 'en', resolvedProfile: { profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }, delivery: { preset: 'natural' },
   }], { onTiming: event => phases.push(event) });
   const rendered = await sequence.renderAt(0);
   assert.equal(rendered.status, 'ready');

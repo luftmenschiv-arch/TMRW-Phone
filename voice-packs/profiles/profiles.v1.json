@@ -1,0 +1,21 @@
+{
+  "schema": "tmrw-voice-base-profiles-v1",
+  "profiles": [
+    {
+      "id": "tmrw-male-core",
+      "file": "tmrw-male-core.voiceprofile.npz",
+      "sha256": "51ae334074b5afc706bc7ca4326c332e545d1d99b538bce6ea5f429e5f039d0c",
+      "role": "base for the 12 male presets",
+      "source": "existing approved TMRW male reference"
+    },
+    {
+      "id": "tmrw-female-core",
+      "file": "tmrw-female-core.voiceprofile.npz",
+      "sha256": "87d6e538db82d9eb6bc3179fea21b643f208006e1d474916925c47fc9b742625",
+      "role": "base for the 12 female presets",
+      "source": "Kokoro af_heart neutral reference",
+      "sourceModel": "onnx-community/Kokoro-82M-v1.0-ONNX",
+      "sourceLicense": "Apache-2.0"
+    }
+  ]
+}

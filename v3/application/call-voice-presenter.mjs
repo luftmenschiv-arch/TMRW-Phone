@@ -13,7 +13,7 @@ function profileIsConfigured(profile) {
 
 function effectiveProfile(profile) {
   if (profileIsConfigured(profile)) return profile;
-  return Object.freeze({ ...(profile || {}), profileName: 'Puzzle', language: profile?.language || VOICE_LANGUAGE.AUTO, defaultDelivery: profile?.defaultDelivery || 'natural', traits: Object.freeze({ ...(profile?.traits || {}) }), providerNeutral: true });
+  return Object.freeze({ ...(profile || {}), profileName: 'male-polite-dangerous', language: profile?.language || VOICE_LANGUAGE.AUTO, defaultDelivery: profile?.defaultDelivery || 'natural', traits: Object.freeze({ ...(profile?.traits || {}) }), providerNeutral: true });
 }
 
 function resolveLanguage(profile, settings, prepared) {
@@ -166,7 +166,7 @@ export class CallVoicePresenter {
               filename: `tmrw-call-${callSessionId.replace(/[^a-z0-9_-]+/gi, '-')}-${String(absoluteIndex + 1).padStart(2, '0')}.wav`,
               durationMs: Number(renderResult.durationMs || 0),
               retention: 'temporary',
-              sourceKind: 'puzzle-local-runtime',
+              sourceKind: 'tmrw-local-voice',
             } });
           } catch (error) { this.#timing?.mark?.(timingTurnId, 'audio-history-failed', { segmentIndex: absoluteIndex, outcome: error?.code || 'storage-failed' }); }
         }

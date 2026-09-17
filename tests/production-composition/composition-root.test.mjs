@@ -131,7 +131,7 @@ const REQUIRED_ORDER = [
   'voice-profile-service',
   'voice-audio-history-service',
   'voice-runtime-configured',
-  'voice-puzzle-adapter',
+  'voice-local-adapter',
   'voice-presenter',
   'call-bot-reply',
   'runtime-integration',

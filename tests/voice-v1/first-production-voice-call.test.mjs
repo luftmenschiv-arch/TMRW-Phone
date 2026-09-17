@@ -7,11 +7,11 @@ import { VoiceProfileService } from '../../application/voice-profile-service.mjs
 import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
 import { CallVoicePlaybackController } from '../../ui/calls/call-voice-playback.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../../platform/voice/tmrw-local-voice-adapter.mjs';
 import { CallCoordinator } from '../../application/call-coordinator.mjs';
 import { CallStoryIntegrationCoordinator } from '../../application/call-story-integration.mjs';
 
-const profile = language => ({ profileName: 'Puzzle', language, defaultDelivery: 'natural', traits: {}, lockedByUser: true });
+const profile = language => ({ profileName: 'male-polite-dangerous', language, defaultDelivery: 'natural', traits: {}, lockedByUser: true });
 
 async function acceptedCall(c, key) {
   const call = await startCall(c, { key });
@@ -71,7 +71,7 @@ function readyAdapter(calls, { status = 'ready' } = {}) {
   };
 }
 
-test('canonical USER commit produces one quiet BOT commit, then EN Puzzle Voice plays exactly once while canon/Main RP remain intact', async () => {
+test('canonical USER commit produces one quiet BOT commit, then EN TMRW Local Voice plays exactly once while canon/Main RP remain intact', async () => {
   const c = await setupPhase17({ manifestId: 'voice-v1-en' });
   const voices = new VoiceProfileService({ database: c.database });
   await voices.setActorBase({ actorId: c.alice.actorId, profile: profile('en') });
@@ -107,7 +107,7 @@ test('canonical USER commit produces one quiet BOT commit, then EN Puzzle Voice 
   assert.equal(duplicate.status, 'duplicate');
   assert.equal(adapterCalls.length, 1);
   assert.equal(adapterCalls[0].request.canonicalText, 'I am here. Tell me what happened.');
-  assert.equal(adapterCalls[0].request.resolvedProfile.profileName, 'Puzzle');
+  assert.equal(adapterCalls[0].request.resolvedProfile.profileName, 'male-polite-dangerous');
   const transcriptAfterVoice = await c.calls.listTranscript({ scope: c.scope, viewerAccountId: c.user.accountId, callSessionId: session.callSessionId });
   assert.deepEqual(transcriptAfterVoice.map(row => row.text), transcriptBeforeVoice.map(row => row.text));
   assert.equal((await c.calls.getSession({ scope: c.scope, callSessionId: session.callSessionId })).state, CALL_STATE.ACTIVE);
@@ -182,19 +182,19 @@ test('END_CALL commits canonical closure first and cancels pending Voice without
   assert.equal(transcript.at(-1).text, 'I will still be in the transcript.');
 });
 
-test('approved Puzzle HTTP adapter uses health/start/push/audio with exact EN/JP runtime language contract', async () => {
+test('approved TMRW Local Voice HTTP adapter uses health/start/push/audio with exact EN/JP runtime language contract', async () => {
   for (const [language, runtimeLanguage] of [['en', 'English'], ['ja', 'japanese']]) {
     const requests = [];
     const fetchImpl = async (url, options = {}) => {
       requests.push({ url, options });
-      if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+      if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) };
       if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn-1' }) };
       if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
       if (url.includes('/turn/audio?')) return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'audio/wav' : name.toLowerCase() === 'x-tmrw-duration' ? '0.75' : null }, blob: async () => ({ size: 128 }) };
       throw new Error(`unexpected URL ${url}`);
     };
-    const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => `blob:${language}`, revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 500 });
-    const resolvedProfile = { actorId: 'actor:a', instanceId: 'character-instance:a', profileName: 'Puzzle', language, defaultDelivery: 'natural', traits: {}, baseLockedByUser: true, overrideEnabled: false, overrideLockedByUser: false, baseProfileId: 'voice-actor-profile:actor:a', overrideId: null, providerNeutral: true, phase: 19 };
+    const adapter = new TMRWLocalVoiceAdapter({ fetchImpl, createObjectURL: () => `blob:${language}`, revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 500 });
+    const resolvedProfile = { actorId: 'actor:a', instanceId: 'character-instance:a', profileName: 'male-polite-dangerous', language, defaultDelivery: 'natural', traits: {}, baseLockedByUser: true, overrideEnabled: false, overrideLockedByUser: false, baseProfileId: 'voice-actor-profile:actor:a', overrideId: null, providerNeutral: true, phase: 19 };
     const result = await adapter.render({ actorId: 'actor:a', instanceId: 'character-instance:a', callSessionId: 'call:1', canonicalText: 'CANONICAL', language, resolvedProfile, delivery: {} });
     assert.equal(result.status, 'ready');
     assert.equal(result.audioArtifactRef, `blob:${language}`);

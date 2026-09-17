@@ -33,7 +33,7 @@ These behaviors are already verified and must remain working:
 - Same-route call updates do not flash the full `กำลังโหลด Phone...` screen.
 - Opening TMRW Phone does not summon the mobile keyboard.
 - Global voice settings persist across chat, branch, and reload.
-- Puzzle is the temporary fallback voice for characters without a configured profile.
+- TMRW Male Core is the temporary fallback voice for characters without a configured profile.
 
 ## Checkpoint status
 

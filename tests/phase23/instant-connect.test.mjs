@@ -4,7 +4,7 @@ import { setupPhase9 } from '../phase9/call-fixtures.mjs';
 import { TmrwPhoneShell } from '../../ui/shell.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY, resolveExperiencePreset } from '../../ui/experience-presets.mjs';
 import { DEFAULT_VOICE_RUNTIME_BASE_URL } from '../../ui/settings-beta.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../../platform/voice/tmrw-local-voice-adapter.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
 import { VoiceProfileService } from '../../application/voice-profile-service.mjs';
 import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
@@ -89,21 +89,21 @@ test('Local Voice Runtime endpoint is explicit, validated, and preserved across 
   await assert.rejects(() => context.settings.setVoiceRuntimeBaseUrl({ scope: context.scope, playerInstanceId: context.user.instanceId, baseUrl: 'http://192.168.1.20:18769/private/path' }), /origin only/);
 });
 
-test('Puzzle adapter uses the saved per-call runtime origin', async () => {
+test('TMRW Local Voice adapter uses the saved per-call runtime origin', async () => {
   const urls = [];
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl: async url => { urls.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) }; } });
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl: async url => { urls.push(url); return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) }; } });
   const health = await adapter.health({ baseUrl: 'http://192.168.1.20:18769' });
   assert.equal(health.ready, true);
   assert.equal(health.endpoint, 'http://192.168.1.20:18769');
   assert.deepEqual(urls, ['http://192.168.1.20:18769/health']);
 });
 
-test('Puzzle adapter treats a configured user profile name as a label while keeping the qualified Puzzle runtime', async () => {
+test('TMRW Local Voice adapter treats a configured user profile name as a label while keeping the qualified TMRW Local Voice runtime', async () => {
   const calls = [];
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({
+  const adapter = new TMRWLocalVoiceAdapter({
     fetchImpl: async (url, options = {}) => {
       calls.push({ url, options });
-      if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+      if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) };
       if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn:test' }) };
       if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
       return { ok: true, status: 200, headers: { get: name => name === 'Content-Type' ? 'audio/wav' : null }, blob: async () => ({ size: 128 }) };
@@ -116,7 +116,9 @@ test('Puzzle adapter treats a configured user profile name as a label while keep
     resolvedProfile: { profileName: 'เคลันเทส', language: 'ja', defaultDelivery: 'natural', providerNeutral: true },
   });
   assert.equal(result.status, 'ready');
-  assert.equal(result.capabilityState.voice, 'Puzzle');
+  assert.equal(result.capabilityState.voice, 'TMRW Male Core');
+  assert.equal(result.capabilityState.selectedProfile, 'เคลันเทส');
+  assert.equal(JSON.parse(calls.find(call => call.url.endsWith('/turn/start')).options.body).profile_id, 'tmrw-male-core');
   assert.equal(JSON.parse(calls.find(call => call.url.endsWith('/turn/push')).options.body).text, 'です。');
 });
 

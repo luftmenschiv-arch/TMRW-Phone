@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../../platform/voice/tmrw-local-voice-adapter.mjs';
 import { CallVoicePlaybackController } from '../../ui/calls/call-voice-playback.mjs';
 import { BetaSettingsService, GLOBAL_VOICE_SETTINGS_KEY } from '../../ui/settings-beta.mjs';
 import { renderApprovedCallSurface } from '../../ui/calls/approved-call-surface.mjs';
@@ -134,19 +134,19 @@ test('the reply deadline covers canonical preparation before LLM generation and 
   assert.equal(h.prompts.length, 0);
 });
 
-test('Puzzle multi-segment turn sends selected-language speech plus paired Thai subtitles and fetches each audio chunk', async () => {
+test('TMRW Local Voice multi-segment turn sends selected-language speech plus paired Thai subtitles and fetches each audio chunk', async () => {
   const requests = [];
   const fetchImpl = async (url, options = {}) => {
     requests.push({ url, options });
-    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) };
     if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn:segments' }) };
     if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
     if (url.includes('/turn/audio?')) return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'audio/wav' : name.toLowerCase() === 'x-tmrw-duration' ? '0.5' : null }, blob: async () => ({ size: 128 }) };
     throw new Error(`unexpected URL ${url}`);
   };
   let objectUrl = 0;
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => `blob:segment:${++objectUrl}`, revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 1000 });
-  const profile = Object.freeze({ profileName: 'Puzzle', language: 'ja', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl, createObjectURL: () => `blob:segment:${++objectUrl}`, revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 1000 });
+  const profile = Object.freeze({ profileName: 'male-polite-dangerous', language: 'ja', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
   const sequence = await adapter.openSequence([
     { actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:voice-v2', canonicalText: 'おはようございます。', subtitleText: 'อรุณสวัสดิ์ครับ', language: 'ja', resolvedProfile: profile },
     { actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:voice-v2', canonicalText: 'よく眠れましたか？', subtitleText: 'หลับสบายไหมครับ', language: 'ja', resolvedProfile: profile },
@@ -156,7 +156,7 @@ test('Puzzle multi-segment turn sends selected-language speech plus paired Thai 
   assert.equal(second.status, 'ready');
   const start = JSON.parse(requests.find(row => row.url.endsWith('/turn/start')).options.body);
   const pushes = requests.filter(row => row.url.endsWith('/turn/push')).map(row => JSON.parse(row.options.body));
-  assert.deepEqual(start, { expected_chunks: 2, language: 'japanese', calibration: false });
+  assert.deepEqual(start, { expected_chunks: 2, language: 'japanese', calibration: false, profile_id: 'male-polite-dangerous' });
   assert.deepEqual(pushes.map(row => [row.index, row.text, row.subtitle]), [
     [0, 'おはようございます。', 'อรุณสวัสดิ์ครับ'],
     [1, 'よく眠れましたか？', 'หลับสบายไหมครับ'],
@@ -168,14 +168,14 @@ test('active-call warmup caches readiness by endpoint and language until invalid
   const requests = [];
   const fetchImpl = async (url, options = {}) => {
     requests.push({ url, options });
-    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) };
     if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: `turn:${requests.length}` }) };
     if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
     if (url.includes('/turn/audio?')) return { ok: true, status: 200, headers: { get: name => name.toLowerCase() === 'content-type' ? 'audio/wav' : null }, blob: async () => ({ size: 128 }) };
     throw new Error(`unexpected URL ${url}`);
   };
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:warm-cache', revokeObjectURL: () => {} });
-  const profile = Object.freeze({ profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:warm-cache', revokeObjectURL: () => {} });
+  const profile = Object.freeze({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
   const input = language => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:warm', canonicalText: language === 'ja' ? 'はい。' : 'Yes.', subtitleText: 'ครับ', language, resolvedProfile: profile });
 
   const warmed = await adapter.warm({ callSessionId: 'call:warm', language: 'en' });
@@ -193,12 +193,12 @@ test('active-call warmup caches readiness by endpoint and language until invalid
   assert.equal(requests.filter(row => row.url.endsWith('/health')).length, 3, 'hangup/runtime invalidation forces a fresh check');
 });
 
-test('Puzzle sequence can resume the same runtime turn after the first audio wait times out', async () => {
+test('TMRW Local Voice sequence can resume the same runtime turn after the first audio wait times out', async () => {
   const requests = [];
   let audioFetches = 0;
   const fetchImpl = async (url, options = {}) => {
     requests.push({ url, options });
-    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'Puzzle' }) };
+    if (url.endsWith('/health')) return { ok: true, status: 200, json: async () => ({ ok: true, ready: true, voice: 'TMRW Local Voice' }) };
     if (url.endsWith('/turn/start')) return { ok: true, status: 200, json: async () => ({ ok: true, turn_id: 'turn:slow-audio' }) };
     if (url.endsWith('/turn/push')) return { ok: true, status: 200, json: async () => ({ ok: true }) };
     if (url.includes('/turn/audio?')) {
@@ -208,8 +208,8 @@ test('Puzzle sequence can resume the same runtime turn after the first audio wai
     }
     throw new Error(`unexpected URL ${url}`);
   };
-  const adapter = new PuzzleLocalRuntimeVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:resumed-turn', revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 1000 });
-  const profile = Object.freeze({ profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
+  const adapter = new TMRWLocalVoiceAdapter({ fetchImpl, createObjectURL: () => 'blob:resumed-turn', revokeObjectURL: () => {}, healthTimeoutMs: 500, requestTimeoutMs: 500, audioTimeoutMs: 1000 });
+  const profile = Object.freeze({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true });
   const sequence = await adapter.openSequence([{ actorId: botBinding.actorId, instanceId: botBinding.instanceId, callSessionId: 'call:slow-audio', canonicalText: 'Good morning.', subtitleText: 'อรุณสวัสดิ์ครับ', language: 'en', resolvedProfile: profile }]);
   const first = await sequence.renderAt(0);
   const resumed = await sequence.retryAt(0);
@@ -222,7 +222,7 @@ test('Puzzle sequence can resume the same runtime turn after the first audio wai
   assert.equal(requests.filter(row => row.url.includes('/turn/audio?')).length, 2);
 });
 
-test('presenter uses Puzzle fallback, retries one failed segment automatically, commits only after audio is ready, and streams all segments', async () => {
+test('presenter uses TMRW Local Voice fallback, retries one failed segment automatically, commits only after audio is ready, and streams all segments', async () => {
   const events = [];
   const requestSets = [];
   let fallbackRenders = 0;
@@ -272,7 +272,7 @@ test('presenter uses Puzzle fallback, retries one failed segment automatically, 
   assert.equal(result.segmentCount, 2);
   assert.equal(fallbackRenders, 1, 'only the failed first segment receives one automatic retry');
   assert.equal(commitCount, 1);
-  assert.equal(requestSets[0][0].resolvedProfile.profileName, 'Puzzle');
+  assert.equal(requestSets[0][0].resolvedProfile.profileName, 'male-polite-dangerous');
   assert.equal(requestSets[0][0].canonicalText, 'Good morning.');
   assert.equal(requestSets[0][0].subtitleText, 'สวัสดีครับ');
   assert.ok(events.indexOf('retry:Good morning.') < events.indexOf('commit'));
@@ -320,7 +320,7 @@ test('presenter resumes a timed-out runtime turn instead of synthesizing the seg
     dispose() {},
   };
   const presenter = new CallVoicePresenter({
-    voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: 'Puzzle', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
     settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en', voiceDefaultDelivery: 'natural', voiceRuntimeBaseUrl: 'http://127.0.0.1:18769' }) },
     adapter,
     playbackController: { status: Object.freeze({ active: false }), async play() { return { status: 'completed' }; }, cancelCall() { return false; }, dispose() {} },

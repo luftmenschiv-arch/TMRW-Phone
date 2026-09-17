@@ -1,9 +1,10 @@
 import { normalizeVoiceRenderRequest, normalizeVoiceRenderResult, VOICE_RENDER_STATUS } from '../../domain/voice/voice-adapter-contract.mjs';
 import { VOICE_LANGUAGE } from '../../domain/voice/voice-profile.mjs';
 
-export const PUZZLE_LOCAL_RUNTIME_BASE_URL = 'http://127.0.0.1:18769';
-export const PUZZLE_VOICE_PROFILE_NAME = 'Puzzle';
+export const TMRW_LOCAL_RUNTIME_BASE_URL = 'http://127.0.0.1:18769';
+export const TMRW_DEFAULT_VOICE_PROFILE_NAME = 'TMRW Male Core';
 const LANGUAGE_MAP = Object.freeze({ [VOICE_LANGUAGE.ENGLISH]: 'English', [VOICE_LANGUAGE.JAPANESE]: 'japanese' });
+const runtimeProfileId = value => /^[a-z0-9][a-z0-9._-]{0,95}$/u.test(String(value || '').trim()) ? String(value).trim() : 'tmrw-male-core';
 
 function cancelledResult(code = 'voice-cancelled') {
   return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.CANCELLED, errorCode: code });
@@ -22,7 +23,7 @@ function normalizedBaseUrl(value, fallback) {
     const parsed = new URL(String(value || fallback).trim());
     if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname || parsed.username || parsed.password || parsed.search || parsed.hash || !['', '/'].includes(parsed.pathname)) throw new Error('invalid-runtime-origin');
     return parsed.origin;
-  } catch { throw new TypeError('Puzzle Voice runtime endpoint must be a valid http(s) origin'); }
+  } catch { throw new TypeError('TMRW Local Voice endpoint must be a valid http(s) origin'); }
 }
 
 async function responseJson(response) {
@@ -61,7 +62,7 @@ async function mergePcmWavBlobs(blobs) {
   return new Blob([output], { type: 'audio/wav' });
 }
 
-export class PuzzleLocalRuntimeVoiceAdapter {
+export class TMRWLocalVoiceAdapter {
   #fetch;
   #baseUrl;
   #createObjectURL;
@@ -72,9 +73,9 @@ export class PuzzleLocalRuntimeVoiceAdapter {
   #refs = new Set();
   #readyByCall = new Map();
 
-  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = PUZZLE_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 20000 } = {}) {
+  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = TMRW_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 20000 } = {}) {
     this.#fetch = typeof fetchImpl === 'function' ? fetchImpl : null;
-    this.#baseUrl = String(baseUrl || PUZZLE_LOCAL_RUNTIME_BASE_URL).replace(/\/$/, '');
+    this.#baseUrl = String(baseUrl || TMRW_LOCAL_RUNTIME_BASE_URL).replace(/\/$/, '');
     this.#createObjectURL = typeof createObjectURL === 'function' ? createObjectURL : null;
     this.#revokeObjectURL = typeof revokeObjectURL === 'function' ? revokeObjectURL : null;
     this.#healthTimeoutMs = Math.max(100, Number(healthTimeoutMs) || 1200);
@@ -83,7 +84,7 @@ export class PuzzleLocalRuntimeVoiceAdapter {
   }
 
   get capability() {
-    return Object.freeze({ providerId: 'tmrw-local-puzzle-v093', profileName: PUZZLE_VOICE_PROFILE_NAME, supportedLanguages: Object.freeze([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE]), endpoint: this.#baseUrl, configured: Boolean(this.#fetch), local: true });
+    return Object.freeze({ providerId: 'tmrw-local-voice-v1', profileName: TMRW_DEFAULT_VOICE_PROFILE_NAME, supportedLanguages: Object.freeze([VOICE_LANGUAGE.ENGLISH, VOICE_LANGUAGE.JAPANESE]), endpoint: this.#baseUrl, configured: Boolean(this.#fetch), local: true });
   }
 
   async #fetchTimed(path, options = {}, timeoutMs = this.#requestTimeoutMs, externalSignal = null, baseUrl = this.#baseUrl) {
@@ -119,7 +120,8 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     try {
       const response = await this.#fetchTimed('/health', { method: 'GET' }, this.#healthTimeoutMs, signal, endpoint);
       const body = await responseJson(response);
-      const ok = response.ok === true && body?.ok === true && body?.ready === true && String(body?.voice || '').toLowerCase() === 'puzzle';
+      const runtimeVoice = String(body?.voice || '').trim().toLowerCase();
+      const ok = response.ok === true && body?.ok === true && body?.ready === true && (runtimeVoice === 'tmrw local voice' || runtimeVoice === 'tmrw male core');
       emitTiming(onTiming, 'runtime-health-end', { language, cached: false, outcome: ok ? 'ready' : 'not-ready' });
       return Object.freeze({ ok, ready: ok, status: response.status, voice: body?.voice || null, endpoint, error: body?.error || null, reason: ok ? null : 'runtime-not-ready' });
     } catch (error) {
@@ -178,7 +180,7 @@ export class PuzzleLocalRuntimeVoiceAdapter {
     try { startResponse = await this.#fetchTimed('/turn/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expected_chunks: requests.length, language: runtimeLanguage, calibration: false }),
+      body: JSON.stringify({ expected_chunks: requests.length, language: runtimeLanguage, calibration: false, profile_id: runtimeProfileId(requests[0].resolvedProfile?.profileName) }),
     }, this.#requestTimeoutMs, signal, endpoint); }
     catch (error) { this.invalidateCall(requests[0].callSessionId); throw error; }
     const start = await responseJson(startResponse);
@@ -217,7 +219,7 @@ export class PuzzleLocalRuntimeVoiceAdapter {
         const durationMs = Number.isFinite(durationSeconds) && durationSeconds >= 0 ? durationSeconds * 1000 : null;
         emitTiming(onTiming, 'synthesis-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
         emitTiming(onTiming, 'audio-fetch-ready', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, durationMs, outcome: 'ready' });
-        return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, audioBlob: blob, mimeType: blob.type || contentType || 'audio/wav', durationMs, capabilityState: { providerId: 'tmrw-local-puzzle-v093', voice: PUZZLE_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
+        return normalizeVoiceRenderResult({ status: VOICE_RENDER_STATUS.READY, audioArtifactRef, audioBlob: blob, mimeType: blob.type || contentType || 'audio/wav', durationMs, capabilityState: { providerId: 'tmrw-local-voice-v1', voice: TMRW_DEFAULT_VOICE_PROFILE_NAME, selectedProfile: requests[index].resolvedProfile?.profileName || TMRW_DEFAULT_VOICE_PROFILE_NAME, runtimeLanguage, endpoint, local: true, turnId, index, chunks: requests.length } });
       } catch (error) {
         if (!signal?.aborted) this.invalidateCall(requests[index].callSessionId);
         emitTiming(onTiming, 'audio-fetch-end', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language, outcome: signal?.aborted ? 'cancelled' : (error?.code || 'runtime-error') });

@@ -80,6 +80,7 @@ export class PhoneShellViewModels {
   setVoiceLanguagePreference({ scope, playerInstanceId, language }) { return this.#settings.setVoiceLanguagePreference({ scope, playerInstanceId, language }); }
   setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }) { return this.#settings.setVoiceDefaultDelivery({ scope, playerInstanceId, delivery }); }
   setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }) { return this.#settings.setVoiceRuntimeBaseUrl({ scope, playerInstanceId, baseUrl }); }
+  getSettings({ scope, playerInstanceId }) { return this.#settings.get({ scope, playerInstanceId }); }
   setCallAudioKept({ scope, callSessionId, kept }) { return this.#voiceAudio.setCallKept({ scope, callSessionId, kept }); }
   deleteTemporaryCallAudio({ scope }) { return this.#voiceAudio.deleteTemporary({ scope }); }
   async testVoiceRuntime({ scope, playerInstanceId }) { const settings = await this.#settings.get({ scope, playerInstanceId }); if (!this.#voiceAdapter?.health) return Object.freeze({ ok: false, ready: false, endpoint: settings.voiceRuntimeBaseUrl, reason: 'voice-adapter-unavailable' }); return this.#voiceAdapter.health({ baseUrl: settings.voiceRuntimeBaseUrl }); }

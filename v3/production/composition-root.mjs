@@ -68,7 +68,7 @@ import { InitialPhoneSeedService } from '../application/playable-bootstrap/initi
 import { AdaptiveWorldPulseService } from '../application/playable-bootstrap/adaptive-world-pulse.mjs';
 import { WalletRpEvidenceService } from '../application/playable-bootstrap/wallet-rp-evidence.mjs';
 import { createPhase19VoiceCapabilityState, createProductionVoiceV1CapabilityState } from '../domain/voice/voice-capability.mjs';
-import { PuzzleLocalRuntimeVoiceAdapter } from '../platform/voice/puzzle-local-runtime-adapter.mjs';
+import { TMRWLocalVoiceAdapter } from '../platform/voice/tmrw-local-voice-adapter.mjs';
 import { CallVoicePlaybackController } from '../ui/calls/call-voice-playback.mjs';
 import { SillyTavernV3RuntimeIntegration } from '../platform/sillytavern/runtime-integration.mjs';
 import { PhoneShellViewModels } from '../ui/view-models.mjs';
@@ -605,7 +605,7 @@ async function buildRuntime(options, entry) {
     const voiceAudioHistory = new VoiceAudioHistoryService({ database: normalDatabase });
     await activation.mark('voice-audio-history-service');
     const voiceCapability = createProductionVoiceV1CapabilityState();
-    const voiceAdapter = new PuzzleLocalRuntimeVoiceAdapter({
+    const voiceAdapter = new TMRWLocalVoiceAdapter({
       fetchImpl: globalObject.fetch?.bind?.(globalObject) || null,
       createObjectURL: globalObject.URL?.createObjectURL?.bind?.(globalObject.URL) || null,
       revokeObjectURL: globalObject.URL?.revokeObjectURL?.bind?.(globalObject.URL) || null,
@@ -618,7 +618,7 @@ async function buildRuntime(options, entry) {
     const callBotReply = new CallBotReplyCoordinator({ callService: calls, voiceProfileService: voiceProfiles, settingsService: settings, bindingResolver, getContext, timingDiagnostics: callTimingDiagnostics });
     activation.addResource('voice-presenter', () => callVoicePresenter.dispose());
     await activation.mark('voice-runtime-configured', voiceCapability);
-    await activation.mark('voice-puzzle-adapter');
+    await activation.mark('voice-local-adapter');
     await activation.mark('voice-presenter');
     await activation.mark('call-bot-reply');
 
