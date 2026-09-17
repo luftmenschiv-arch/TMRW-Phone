@@ -27,6 +27,8 @@ cp "$APP_DIR/voice-manager/tools/transcribe.py" "$VOICE_HOME/current/tools/"
 cp "$APP_DIR/voice-manager/tools/android_sitecustomize/sitecustomize.py" "$VOICE_HOME/current/tools/"
 cp "$APP_DIR/mobile-runtime/START-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin/"
 cp "$APP_DIR/mobile-runtime/STOP-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin/"
+cp "$APP_DIR/mobile-runtime/START-TMRW-VOICE-SERVICES.sh" "$VOICE_HOME/current/bin/"
+chmod 700 "$VOICE_HOME/current/bin/"*.sh
 cp "$APP_DIR/voice-packs/catalog/presets.v1.json" "$VOICE_HOME/current/catalog/"
 mkdir -p "$VOICE_HOME/current/stt"
 if ! command -v whisper-cli >/dev/null 2>&1 && [[ ! -x "$VOICE_HOME/current/stt/whisper-cli" ]]; then
