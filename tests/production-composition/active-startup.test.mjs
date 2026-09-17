@@ -219,7 +219,7 @@ async function seedRuntimeLease(registry, { ownerId, leaseId, acquiredAt, expire
   db.close();
 }
 
-async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, ownerId = null, restoreFails = false, previewInstalled = true, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry(), clock = undefined, leaseDurationMs = undefined, heartbeatIntervalMs = 10_000, leaseRecoveryWaitFn = undefined } = {}) {
+async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`, ownerId = null, restoreFails = false, previewInstalled = true, appendFailureId = null, previewReadSource = null, previewSource = null, stageObserver = null, sourceIdentityResolver = undefined, getContext = null, runtimeFactory = undefined, preseedProductionScope = true, registry = MemoryV3Database.createRegistry(), clock = undefined, leaseDurationMs = undefined, heartbeatIntervalMs = 10_000, leaseRecoveryWaitFn = undefined } = {}) {
   const source = previewSource ? structuredClone(previewSource) : preview37Project({ castSize: 2, suffix, includeGroup: false, includeCall: true });
   if (preseedProductionScope) await seedProductionScope(registry, suffix, 2);
   const rawDatabases = [];
@@ -247,7 +247,7 @@ async function harness({ suffix = `case-${Math.random().toString(36).slice(2)}`,
     officialExtensionApi: api,
     previewReadSource: readSource,
     featureFlagStorage,
-    getContext: () => ({ name1: 'Player', chatId: `chat-${suffix}`, chat: [] }),
+    getContext: getContext || (() => ({ name1: 'Player', chatId: `chat-${suffix}`, chat: [] })),
     Generate: async () => {},
     eventSource,
     sillyTavernEventTypes: EVENT_TYPES,
@@ -801,6 +801,57 @@ test('S15 scope transition aliases keep two valid Character Cards isolated witho
   assert.notEqual(aliasA.canonicalId, firstCard.id);
   assert.notEqual(aliasB.canonicalId, firstCard.id);
   await h.session.shutdown('transition-two-cards-complete');
+});
+
+test('S15 migrated runtime fresh-seeds a newly visited Character Card instead of retaining the previous card feed', async () => {
+  const registry = MemoryV3Database.createRegistry();
+  const cardA = Object.freeze({ characterCardSourceId: 'character:migrated-card.png', storySourceId: 'story:chat-migrated', routeSourceId: 'branch:main' });
+  const cardB = Object.freeze({ characterCardSourceId: 'character:new-card.png', storySourceId: 'story:chat-new', routeSourceId: 'branch:main' });
+  const source = previewScopeProject({ cardKey: cardA.characterCardSourceId, storyKey: cardA.storySourceId, branchKey: cardA.routeSourceId, suffix: 'migrated-to-fresh' });
+  let currentSource = cardA;
+  let currentContext = {
+    name1: 'Player',
+    chatId: 'chat-migrated',
+    chat: [],
+    characterId: 0,
+    characters: [{ name: 'Migrated Card', avatar: 'migrated-card.png' }],
+  };
+  const h = await harness({
+    suffix: 'migrated-to-fresh',
+    registry,
+    previewSource: source,
+    preseedProductionScope: false,
+    sourceIdentityResolver: async () => currentSource,
+    getContext: () => currentContext,
+  });
+  await h.session.start({ exclusionProof, gateFReport });
+  const migratedStoryId = h.session.mountManager.status.storyId;
+
+  currentSource = cardB;
+  currentContext = {
+    name1: 'Player',
+    chatId: 'chat-new',
+    chat: [],
+    characterId: 0,
+    characters: [{ name: 'New Card', avatar: 'new-card.png' }],
+  };
+  await h.eventSource.emit(EVENT_TYPES.CHAT_CHANGED, 'chat-new');
+
+  const freshStoryId = h.session.mountManager.status.storyId;
+  const mappings = await readStoreRows(registry, 'identityMappings');
+  const cards = await readStoreRows(registry, 'characterCards');
+  const newCard = cards.find(row => row.sourceAuthority === 'sillytavern' && row.sourceCardId === cardB.characterCardSourceId);
+  const newCardAlias = mappings.find(row => row.status === 'active'
+    && row.sourceAuthority === 'sillytavern'
+    && row.sourceType === 'character-card'
+    && row.sourceId === cardB.characterCardSourceId);
+  assert.notEqual(freshStoryId, migratedStoryId);
+  assert.ok(newCard);
+  assert.equal(newCardAlias?.canonicalId, newCard.id);
+  assert.equal(h.session.mountManager.status.transitionCount, 1);
+  assert.equal(h.session.runtime.status.gateState, 'open');
+  assert.equal(h.session.runtime.composition.listenerOwner.status.lastError, null);
+  await h.session.shutdown('migrated-to-fresh-complete');
 });
 
 test('S15 repeated CHAT_CHANGED to the same scope is idempotent and does not duplicate aliases', async () => {

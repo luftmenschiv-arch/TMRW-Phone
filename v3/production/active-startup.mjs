@@ -136,6 +136,24 @@ function freshIdentitySeedFromContext(context, sourceIdentity) {
   });
 }
 
+function normalizedAvatarUrl(value, kind) {
+  const avatar = String(value || '').trim();
+  if (!avatar) return null;
+  if (/^(?:https?:|data:|blob:|\/)/iu.test(avatar)) return avatar;
+  if (/^User Avatars\//iu.test(avatar)) return `/${avatar}`;
+  if (/^characters\//iu.test(avatar)) return `/${avatar}`;
+  const directory = kind === 'character' ? 'characters' : 'User Avatars';
+  return `/${directory}/${encodeURIComponent(avatar)}`;
+}
+
+function firstImageSource(document, selectors) {
+  for (const selector of selectors) {
+    const source = String(document?.querySelector?.(selector)?.src || '').trim();
+    if (source) return source;
+  }
+  return null;
+}
+
 function freshMessageIdentityResolver(sourceIdentityResolver) {
   return async input => {
     const role = String(input?.role || '').toLowerCase();
@@ -489,8 +507,12 @@ export class ProductionActiveStartupSession {
       });
     } else {
       runtimeOptions.freshIdentitySeed = freshIdentitySeed;
-      runtimeOptions.freshIdentitySeedResolver = async sourceIdentity => freshIdentitySeedFromContext(getContext(), sourceIdentity);
     }
+    // A migrated Preview project may later visit a Character Card that was not
+    // present in the original migration plan. Keep a fresh-scope authority
+    // available so that card receives its own Story/Branch instead of inheriting
+    // the previously migrated phone state.
+    runtimeOptions.freshIdentitySeedResolver = async sourceIdentity => freshIdentitySeedFromContext(getContext(), sourceIdentity);
     for (const [key, value] of Object.entries({ databaseFactory, runtimeGuardFactory, heartbeatFactory, clock, leaseDurationMs, heartbeatIntervalMs, setIntervalFn, clearIntervalFn, now, stageObserver, imageProviderConfig })) {
       if (value !== undefined) runtimeOptions[key] = value;
     }
@@ -507,9 +529,16 @@ export class ProductionActiveStartupSession {
         playerDisplayNameResolver: () => String(getContext()?.name1 || '').trim() || null,
         playerAvatarUrlResolver: () => {
           const context = getContext();
-          const avatar = String(context?.userAvatar || context?.user_avatar || context?.personaAvatar || context?.powerUser?.persona || globalThis.power_user?.persona || '').trim();
-          if (!avatar) return null;
-          return /^(?:https?:|data:|blob:)/iu.test(avatar) ? avatar : `/User Avatars/${encodeURIComponent(avatar)}`;
+          const direct = context?.userAvatar || context?.user_avatar || context?.persona?.avatar || context?.personaAvatar || context?.powerUserSettings?.persona?.avatar || context?.powerUser?.persona || globalObject?.user_avatar;
+          return normalizedAvatarUrl(direct, 'user') || firstImageSource(document, [
+            '#user_avatar_block .avatar-container.selected img',
+            '#user_avatar_block img.selected',
+            '#user_avatar img',
+            '[data-testid="user-avatar"] img',
+            '#persona-management-button img',
+            '.mes[is_user="true"] .avatar img',
+            '.mes.is_user .avatar img',
+          ]);
         },
         activeCharacterDisplayNameResolver: () => {
           const context = getContext();
@@ -520,8 +549,10 @@ export class ProductionActiveStartupSession {
         activeCharacterAvatarUrlResolver: () => {
           const context = getContext(); if (context?.groupId) return null;
           const character = Array.isArray(context?.characters) ? context.characters[context?.characterId] : null;
-          const avatar = String(character?.avatar || '').trim(); if (!avatar) return null;
-          return /^(?:https?:|data:|blob:)/iu.test(avatar) ? avatar : `/characters/${encodeURIComponent(avatar)}`;
+          return normalizedAvatarUrl(character?.avatar, 'character') || firstImageSource(document, [
+            '.mes:not([is_user="true"]) .avatar img',
+            '.mes[is_user="false"] .avatar img',
+          ]);
         },
         ensureAuthoringReady: () => this.ensureAuthoringReady(),
         onVisibilityChange: () => this.launcherOwner?.reconcile?.(),

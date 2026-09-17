@@ -154,6 +154,15 @@ function exactPreviewIdentityItemForSource(plan, { characterCardSourceId, storyS
   return matches[0];
 }
 
+function previewIdentityItemCountForSource(plan, { characterCardSourceId, storySourceId, routeSourceId }) {
+  const acceptedStorySourceIds = new Set([storySourceId, `${characterCardSourceId}:${storySourceId}`]);
+  return (plan?.items || []).filter(row => row?.sourceType === 'identity-scope'
+    && ['ready', 'already-migrated'].includes(row?.state)
+    && row?.data?.card?.sourceCardId === characterCardSourceId
+    && acceptedStorySourceIds.has(row?.data?.story?.sourceStoryId)
+    && row?.data?.branch?.sourceRouteId === routeSourceId).length;
+}
+
 function isKnownS13ProductionAlias(row) {
   return row?.sourceAuthority === 'sillytavern'
     && Array.isArray(row?.manifestIds)
@@ -681,7 +690,15 @@ async function buildRuntime(options, entry) {
       launcherAvailable: false,
       get status() { return Object.freeze({ role: 'owner', gateState: gate.state, ownsLease: runtimeGuard.ownsLease, databaseOpen: rawDatabase.isOpen, heartbeatRunning: heartbeat.status.running, listenerRegistered: listenerOwner.status.registered, interceptorDelegateActive: generationOwner.status.delegateActive, voiceRuntimeAvailable: voiceCapability.runtimeAvailable, phoneMounted: false, launcherMounted: false, disposed: activation.status.disposed, constructionOrder: activation.status.constructionOrder, disposalOrder: activation.status.disposalOrder }); },
       async provisionProductionScopeAliases(sourceIdentity) {
-        if (migrationResult?.committed) return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
+        if (migrationResult?.committed) {
+          const exactPreviewScopes = previewIdentityItemCountForSource(migrationResult.plan, sourceIdentity);
+          if (exactPreviewScopes === 1) return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
+          if (exactPreviewScopes > 1) throw new Error('Production scope aliasing found ambiguous committed Preview identity items for the current SillyTavern scope');
+          if (typeof freshIdentitySeedResolver === 'function') {
+            const seed = await freshIdentitySeedResolver(sourceIdentity);
+            return seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now });
+          }
+        }
         if (bootstrapResult?.committed && typeof freshIdentitySeedResolver === 'function') {
           const seed = await freshIdentitySeedResolver(sourceIdentity);
           return seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now });
