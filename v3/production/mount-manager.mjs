@@ -70,6 +70,7 @@ export class ProductionMountManager {
   #hostParent;
   #shellFactory;
   #playerDisplayNameResolver;
+  #playerAvatarUrlResolver;
   #activeCharacterDisplayNameResolver;
   #activeCharacterAvatarUrlResolver;
   #ensureAuthoringReady;
@@ -84,7 +85,7 @@ export class ProductionMountManager {
   #requiresAuthoringRevalidation = false;
   #blocked = false;
 
-  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options), playerDisplayNameResolver = null, activeCharacterDisplayNameResolver = null, activeCharacterAvatarUrlResolver = null, ensureAuthoringReady = null, onVisibilityChange = null }) {
+  constructor({ productionRuntime, runtimeArbiter, document, hostParent = document?.body, shellFactory = options => new TmrwPhoneShell(options), playerDisplayNameResolver = null, playerAvatarUrlResolver = null, activeCharacterDisplayNameResolver = null, activeCharacterAvatarUrlResolver = null, ensureAuthoringReady = null, onVisibilityChange = null }) {
     if (!productionRuntime || productionRuntime.role !== 'owner' || !productionRuntime.services || !productionRuntime.composition || typeof productionRuntime.resolveCurrentIdentity !== 'function') {
       throw new TypeError('ProductionMountManager requires the S08 owner composition root');
     }
@@ -92,6 +93,7 @@ export class ProductionMountManager {
     if (!document?.createElement || !hostParent?.append) throw new TypeError('ProductionMountManager requires a DOM document and host parent');
     if (typeof shellFactory !== 'function') throw new TypeError('shellFactory must be a function');
     if (playerDisplayNameResolver != null && typeof playerDisplayNameResolver !== 'function') throw new TypeError('playerDisplayNameResolver must be a function when provided');
+    if (playerAvatarUrlResolver != null && typeof playerAvatarUrlResolver !== 'function') throw new TypeError('playerAvatarUrlResolver must be a function when provided');
     if (activeCharacterDisplayNameResolver != null && typeof activeCharacterDisplayNameResolver !== 'function') throw new TypeError('activeCharacterDisplayNameResolver must be a function when provided');
     if (activeCharacterAvatarUrlResolver != null && typeof activeCharacterAvatarUrlResolver !== 'function') throw new TypeError('activeCharacterAvatarUrlResolver must be a function when provided');
     if (ensureAuthoringReady != null && typeof ensureAuthoringReady !== 'function') throw new TypeError('ensureAuthoringReady must be a function when provided');
@@ -102,6 +104,7 @@ export class ProductionMountManager {
     this.#hostParent = hostParent;
     this.#shellFactory = shellFactory;
     this.#playerDisplayNameResolver = playerDisplayNameResolver;
+    this.#playerAvatarUrlResolver = playerAvatarUrlResolver;
     this.#activeCharacterDisplayNameResolver = activeCharacterDisplayNameResolver;
     this.#activeCharacterAvatarUrlResolver = activeCharacterAvatarUrlResolver;
     this.#ensureAuthoringReady = ensureAuthoringReady;
@@ -198,6 +201,7 @@ export class ProductionMountManager {
         playerActorId: identity.player.actorId,
         playerInstanceId: identity.player.instanceId,
         playerDisplayName: this.#playerDisplayNameResolver?.() || null,
+        playerAvatarUrl: this.#playerAvatarUrlResolver?.() || null,
         activeCharacterDisplayName: this.#activeCharacterDisplayNameResolver?.() || null,
         activeCharacterAvatarUrl: this.#activeCharacterAvatarUrlResolver?.() || null,
         ensureAuthoringReady: this.#ensureAuthoringReady,

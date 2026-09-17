@@ -74,7 +74,9 @@ function parseBatch(value) {
       likes: Math.max(0, Math.min(12, Math.trunc(Number(post?.likes) || 0))),
       comments: (Array.isArray(post?.comments) ? post.comments : []).slice(0, 6).map(comment => ({ author: bounded(comment?.author, 64), text: String(comment?.text || '').trim().slice(0, 900) })).filter(comment => comment.author && comment.text),
     })).filter(post => post.author && post.text);
-    return posts.length ? posts : null;
+    const seen = new Set(); const distinct = [];
+    for (const post of posts) { const key = clean(post.text).normalize('NFKC').toLocaleLowerCase(); if (!key || seen.has(key)) continue; seen.add(key); const commentSeen = new Set(); post.comments = post.comments.filter(comment => { const commentKey = `${clean(comment.author).normalize('NFKC').toLocaleLowerCase()}:${clean(comment.text).normalize('NFKC').toLocaleLowerCase()}`; if (commentSeen.has(commentKey)) return false; commentSeen.add(commentKey); return true; }); distinct.push(post); }
+    return distinct.length ? distinct : null;
   } catch { return null; }
 }
 
@@ -175,6 +177,10 @@ export class AdaptiveWorldPulseService {
     });
   }
 
+  async #knownSocialHandles(scope) {
+    return this.#unit.readonly({ stores:['actors'], scope }, async repositories => Object.freeze((await repositories.actors.list()).filter(actor => actor.sourceAuthority === 'tmrw-world-social').map(actor => clean(actor.displayName)).filter(Boolean).slice(-30)));
+  }
+
   async #phoneOwners(scope, deviceIds = null) {
     const selected = Array.isArray(deviceIds) ? new Set(deviceIds.map(String)) : null;
     return this.#unit.readonly({ stores:['devices','accounts','instances','actors'], scope }, async repositories => {
@@ -245,15 +251,18 @@ export class AdaptiveWorldPulseService {
 
   async #generateBatch(scope, bible, startIndex) {
     const context = this.#getContext() || {};
+    const knownHandles = await this.#knownSocialHandles(scope);
     const prompt = [
       'สร้างฟีดสังคมออนไลน์ที่เป็นส่วนหนึ่งของโลกโรลเพลย์ ตอบเป็น JSON เท่านั้น',
       'สร้าง 9 โพสต์ แต่ละโพสต์มีผู้เขียน เนื้อหา ยอดถูกใจโดยประมาณ และคอมเมนต์ 2-4 รายการ',
       'ผู้เขียนต้องเป็นชาวเมือง กลุ่มอาชีพ ผู้พบเห็น ลูกค้า คนงาน นักข่าว หรือผู้ใช้สื่อที่เหมาะกับโลก ไม่ใช้ชุดชื่อสำเร็จรูปซ้ำ ๆ',
+      'ให้แต่ละบัญชีมีน้ำเสียง จุดยืน อาชีพ และระดับความรู้ต่างกัน บางคนถาม บางคนแย้ง บางคนเมาท์ บางคนให้ข้อมูล ห้ามให้ทุกคนพูดเป็นบทความหรือเห็นตรงกันหมด',
+      'นำบัญชีเดิมบางคนกลับมาคุยต่อเพื่อให้รู้สึกว่าเป็นชุมชนเดิม และเพิ่มบัญชีใหม่เท่าที่จำเป็น',
       'น้ำเสียงและประเด็นต้องสอดคล้องกับกฎหมาย ชนชั้น เผ่าพันธุ์ เศรษฐกิจ เทคโนโลยี และศีลธรรมของโลกนี้ ไม่ยัดวัฒนธรรมไทยปัจจุบันหากไม่เข้ากับฉาก',
       'ห้ามให้ชาวเน็ตรู้ฉากส่วนตัว ความคิดในใจ หรือบทสนทนาปิด ใช้ได้เฉพาะข้อเท็จจริงสาธารณะ ข่าวลือที่มีที่มา และหัวข้อทั่วไปในโลก',
       'ใช้ภาษาไทยทั้งหมด ห้ามใส่ภาษาต่างประเทศแล้ววงเล็บคำแปลไทย หลีกเลี่ยงประโยคซ้ำและคอมเมนต์ลอย ๆ',
       'JSON: {"posts":[{"author":"ชื่อบัญชี","text":"โพสต์","likes":3,"comments":[{"author":"ชื่อบัญชี","text":"ความคิดเห็น"}]}]}',
-      '', 'คัมภีร์สังคม:', JSON.stringify(bible), '', 'เหตุการณ์ช่วงล่าสุด (ใช้เฉพาะส่วนที่สมเหตุผลว่าจะเป็นสาธารณะ):', publicRecentContext(context), '', `ลำดับชุด: ${startIndex}`,
+      '', `บัญชีที่เคยปรากฏ: ${knownHandles.join(' / ') || 'ยังไม่มี'}`, '', 'คัมภีร์สังคม:', JSON.stringify(bible), '', 'เหตุการณ์ช่วงล่าสุด (ใช้เฉพาะส่วนที่สมเหตุผลว่าจะเป็นสาธารณะ):', publicRecentContext(context), '', `ลำดับชุด: ${startIndex}`,
     ].join('\n');
     const schema = { type:'object', additionalProperties:false, required:['posts'], properties:{ posts:{ type:'array', minItems:6, maxItems:12, items:{ type:'object', additionalProperties:false, required:['author','text','likes','comments'], properties:{ author:{type:'string'}, text:{type:'string'}, likes:{type:'integer'}, comments:{type:'array',items:{type:'object',additionalProperties:false,required:['author','text'],properties:{author:{type:'string'},text:{type:'string'}}}} } } } } };
     try { const generated = parseBatch(await this.#generate({ prompt, jsonSchema: schema, name: 'TMRW Living Feed', responseLength: 12288 })); if (generated) return generated; } catch {}
@@ -317,6 +326,30 @@ export class AdaptiveWorldPulseService {
       const result = await this.#social.createComment({ scope, postId, parentCommentId: actionKind === 'comment' ? parentCommentId : null, authorAccountId: author.accountId, actualAuthorActorId: author.actorId, actualAuthorInstanceId: author.instanceId, deviceId: author.deviceId, text: reply.text, source: { authority: 'tmrw-world-social', kind: 'player-triggered-response', recordId, version: '3' }, producer: 'adaptive-world-pulse', idempotencyKey: `player-social-response:${recordId}` });
       committed.push(result.comment); try { onProgress?.(Object.freeze({ index, total: replies.length, comment: result.comment })); } catch {}
     }
+    const likers=eligible.slice(0,Math.max(1,Math.min(6,replies.length+1)));for(const [index,liker] of likers.entries()){try{await this.#social.setEngagement({scope,targetId:postId,targetKind:'post',kind:'like',actorAccountId:liker.accountId,actualActorId:liker.actorId,actualInstanceId:liker.instanceId,active:true,source:{authority:'tmrw-world-social',kind:'player-triggered-response',recordId:`${scope.branchId}:player-social-like:${actionKey}:${index}`,version:'3'},producer:'adaptive-world-pulse',idempotencyKey:`player-social-like:${actionKey}:${index}`});}catch{}}
     return Object.freeze({ generated: replies.length, comments: Object.freeze(committed) });
+  }
+
+  async respondToDirectMessage({ scope: inputScope, threadId, playerAccountId, playerInstanceId = null, messageText = '' } = {}) {
+    const scope = requireEventScope(inputScope); if (!this.#messages) throw new Error('Messaging is unavailable');
+    const thread = await this.#messages.getThread({ scope, threadId }); if (!thread || thread.kind !== 'dm') return Object.freeze({ generated: 0, messages: Object.freeze([]) });
+    const counterpartId = (thread.participantAccountIds || []).find(accountId => accountId !== playerAccountId); if (!counterpartId) return Object.freeze({ generated: 0, messages: Object.freeze([]) });
+    const counterpart = await this.#unit.readonly({ stores:['accounts','instances','actors','devices'], scope }, async repositories => { const account=await repositories.accounts.get(counterpartId);const instance=account&&await repositories.instances.get(account.ownerInstanceId);const actor=instance&&await repositories.actors.get(instance.actorId);const device=account&&await Promise.all((account.deviceIds||[]).map(id=>repositories.devices.get(id))).then(rows=>rows.find(Boolean));return account&&instance&&actor&&device?Object.freeze({accountId:account.id,instanceId:instance.id,actorId:actor.id,deviceId:device.id,label:actor.displayName||account.label}):null; });
+    if (!counterpart) return Object.freeze({ generated: 0, messages: Object.freeze([]) });
+    const history = await this.#messages.listMessages({ scope, viewerAccountId: playerAccountId, threadId, limit: 24 }); const context=this.#getContext()||{};
+    const prompt = [
+      `ตอบข้อความส่วนตัวในบทบาท ${counterpart.label} เป็นภาษาไทย ตอบ JSON เท่านั้น`,
+      'รักษานิสัย วิธีพูด ความสัมพันธ์ และความรู้ของตัวละครตามการ์ด ลอว์บุ๊ก และโรลเพลย์ปัจจุบัน',
+      'ตอบเหมือนแชทมือถือจริง กระชับ เป็นธรรมชาติ ไม่บรรยายท่าทางด้วยวงเล็บ ไม่อธิบายระบบ และไม่พูดแทนผู้เล่น',
+      'สร้าง 1-3 ข้อความสั้นต่อเนื่องตามจังหวะที่เหมาะสม',
+      'JSON: {"messages":["ข้อความ"]}',
+      '', 'ข้อมูลตัวละครและโลก:', cardContext(context).slice(0,12000), '', 'บริบทโรลเพลย์ล่าสุด:', historyContext(context,{recent:50,maxCharacters:12000}), '', 'ประวัติห้องนี้:', history.map(row=>`${row.senderAccountId===counterpartId?counterpart.label:'ผู้เล่น'}: ${row.text}`).join('\n').slice(-6000), '', `ข้อความล่าสุดของผู้เล่น: ${clean(messageText)}`,
+    ].join('\n');
+    const schema={type:'object',additionalProperties:false,required:['messages'],properties:{messages:{type:'array',minItems:1,maxItems:3,items:{type:'string'}}}};let replies=[];
+    try{const parsed=JSON.parse(jsonCandidate(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Direct Message Reply',responseLength:3072})));replies=(Array.isArray(parsed?.messages)?parsed.messages:[]).map(value=>bounded(value,900)).filter(Boolean).slice(0,3);}catch{}
+    if(!replies.length)replies=[clean(messageText).includes('?')?'ขอคิดก่อนนะ เดี๋ยวตอบให้ชัด ๆ':'อือ เราเห็นแล้ว'];
+    const actionKey=await shortHash(`${threadId}:${messageText}:${this.#now()}`,16);const committed=[];
+    for(const [index,text] of replies.entries()){const result=await this.#messages.sendMessage({scope,threadId,senderAccountId:counterpart.accountId,actualAuthorActorId:counterpart.actorId,actualAuthorInstanceId:counterpart.instanceId,deviceId:counterpart.deviceId,text,source:{authority:'tmrw-world-social',kind:'direct-message-reply',recordId:`${actionKey}:${index}`,version:'1'},producer:'adaptive-world-pulse',idempotencyKey:`direct-message-reply:${actionKey}:${index}`});committed.push(result.message);}
+    return Object.freeze({generated:committed.length,messages:Object.freeze(committed)});
   }
 }

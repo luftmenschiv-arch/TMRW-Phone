@@ -43,7 +43,7 @@ function presentationAliases(existing, requested) {
 }
 
 function accountSpecs(owner) {
-  if (!owner.accounts) return [{ key: 'primary', kind: 'phone', label: `${owner.displayName} Phone Account`, isPrimary: true }];
+  if (!owner.accounts) return [{ key: 'primary', kind: 'phone', label: owner.displayName, isPrimary: true }];
   if (!Array.isArray(owner.accounts) || owner.accounts.length < 1) throw new TypeError('Each identity owner must have at least one Account');
   const keys = owner.accounts.map(row => requireText(row.key, 'account.key'));
   if (new Set(keys).size !== keys.length) throw new TypeError('Account keys must be unique per owner');

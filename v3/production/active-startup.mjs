@@ -505,6 +505,12 @@ export class ProductionActiveStartupSession {
         document,
         hostParent: document.body,
         playerDisplayNameResolver: () => String(getContext()?.name1 || '').trim() || null,
+        playerAvatarUrlResolver: () => {
+          const context = getContext();
+          const avatar = String(context?.userAvatar || context?.user_avatar || context?.personaAvatar || context?.powerUser?.persona || globalThis.power_user?.persona || '').trim();
+          if (!avatar) return null;
+          return /^(?:https?:|data:|blob:)/iu.test(avatar) ? avatar : `/User Avatars/${encodeURIComponent(avatar)}`;
+        },
         activeCharacterDisplayNameResolver: () => {
           const context = getContext();
           if (context?.groupId) return null;
