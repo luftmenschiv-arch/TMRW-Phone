@@ -119,7 +119,7 @@ function sceneRosterNames(context, primaryCharacterName) {
     }
     for (const name of foundThisTurn) counts.set(name, (counts.get(name) || 0) + 1);
   }
-  return [...counts].filter(([, evidenceCount]) => evidenceCount >= 3).map(([name, evidenceCount]) => ({ name, evidenceCount }));
+  return [...counts].filter(([, evidenceCount]) => evidenceCount >= 5).map(([name, evidenceCount]) => ({ name, evidenceCount }));
 }
 
 const RECURRING_ROLE_PATTERNS = Object.freeze([
@@ -166,7 +166,7 @@ function recurringRoleNames(context) {
     const mostSpecific = matchedThisTurn.filter(name => !matchedThisTurn.some(other => other !== name && other.includes(name)));
     for (const name of mostSpecific) counts.set(name, (counts.get(name) || 0) + 1);
   }
-  const recurring = [...counts].filter(([, count]) => count >= 3).map(([name, evidenceCount]) => ({ name, evidenceCount }));
+  const recurring = [...counts].filter(([, count]) => count >= 5).map(([name, evidenceCount]) => ({ name, evidenceCount }));
   return recurring.filter(row => !recurring.some(other => other !== row && other.name.includes(row.name)));
 }
 

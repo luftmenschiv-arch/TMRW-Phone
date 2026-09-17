@@ -52,6 +52,7 @@ test('recurring Thai narrative roles become reviewable cast candidates', async (
       { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านวางแก้วลง “มานั่งก่อนสิ”' },
       { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านหันมามองและตอบกลับทันที' },
       { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านถอนหายใจ ก่อนจะเดินออกไป' },
+      { is_user: false, name: 'Jeren', mes: 'ชายเจ้าของบ้านกลับมาพร้อมกุญแจอีกครั้ง' },
       { is_user: true, name: 'Hector', mes: 'เจ้าของบ้านคนนั้นเป็นใคร' },
     ],
   };
@@ -59,7 +60,7 @@ test('recurring Thai narrative roles become reviewable cast candidates', async (
   const landlord = manifest.cast.find(row => row.displayName === 'ชายเจ้าของบ้าน');
   assert.ok(landlord);
   assert.equal(landlord.approved, false);
-  assert.equal(landlord.confidence, 'candidate');
+  assert.equal(landlord.confidence, 'probable');
   assert.ok(landlord.evidence.includes('recurring-role'));
   assert.equal(manifest.cast.some(row => row.displayName === 'เจ้าของบ้าน'), false);
   assert.equal(manifest.cast.some(row => row.displayName === 'Hector'), false);

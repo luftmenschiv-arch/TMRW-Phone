@@ -315,4 +315,5 @@ Result:
 - focused cast/bootstrap/settings tests: 8 passed, 0 failed
 - a Thai NPC present only in a repeated scene roster is discovered without a hardcoded name
 - recurring roles outside the current 160-message window are excluded
+- incidental scene-roster entries seen only three or four times are excluded
 - stale card headings absent from the current story window are excluded
