@@ -41,7 +41,7 @@ export class PlayableBootstrapService {
     return this.#running;
   }
 
-  async #run({ scope: inputScope, playerInstanceId, approvedSourceActorIds = null, onProgress = null, recentMessages = 48, deepBackfill = true } = {}) {
+  async #run({ scope: inputScope, playerInstanceId, approvedSourceActorIds = null, selectionConfirmed = false, onProgress = null, recentMessages = 48, deepBackfill = true } = {}) {
     const scope = requireEventScope(inputScope); const context = this.#getContext() || {}; const totalMessages = Array.isArray(context.chat) ? context.chat.length : 0; const runId = `bootstrap:${await digest(`${scope.storyId}:${scope.branchId}:${totalMessages}:${this.#now()}`)}`;
     let activeStage = 'starting'; const enrichmentWarnings = [];
     const progress = async (stage, patch = {}) => { activeStage = stage; const state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage, runId, totalMessages, lastError: null, ...patch }); emit(onProgress, state); return state; };
@@ -73,7 +73,7 @@ export class PlayableBootstrapService {
         const chunks = fullHistory.chunks.filter(chunk => chunk.startOrdinal < quick.startOrdinal);
         for (const chunk of chunks) { const endOrdinal = Math.min(chunk.endOrdinal, quick.startOrdinal); if (this.#runtime?.reconcileHistory) await this.#runtime.reconcileHistory({ startOrdinal: chunk.startOrdinal, endOrdinal }); state = await this.#set(scope, playerInstanceId, { ...state, status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage: 'deep-backfill', processedOrdinal: endOrdinal }); emit(onProgress, state); }
       }
-      state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.READY, stage: 'ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, completedAt: this.#now(), lastError: null }); emit(onProgress, state);
+      state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.READY, stage: 'ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, selectionConfirmed: selectionConfirmed === true || baseline.selectionConfirmed === true, selectedSourceActorIds: manifest.approvedCast.map(row => row.sourceActorId), completedAt: this.#now(), lastError: null }); emit(onProgress, state);
       return Object.freeze({ state: Object.freeze(state), manifest, identityManifestId: seed.manifestId, replayed, quickWindow: quick, history: fullHistory, enrichmentWarnings: Object.freeze(enrichmentWarnings) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error); const failed = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.FAILED, stage: `failed:${activeStage}`, runId, totalMessages, lastError: message }); emit(onProgress, failed); throw error;

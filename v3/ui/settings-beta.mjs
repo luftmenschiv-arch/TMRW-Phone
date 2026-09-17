@@ -47,6 +47,8 @@ function normalizePlayableBootstrap(input = {}) {
     castFingerprint: input?.castFingerprint ? String(input.castFingerprint).slice(0, 80) : null,
     castCount: Math.max(0, Math.trunc(Number(input?.castCount) || 0)),
     candidateCount: Math.max(0, Math.trunc(Number(input?.candidateCount) || 0)),
+    selectionConfirmed: input?.selectionConfirmed === true,
+    selectedSourceActorIds: normalizeStringList(input?.selectedSourceActorIds, { limit: 32, itemLength: 200 }),
     lastError: input?.lastError ? String(input.lastError).slice(0, 500) : null,
     completedAt: input?.completedAt ? String(input.completedAt).slice(0, 80) : null,
   });

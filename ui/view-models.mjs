@@ -32,6 +32,7 @@ export class PhoneShellViewModels {
   get messagingEnabled() { return Boolean(this.#messaging); }
   get callsEnabled() { return Boolean(this.#callCoordinator); }
   get callCoordinator() { return this.#callCoordinator; }
+  get playableBootstrapAvailable() { return Boolean(this.#playableBootstrap); }
   get voiceProfiles() { return this.#voiceProfiles; }
   get voiceAudioHistory() { return this.#voiceAudio; }
   get voiceCapability() { return this.#voiceCapability; }

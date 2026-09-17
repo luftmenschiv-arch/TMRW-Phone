@@ -88,3 +88,20 @@ test('same-head manual update repairs enrichment without replaying the full chat
   assert.equal(primeCalls,2,'same-head retry must refill missing feed data');
   assert.equal(retry.state.status,PLAYABLE_BOOTSTRAP_STATUS.READY);
 });
+
+test('explicit first-time selection is remembered and removes unselected phone owners', async () => {
+  const c = await setupPhase9({ castSize: 1, manifestId: 'playable-bootstrap-explicit-selection' });
+  const context = {
+    chatId: 'explicit-selection-chat', characterId: 0, name1: 'Player', name2: 'Ensemble Card',
+    characters: [{ name: 'Ensemble Card', data: { extensions: { tmrw_phone: { cast: ['Character 1', 'Nurse', 'Professor'] } } } }],
+    chat: [{ is_user: false, name: 'Character 1', mes: 'current story' }],
+  };
+  const service = new PlayableBootstrapService({ database: c.database, identityKernel: c.kernel, phoneStateService: c.phones, settingsService: c.settings, getContext: () => context, now: () => '2026-09-17T16:00:00.000Z' });
+  const manifest = await service.preview();
+  const selected = manifest.cast.find(row => row.displayName === 'Character 1');
+  assert.ok(selected);
+  const result = await service.run({ scope: c.scope, playerInstanceId: c.user.instanceId, approvedSourceActorIds: [selected.sourceActorId], selectionConfirmed: true, deepBackfill: false });
+  assert.equal(result.state.selectionConfirmed, true);
+  assert.deepEqual(result.state.selectedSourceActorIds, [selected.sourceActorId]);
+  assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label), ['Character 1']);
+});

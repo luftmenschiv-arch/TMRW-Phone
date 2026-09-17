@@ -177,15 +177,14 @@ function freshMessageIdentityResolver(sourceIdentityResolver) {
 async function synchronizePlayableScope(runtime, identity) {
   const service = runtime?.services?.playableBootstrap;
   if (!service || !identity?.scope || !identity?.player?.instanceId) return null;
-  const manifest = await service.preview();
-  const approvedSourceActorIds = (manifest.cast || [])
-    .filter(row => row.approved || row.confidence === 'probable' || Number(row.evidenceCount || 0) >= 2)
-    .map(row => row.sourceActorId);
+  const state = await service.status({ scope: identity.scope, playerInstanceId: identity.player.instanceId });
+  const approvedSourceActorIds = state?.selectionConfirmed === true ? (state.selectedSourceActorIds || []) : [];
   if (!approvedSourceActorIds.length) return null;
   return service.run({
     scope: identity.scope,
     playerInstanceId: identity.player.instanceId,
     approvedSourceActorIds,
+    selectionConfirmed: true,
     recentMessages: 64,
     deepBackfill: true,
   });
