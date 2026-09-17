@@ -127,7 +127,13 @@ export class FencedV3Database {
           }
         });
       } catch (error) {
-        if (error === workError) throw error;
+        // A rejected domain operation (validation, idempotency, etc.) normally
+        // aborts the underlying IndexedDB transaction. Some browser adapters
+        // surface that abort as a different Error instance, so object identity
+        // is not sufficient to recognize it. The lease was already proven in
+        // this transaction; do not turn one rejected action into a phone-wide
+        // authoring shutdown.
+        if (workError) throw error;
         if (!callbackStarted) this.#authoringFence.failClosed('database-transaction-unavailable');
         else if (admitted) this.#authoringFence.failClosed('database-transaction-failed');
         throw error;

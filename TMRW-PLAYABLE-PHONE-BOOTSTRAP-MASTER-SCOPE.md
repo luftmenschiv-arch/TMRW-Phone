@@ -359,3 +359,25 @@ Result:
 - RP-world grounding, persisted world bible, canonical likes/comments/replies, immediate player rendering, automatic NPC updates, and Their Phone read-only boundary verified
 - production package: 250 files, 771 import edges; verification passed
 - authoritative source and repository-installed `v3/` runtime synchronized for every changed runtime file
+
+### Checkpoint 14 — 2026-09-17
+
+Fixed the live-device write cascade that made both one-click phone update and Refeed fail after a single canonical idempotency conflict. A rejected domain action can abort its own IndexedDB transaction without closing the proven Authoring Gate for the entire phone, including browser adapters that wrap the original rejection in a different Error object. Lease validation and genuine database/ownership failures still fail closed.
+
+Adaptive Feed now uses content-addressed v4 source records for generated posts, likes, and comments. If an interrupted or legacy refresh leaves a canonical Event behind while its projected feed count is stale, the next batch can safely occupy that numerical slot with different content instead of reusing an older canonical Event key. Existing data is retained and no database reset is required.
+
+Commands:
+
+```powershell
+node --test tests/phase23/instant-connect.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/social-player-interactions.test.mjs tests/phase23/fenced-domain-rejection.test.mjs tests/phase23/mobile-lease-resume.test.mjs tests/phase23/playable-bootstrap-service.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused Instant/Messages/Feed/player-action/lease/bootstrap tests: 29 passed, 0 failed
+- stale feed-slot regression and wrapped domain-rejection regression both verified
+- a rejected feed/bootstrap operation no longer disables unrelated phone writes
+- production package: 250 files, 771 import edges; verification passed
+- authoritative source, repository-installed `v3/` runtime, and packaged runtime synchronized for both changed runtime files
