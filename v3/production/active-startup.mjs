@@ -174,6 +174,23 @@ function freshMessageIdentityResolver(sourceIdentityResolver) {
   };
 }
 
+async function synchronizePlayableScope(runtime, identity) {
+  const service = runtime?.services?.playableBootstrap;
+  if (!service || !identity?.scope || !identity?.player?.instanceId) return null;
+  const manifest = await service.preview();
+  const approvedSourceActorIds = (manifest.cast || [])
+    .filter(row => row.approved || row.confidence === 'probable' || Number(row.evidenceCount || 0) >= 2)
+    .map(row => row.sourceActorId);
+  if (!approvedSourceActorIds.length) return null;
+  return service.run({
+    scope: identity.scope,
+    playerInstanceId: identity.player.instanceId,
+    approvedSourceActorIds,
+    recentMessages: 64,
+    deepBackfill: true,
+  });
+}
+
 function freezeStatus(session) {
   const runtime = session.runtime;
   const runtimeStatus = runtime?.status || null;
@@ -483,6 +500,12 @@ export class ProductionActiveStartupSession {
         if (!scopeHealth.ready) throw new Error(`Active production scope transition health blocked: ${scopeHealth.blockers.join(', ')}`);
         const gateResult = await this.runtime.composition.authoringGate.open(scopeHealth.checks);
         if (!gateResult.opened) throw new Error(`Active production scope transition Authoring Gate failed to reopen: ${gateResult.reason}`);
+        try {
+          await synchronizePlayableScope(this.runtime, nextIdentity);
+          await this.mountManager.refresh();
+        } catch (error) {
+          console.warn('[TMRW Phone] automatic Story/Branch phone synchronization was incomplete:', error);
+        }
         this.smartContactReconciliation = await this.runtime.composition.runtimeIntegration.reconcileSmartContactDiscovery?.() || null;
 
         this.identity = nextIdentity;
@@ -600,6 +623,12 @@ export class ProductionActiveStartupSession {
         productionHealthReady: this.finalHealth.ready === true,
       });
       if (committed.activationCommitted !== true) throw new Error(`Runtime Arbiter refused V3 authoring: ${(committed.blockers || []).join(', ')}`);
+      try {
+        await synchronizePlayableScope(this.runtime, this.identity);
+        await this.mountManager.refresh();
+      } catch (error) {
+        console.warn('[TMRW Phone] automatic startup phone synchronization was incomplete:', error);
+      }
       this.smartContactReconciliation = await this.runtime.composition.runtimeIntegration.reconcileSmartContactDiscovery?.() || null;
 
       this.shutdownController = new ProductionShutdownController({

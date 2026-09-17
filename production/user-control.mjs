@@ -117,6 +117,28 @@ function exactPreviewScope(context) {
   });
 }
 
+async function stablePreviewScope(getContext, globalObject, { attempts = 6, delayMs = 75 } = {}) {
+  let previousKey = null;
+  let stableCount = 0;
+  let latest = null;
+  const wait = typeof globalObject?.setTimeout === 'function'
+    ? milliseconds => new Promise(resolve => globalObject.setTimeout(resolve, milliseconds))
+    : async () => Promise.resolve();
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const context = getContext();
+    const hasCard = Boolean(context?.groupId || context?.characters?.[context?.characterId] || context?.name2);
+    if (hasCard) {
+      latest = exactPreviewScope(context);
+      const key = JSON.stringify(latest);
+      stableCount = key === previousKey ? stableCount + 1 : 1;
+      previousKey = key;
+      if (stableCount >= 2) return latest;
+    }
+    if (attempt < attempts - 1) await wait(delayMs);
+  }
+  return latest || exactPreviewScope(getContext());
+}
+
 export function resolveCurrentPreview37SourceIdentity({ context, record }) {
   if (!record || typeof record !== 'object') throw new Error('Preview 37 project data is unavailable');
   const source = exactPreviewScope(context);
@@ -413,7 +435,9 @@ export class ProductionUserControl {
       const resolvedHost = host || await this.#hostApiLoader();
       this.#setStage('POST_RELOAD_PREVIEW_SOURCE');
       const previewReadSource = this.#previewReadSourceFactory({ indexedDB: this.#globalObject.indexedDB });
-      let startupSourceIdentity = null;
+      this.#setStage('SILLYTAVERN_SCOPE');
+      let startupSourceIdentity = await stablePreviewScope(resolvedHost.getContext, this.#globalObject);
+      this.#setStage('ACTIVE_STARTUP');
       let pinStartupSourceIdentity = true;
       const sourceIdentityResolver = async context => {
         if (pinStartupSourceIdentity && startupSourceIdentity) return startupSourceIdentity;

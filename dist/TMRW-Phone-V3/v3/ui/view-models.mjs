@@ -16,7 +16,7 @@ const GENERIC_PRESENTATION_NAME = /^(?:character(?:\s+card)?|contact|owner|unkno
 function presentationDisplayName(...candidates) {
   let generic = null;
   for (const candidate of candidates) {
-    const value = String(candidate || '').trim();
+    const value = String(candidate || '').replace(/\s+Phone Account$/iu, '').trim();
     if (!value || /\{\{[^{}]+\}\}/.test(value)) continue;
     if (GENERIC_PRESENTATION_NAME.test(value)) { generic ||= value; continue; }
     return value;
@@ -37,6 +37,19 @@ export class PhoneShellViewModels {
   get voiceCapability() { return this.#voiceCapability; }
   get imageCapability() { return this.#imageProvider?.capability?.() || Object.freeze({ providerId: 'pixabay', configured: false, available: false, search: true, safeSearch: true }); }
   get callTimingDiagnostics() { return this.#callTimingDiagnostics; }
+  async #accountPresentations(scope, accountIds = []) {
+    const ids = [...new Set(accountIds.filter(Boolean))]; if (!ids.length) return Object.freeze({});
+    return this.#unitOfWork.readonly({ stores: ['accounts', 'instances', 'actors', 'socialPersonas'], scope }, async repositories => {
+      const entries = [];
+      for (const accountId of ids) {
+        const account = await repositories.accounts.get(accountId); if (!account) continue;
+        const instance = await repositories.instances.get(account.ownerInstanceId); const actor = instance && await repositories.actors.get(instance.actorId);
+        const persona = await repositories.socialPersonas.getByIndex('by_scope_account', [scope.storyId, scope.branchId, accountId]);
+        entries.push([accountId, Object.freeze({ accountId, actorId: actor?.id || null, instanceId: instance?.id || null, label: presentationDisplayName(persona?.displayName, instance?.displayNameOverride, actor?.displayName, ...(actor?.aliases || []), account.label, 'บัญชี'), avatarUrl: persona?.avatarUrl || null, bio: persona?.bio || '', note: persona?.note || '' })]);
+      }
+      return Object.freeze(Object.fromEntries(entries));
+    });
+  }
   setPreset({ scope, playerInstanceId, preset }) { return this.#settings.setPreset({ scope, playerInstanceId, preset }); }
   setPhoneNumberDiscovery({ scope, playerInstanceId, value }) { return this.#settings.setPhoneNumberDiscovery({ scope, playerInstanceId, value }); }
   setDeveloperDiagnostics({ scope, playerInstanceId, enabled }) { return this.#settings.setDeveloperDiagnostics({ scope, playerInstanceId, enabled }); }
@@ -48,6 +61,7 @@ export class PhoneShellViewModels {
   runPlayableBootstrap(input) { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.run(input); }
   refreshFeed({ scope, count = 3, playerInstanceId = null }) { if (!this.#worldPulse) throw new Error('Adaptive Feed is unavailable'); return this.#worldPulse.refresh({ scope, count, playerInstanceId }); }
   respondToPlayerSocial(input) { if (!this.#worldPulse) throw new Error('Adaptive Feed replies are unavailable'); return this.#worldPulse.respondToPlayerAction(input); }
+  respondToDirectMessage(input) { if (!this.#worldPulse) throw new Error('Adaptive Message replies are unavailable'); return this.#worldPulse.respondToDirectMessage(input); }
   async setImageApiKey({ scope, playerInstanceId, apiKey }) { const settings = await this.#settings.setImageApiKey({ scope, playerInstanceId, apiKey }); this.#imageProvider?.configureApiKey?.(settings.imageApiKey); return settings; }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setVoiceCalls({ scope, playerInstanceId, enabled }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#settings.setBotCallsWithVoice({ scope, playerInstanceId, enabled }); }
@@ -179,7 +193,8 @@ export class PhoneShellViewModels {
     const contacts = (route === 'contacts' || route === 'calls' || route === 'messages' || route === 'maps' || route === 'calendar' || route === 'search') && opened.authorization.granted && opened.perspective.accountId ? await this.#contacts.listContacts({ scope, ownerAccountId: opened.perspective.accountId }) : Object.freeze([]);
     const instantEligible = opened.perspective.accountOwnerInstanceId === playerInstanceId;
     const communicationTargets = ['contacts', 'calls', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId && instantEligible ? await this.#instantCommunicationTargets(scope, settings, opened.perspective.accountId, activeCharacterDisplayName) : Object.freeze([]);
-    let threads = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
+    const needsSocialThreads = ['messages', 'feed', 'insungram'].includes(route);
+    let threads = needsSocialThreads && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await this.#messaging.listThreads({ scope, viewerAccountId: opened.perspective.accountId }) : Object.freeze([]);
     if (threads.length) {
       threads = await this.#unitOfWork.readonly({ stores: ['stories', 'characterCardActors', 'instances', 'actors'], scope }, async repositories => {
         const story = await repositories.stories.get(scope.storyId);
@@ -190,16 +205,18 @@ export class PhoneShellViewModels {
         return Object.freeze(threads.filter(thread => (thread.participantInstanceIds || []).every(instanceId => visibleInstanceIds.has(instanceId))));
       });
     }
-    let threadRows = route === 'messages' && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await Promise.all(threads.map(async thread => {
+    let accountPresentations = await this.#accountPresentations(scope, threads.flatMap(thread => thread.participantAccountIds || []));
+    let threadRows = needsSocialThreads && this.#messaging && opened.authorization.granted && opened.perspective.accountId ? await Promise.all(threads.map(async thread => {
       const matchingContacts = contacts.filter(contact => contact.targetInstanceId && thread.participantInstanceIds.includes(contact.targetInstanceId));
       const matchingInstant = communicationTargets.filter(target => thread.participantInstanceIds.includes(target.instanceId));
-      const participantLabels = [...new Set([...matchingContacts.map(contact => contact.savedName || contact.number), ...matchingInstant.map(target => target.label)].filter(Boolean))];
+      const otherAccountIds = (thread.participantAccountIds || []).filter(accountId => accountId !== opened.perspective.accountId);
+      const participantLabels = [...new Set([...matchingContacts.map(contact => contact.savedName || contact.number), ...matchingInstant.map(target => target.label), ...otherAccountIds.map(accountId => accountPresentations[accountId]?.label)].filter(Boolean))];
       const label = thread.kind === 'dm' ? (participantLabels[0] || 'ข้อความส่วนตัว') : (participantLabels.length ? participantLabels.join(', ') : `กลุ่ม ${thread.participantInstanceIds.length} คน`);
       const primaryContact = thread.kind === 'dm' ? matchingContacts[0] || null : null;
       const secondary = primaryContact?.savedName ? primaryContact.number : (thread.kind === 'group' ? `${thread.participantAccountIds.length} คน` : '');
       const latestMessages = await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 1 });
       const latest = latestMessages.at(-1) || null;
-      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', lastActivitySequence: Number(latest?.sourceEventSequence || thread.sourceEventSequence || 0), participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
+      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, avatarUrl: accountPresentations[otherAccountIds[0]]?.avatarUrl || null, counterpartAccountId: otherAccountIds[0] || null, counterpartInstanceId: accountPresentations[otherAccountIds[0]]?.instanceId || null, preview: latest?.text || 'ยังไม่มีข้อความ', lastActivitySequence: Number(latest?.sourceEventSequence || thread.sourceEventSequence || 0), participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
     })) : [];
     threadRows = Object.freeze(threadRows.sort((left, right) => right.lastActivitySequence - left.lastActivitySequence || left.label.localeCompare(right.label) || left.threadId.localeCompare(right.threadId)));
     const activeThreadId = threadRows.some(thread => thread.threadId === selectedThreadId) ? selectedThreadId : (threadRows[0]?.threadId || null);
@@ -217,7 +234,7 @@ export class PhoneShellViewModels {
     const callDetails = callDetailsViewModel({ session: selectedCall, historyItem: selectedHistoryItem, transcript: transcripts, audioArtifacts: selectedCallAudio, audioStorage: selectedCallAudioStorage, viewerAccountId: opened.perspective.accountId, callbackTarget });
     callUi = Object.freeze({ ...callUi, details: callDetails });
     let feed = Object.freeze({ items: Object.freeze([]), nextCursor: null }); let feedAccountLabels = Object.freeze({}); let insungramThreads = Object.freeze([]); let socialProfile = null; let socialError = null;
-    if ((route === 'feed' || route === 'insungram') && opened.authorization.granted && opened.perspective.accountId) {
+    if (['feed', 'insungram', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId) {
       if (!this.#social) socialError = 'Feed service is unavailable.';
       else { try {
         feed = await this.#social.listFeed({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
@@ -228,12 +245,16 @@ export class PhoneShellViewModels {
         }));
         feed = Object.freeze({ ...feed, items: Object.freeze(enrichedItems) });
         const authorAccountIds = [...new Set((feed.items || []).flatMap(row => [row.authorAccountId, ...(row.commentPreview || []).map(comment => comment.authorAccountId)]).filter(Boolean))];
-        feedAccountLabels = Object.freeze(await this.#unitOfWork.readonly({ stores: ['accounts'], scope }, async repositories => Object.fromEntries((await Promise.all(authorAccountIds.map(async accountId => [accountId, (await repositories.accounts.get(accountId))?.label || null]))).filter(([, label]) => label))));
+        const feedPresentations = await this.#accountPresentations(scope, authorAccountIds); accountPresentations = Object.freeze({ ...accountPresentations, ...feedPresentations });
+        feedAccountLabels = Object.freeze(Object.fromEntries(authorAccountIds.map(accountId => [accountId, feedPresentations[accountId]?.label]).filter(([, label]) => label)));
       } catch (error) { socialError = error instanceof Error ? error.message : String(error); } }
     }
-    if (route === 'insungram' && opened.authorization.granted && opened.perspective.accountId) {
-      if (!this.#insungram) socialError = 'Insungram service is unavailable.';
-      else { try { [insungramThreads, socialProfile] = await Promise.all([this.#insungram.conversations({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 }), this.#insungram.profile({ scope, accountId: opened.perspective.accountId })]); } catch (error) { socialError = error instanceof Error ? error.message : String(error); } }
+    if (['feed', 'insungram', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId) {
+      if (!this.#insungram) { if (route === 'insungram') socialError = 'Insungram service is unavailable.'; }
+      else { try {
+        socialProfile = await this.#insungram.profile({ scope, accountId: opened.perspective.accountId });
+        if (route === 'insungram') insungramThreads = await this.#insungram.conversations({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
+      } catch (error) { socialError = error instanceof Error ? error.message : String(error); } }
     }
     let liveSessions = Object.freeze({ items: Object.freeze([]), nextCursor: null }); let selectedLive = null; let liveViewers = Object.freeze({ items: Object.freeze([]), count: 0 }); let liveMessages = Object.freeze({ items: Object.freeze([]), nextCursor: null }); let liveAccountLabels = Object.freeze({}); let liveError = null;
     if (route === 'live' && opened.authorization.granted && opened.perspective.accountId) {
@@ -244,7 +265,8 @@ export class PhoneShellViewModels {
           if (selectedLive) {
             [liveViewers, liveMessages] = await Promise.all([this.#live.listViewers({ scope, sessionId: selectedLive.sessionId, limit: 20 }), this.#live.listMessages({ scope, viewerAccountId: opened.perspective.accountId, sessionId: selectedLive.sessionId, limit: 30 })]);
             const accountIds = [...new Set([...(liveSessions.items || []).map(row => row.hostAccountId), ...(liveViewers.items || []).map(row => row.viewerAccountId), ...(liveMessages.items || []).map(row => row.authorAccountId)].filter(Boolean))];
-            liveAccountLabels = Object.freeze(await this.#unitOfWork.readonly({ stores: ['accounts'], scope }, async repositories => Object.fromEntries((await Promise.all(accountIds.map(async accountId => [accountId, (await repositories.accounts.get(accountId))?.label || null]))).filter(([, label]) => label))));
+            const livePresentations = await this.#accountPresentations(scope, accountIds); accountPresentations = Object.freeze({ ...accountPresentations, ...livePresentations });
+            liveAccountLabels = Object.freeze(Object.fromEntries(accountIds.map(accountId => [accountId, livePresentations[accountId]?.label]).filter(([, label]) => label)));
           }
         } catch (error) { liveError = error instanceof Error ? error.message : String(error); }
       }
@@ -337,6 +359,6 @@ export class PhoneShellViewModels {
       }
     }
     const phoneWorld = this.#notifications && opened.authorization.granted && opened.perspective.accountId ? await this.#notifications.phoneWorld({ scope, accountId: opened.perspective.accountId, deviceId: opened.perspective.deviceId, recentLimit: route === 'notifications' ? 25 : 5 }) : Object.freeze({ badges: Object.freeze({}), recent: Object.freeze([]), unreadTotal: 0, activeLiveAlerts: 0 });
-    return Object.freeze({ settings, guideState, guideError, opened, contacts, communicationTargets, instantEligible, threads, threadRows, messages, activeThreadId, calls, transcripts, activeCallSessionId, callUi, feed, feedAccountLabels, insungramThreads, socialProfile, socialError, liveSessions, selectedLive, liveViewers, liveMessages, liveAccountLabels, liveError, galleryItems, fileItems, locationItems, locationAudienceChoices, calendarView, calendarRecipients, calendarError, walletView, shopView, commerceError, weatherItems, healthItems, noteItems, searchHistory, searchSources, utilityError, phoneWorld, messagingEnabled: Boolean(this.#messaging), callsEnabled: Boolean(this.#callCoordinator), socialEnabled: Boolean(this.#social), liveEnabled: Boolean(this.#live), notificationsEnabled: Boolean(this.#notifications), phoneWorldUtilitiesEnabled: Boolean(this.#phoneWorldUtilities), calendarEnabled: Boolean(this.#calendar), commerceEnabled: Boolean(this.#commerce), renderMetrics: Object.freeze({ canonicalEventHistoryScans: callUi.metrics.eventHistoryScans || 0, selectedPhoneReads: 1, contactsLoaded: contacts.length, threadsLoaded: threads.length, messagesLoaded: messages.length, callsLoaded: calls.length, transcriptsLoaded: transcripts.length, callTimers: callUi.metrics.timers || 0, callPollers: callUi.metrics.pollers || 0, feedPostsLoaded: feed.items.length, insungramThreadsLoaded: insungramThreads.length, liveSessionsLoaded: liveSessions.items.length, liveViewersLoaded: liveViewers.items.length, liveMessagesLoaded: liveMessages.items.length, galleryItemsLoaded: galleryItems.length, filesLoaded: fileItems.length, locationsLoaded: locationItems.length, calendarItemsLoaded: calendarView.items.length, walletEntriesLoaded: walletView.entries.length, shopItemsLoaded: shopView.items.length, shopOrdersLoaded: shopView.orders.length, weatherItemsLoaded: weatherItems.length, healthItemsLoaded: healthItems.length, notesLoaded: noteItems.length, searchHistoryLoaded: searchHistory.length, searchSourcesLoaded: searchSources.length, notificationsLoaded: phoneWorld.recent.length, notificationFullScans: 0 }) });
+    return Object.freeze({ settings, guideState, guideError, opened, contacts, communicationTargets, instantEligible, threads, threadRows, messages, activeThreadId, calls, transcripts, activeCallSessionId, callUi, feed, feedAccountLabels, accountPresentations, insungramThreads, socialProfile, socialError, liveSessions, selectedLive, liveViewers, liveMessages, liveAccountLabels, liveError, galleryItems, fileItems, locationItems, locationAudienceChoices, calendarView, calendarRecipients, calendarError, walletView, shopView, commerceError, weatherItems, healthItems, noteItems, searchHistory, searchSources, utilityError, phoneWorld, messagingEnabled: Boolean(this.#messaging), callsEnabled: Boolean(this.#callCoordinator), socialEnabled: Boolean(this.#social), liveEnabled: Boolean(this.#live), notificationsEnabled: Boolean(this.#notifications), phoneWorldUtilitiesEnabled: Boolean(this.#phoneWorldUtilities), calendarEnabled: Boolean(this.#calendar), commerceEnabled: Boolean(this.#commerce), renderMetrics: Object.freeze({ canonicalEventHistoryScans: callUi.metrics.eventHistoryScans || 0, selectedPhoneReads: 1, contactsLoaded: contacts.length, threadsLoaded: threads.length, messagesLoaded: messages.length, callsLoaded: calls.length, transcriptsLoaded: transcripts.length, callTimers: callUi.metrics.timers || 0, callPollers: callUi.metrics.pollers || 0, feedPostsLoaded: feed.items.length, insungramThreadsLoaded: insungramThreads.length, liveSessionsLoaded: liveSessions.items.length, liveViewersLoaded: liveViewers.items.length, liveMessagesLoaded: liveMessages.items.length, galleryItemsLoaded: galleryItems.length, filesLoaded: fileItems.length, locationsLoaded: locationItems.length, calendarItemsLoaded: calendarView.items.length, walletEntriesLoaded: walletView.entries.length, shopItemsLoaded: shopView.items.length, shopOrdersLoaded: shopView.orders.length, weatherItemsLoaded: weatherItems.length, healthItemsLoaded: healthItems.length, notesLoaded: noteItems.length, searchHistoryLoaded: searchHistory.length, searchSourcesLoaded: searchSources.length, notificationsLoaded: phoneWorld.recent.length, notificationFullScans: 0 }) });
   }
 }

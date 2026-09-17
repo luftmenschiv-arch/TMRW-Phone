@@ -281,7 +281,7 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-utility-list b { font-size: 10px; }
 .tmrw-phone-utility-list em { position: absolute; right: 14px; bottom: 7px; color: var(--tmrw-muted); font-size: 7px; font-style: normal; }
 
-.tmrw-phone-avatar { flex: 0 0 auto; display: grid; place-items: center; color: #fff; border-radius: 50%; background: radial-gradient(circle at 28% 25%, color-mix(in srgb, var(--avatar) 50%, #fff), var(--avatar) 72%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); font-weight: 800; }
+.tmrw-phone-avatar { flex: 0 0 auto; display: grid; place-items: center; color: #fff; border-radius: 50%; background: radial-gradient(circle at 28% 25%, color-mix(in srgb, var(--avatar, #65758b) 50%, #fff), var(--avatar, #65758b) 72%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.28); font-weight: 800; }
 .tmrw-phone-avatar--xs { width: 30px; height: 30px; font-size: 8px; }
 .tmrw-phone-avatar--sm { width: 36px; height: 36px; font-size: 9px; }
 .tmrw-phone-avatar--md { width: 44px; height: 44px; font-size: 10px; }
@@ -984,6 +984,10 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-avatar { position: relative; overflow: hidden; }
 .tmrw-phone-avatar > img { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: cover; }
 .tmrw-phone-avatar > b { position: relative; z-index: 1; font: inherit; }
+.tmrw-phone-profile-avatar-picker{display:flex;align-items:center;justify-content:center;gap:10px;align-self:center;border:0;background:transparent;color:var(--ink);padding:4px 10px;cursor:pointer}
+.tmrw-phone-profile-avatar-picker small{font-size:12px;color:var(--muted)}
+.tmrw-phone-profile-avatar-picker:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:18px}
+.tmrw-phone-profile-avatar-input{display:none!important}
 
 /* Cast sheets override the generic owner-picker direct-child layout. */
 .tmrw-phone-cast-manager > .tmrw-phone-cast-list,

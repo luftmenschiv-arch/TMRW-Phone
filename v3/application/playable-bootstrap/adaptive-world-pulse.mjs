@@ -13,6 +13,8 @@ const clean = value => String(value ?? '').replace(/<[^>]+>/gu, ' ').replace(/\s
 const bounded = (value, length) => clean(value).slice(0, length);
 const unique = values => [...new Set((values || []).map(clean).filter(Boolean))];
 const fallbackHandles = Object.freeze(['คนเฝ้าข่าว', 'เสียงจากตลาด', 'คนผ่านทาง', 'นักจดเรื่องเมือง', 'ผู้เห็นเหตุการณ์', 'คนนอกวง']);
+const looksLikeStructuredPromptLeak = value => /(?:\[?#{1,6}\s*(?:world\s*setting|profile)|\{\{\s*(?:user|char)\s*\}\}|(?:^|[\s\[])\b(?:name|age|race|height|skin|status|personality|scenario)\s*:)/imu.test(String(value || ''));
+const publicFallbackText = 'ผู้คนในพื้นที่กำลังจับตาความเปลี่ยนแปลงรอบตัว และแลกเปลี่ยนข่าวที่ตรวจสอบได้จากชีวิตประจำวัน';
 
 async function shortHash(value, length = 20) {
   const bytes = new TextEncoder().encode(String(value));
@@ -56,7 +58,8 @@ function publicRecentContext(context, limit = 24) {
 
 function fallbackBible(context, sourceFingerprint, now) {
   const corpus = clean(`${cardContext(context)} ${historyContext(context, { recent: 30, maxCharacters: 8000 })}`);
-  const summary = corpus.slice(0, 1400) || 'โลกและสังคมของเรื่องปัจจุบันตามข้อมูลในการ์ดและบทสนทนา';
+  const summaryCandidate = corpus.slice(0, 1400);
+  const summary = summaryCandidate && !looksLikeStructuredPromptLeak(summaryCandidate) ? summaryCandidate : publicFallbackText;
   return normalizeWorldSocialBible({ sourceFingerprint, worldSummary: summary, socialOrder: 'ยึดลำดับชนชั้น บทบาท และความสัมพันธ์ตามเรื่องปัจจุบัน', economyAndLaw: 'ยึดกฎ เศรษฐกิจ และสิ่งที่ซื้อขายได้ตามบริบทของเรื่อง', technologyAndMedia: 'ใช้รูปแบบสื่อที่เป็นไปได้ในโลกนี้เท่านั้น', languageStyle: 'ใช้ภาษาไทยธรรมชาติ โดยคงคำเฉพาะของโลกและน้ำเสียงของผู้คนแต่ละกลุ่ม', publicNorms: [summary.slice(0, 220)], institutions: [], tensions: [], currentPublicEvents: [], updatedAt: now });
 }
 
@@ -73,7 +76,7 @@ function parseBatch(value) {
       text: String(post?.text || '').trim().slice(0, 1800),
       likes: Math.max(0, Math.min(12, Math.trunc(Number(post?.likes) || 0))),
       comments: (Array.isArray(post?.comments) ? post.comments : []).slice(0, 6).map(comment => ({ author: bounded(comment?.author, 64), text: String(comment?.text || '').trim().slice(0, 900) })).filter(comment => comment.author && comment.text),
-    })).filter(post => post.author && post.text);
+    })).filter(post => post.author && post.text && !looksLikeStructuredPromptLeak(post.text) && post.comments.every(comment => !looksLikeStructuredPromptLeak(comment.text)));
     const seen = new Set(); const distinct = [];
     for (const post of posts) { const key = clean(post.text).normalize('NFKC').toLocaleLowerCase(); if (!key || seen.has(key)) continue; seen.add(key); const commentSeen = new Set(); post.comments = post.comments.filter(comment => { const commentKey = `${clean(comment.author).normalize('NFKC').toLocaleLowerCase()}:${clean(comment.text).normalize('NFKC').toLocaleLowerCase()}`; if (commentSeen.has(commentKey)) return false; commentSeen.add(commentKey); return true; }); distinct.push(post); }
     return distinct.length ? distinct : null;
@@ -104,9 +107,9 @@ function parsePhoneActivity(value) {
 }
 
 function fallbackBatch(bible, startIndex) {
-  const facts = unique([...(bible.currentPublicEvents || []), ...(bible.tensions || []), ...(bible.publicNorms || []), bible.worldSummary]).filter(Boolean);
+  const facts = unique([...(bible.currentPublicEvents || []), ...(bible.tensions || []), ...(bible.publicNorms || []), bible.worldSummary]).filter(value => value && !looksLikeStructuredPromptLeak(value));
   return Array.from({ length: 9 }, (_, offset) => {
-    const index = startIndex + offset; const fact = facts[index % Math.max(1, facts.length)] || bible.worldSummary;
+    const index = startIndex + offset; const fact = facts[index % Math.max(1, facts.length)] || publicFallbackText;
     const author = fallbackHandles[index % fallbackHandles.length];
     return Object.freeze({ author, text: `${bounded(fact, 360)} — คนในพื้นที่มองเรื่องนี้กันอย่างไรบ้าง?`, likes: 2 + (index % 5), comments: Object.freeze([{ author: fallbackHandles[(index + 1) % fallbackHandles.length], text: 'ประเด็นนี้ต้องมองตามกฎและค่านิยมของโลกนี้จริง ๆ' }, { author: fallbackHandles[(index + 2) % fallbackHandles.length], text: 'อยากฟังข้อมูลจากคนที่อยู่ในเหตุการณ์มากกว่านี้' }]) });
   });

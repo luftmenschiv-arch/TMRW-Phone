@@ -277,6 +277,12 @@ export class ProductionMountManager {
     }
   }
 
+  async refresh() {
+    if (!this.#healthy || !this.#shell?.renderActive) return this.status;
+    await this.#shell.renderActive();
+    return this.status;
+  }
+
   open() {
     try {
       this.#assertEligible();

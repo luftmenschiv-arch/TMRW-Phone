@@ -250,7 +250,7 @@ export class PhoneShellViewModels {
       } catch (error) { socialError = error instanceof Error ? error.message : String(error); } }
     }
     if (['feed', 'insungram', 'messages'].includes(route) && opened.authorization.granted && opened.perspective.accountId) {
-      if (!this.#insungram) socialError = 'Insungram service is unavailable.';
+      if (!this.#insungram) { if (route === 'insungram') socialError = 'Insungram service is unavailable.'; }
       else { try {
         socialProfile = await this.#insungram.profile({ scope, accountId: opened.perspective.accountId });
         if (route === 'insungram') insungramThreads = await this.#insungram.conversations({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
