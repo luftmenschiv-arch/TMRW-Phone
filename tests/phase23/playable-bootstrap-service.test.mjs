@@ -51,3 +51,19 @@ test('retrying with a revised cast initializes only missing phones without repla
   assert.deepEqual((await c.viewModels.deviceRoster(c.scope)).filter(row => row.kind === 'their-phone').map(row => row.label).sort(), ['Character 1', 'New Scene Actor']);
   assert.deepEqual(await c.phones.getPhoneState(c.scope, c.user.deviceId), playerStateBefore);
 });
+
+test('optional seed and world-feed enrichment failures do not block a playable phone', async () => {
+  const c = await setupPhase9({ castSize: 1, manifestId: 'playable-bootstrap-optional-enrichment' });
+  const context = { chatId:'optional-enrichment-chat',characterId:0,name1:'Player',name2:'Character 1',characters:[{name:'Character 1'}],chat:[{is_user:false,name:'Character 1',mes:'current story'}] };
+  const service = new PlayableBootstrapService({
+    database:c.database,identityKernel:c.kernel,phoneStateService:c.phones,settingsService:c.settings,getContext:()=>context,
+    runtimeIntegration:{reconcileHistory:async()=>({processed:1})},
+    initialPhoneSeedService:{seed:async()=>{throw new Error('optional seed unavailable');}},
+    adaptiveWorldPulseService:{prepareWorld:async()=>{throw new Error('optional feed unavailable');},prime:async()=>{throw new Error('must not reach');}},
+    now:()=> '2026-09-17T14:10:00.000Z',
+  });
+  const result=await service.run({scope:c.scope,playerInstanceId:c.user.instanceId,deepBackfill:false});
+  assert.equal(result.state.status,PLAYABLE_BOOTSTRAP_STATUS.READY);
+  assert.deepEqual(result.enrichmentWarnings.map(row=>row.stage),['initial-seed','world-pulse']);
+  assert.equal((await service.status({scope:c.scope,playerInstanceId:c.user.instanceId})).status,PLAYABLE_BOOTSTRAP_STATUS.READY);
+});
