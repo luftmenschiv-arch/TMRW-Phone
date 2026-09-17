@@ -12,6 +12,28 @@ export const DEFAULT_VOICE_RUNTIME_BASE_URL = 'http://127.0.0.1:18769';
 const GLOBAL_VOICE_FIELDS = Object.freeze(['voiceCallsEnabled', 'botCallsWithVoice', 'voiceLanguagePreference', 'voiceDefaultDelivery', 'voiceRuntimeBaseUrl', 'voiceCaptionsEnabled', 'voiceSetupInitialized']);
 export const PLAYABLE_BOOTSTRAP_STATUS = Object.freeze({ IDLE: 'idle', RUNNING: 'running', QUICK_READY: 'quick-ready', READY: 'ready', FAILED: 'failed' });
 
+function normalizeStringList(values, { limit = 12, itemLength = 240 } = {}) {
+  return Object.freeze((Array.isArray(values) ? values : []).map(value => String(value || '').replace(/\s+/gu, ' ').trim()).filter(Boolean).slice(0, limit).map(value => value.slice(0, itemLength)));
+}
+
+export function normalizeWorldSocialBible(input = {}) {
+  if (!input || typeof input !== 'object') input = {};
+  return Object.freeze({
+    version: 1,
+    sourceFingerprint: input.sourceFingerprint ? String(input.sourceFingerprint).slice(0, 80) : null,
+    worldSummary: String(input.worldSummary || '').trim().slice(0, 1600),
+    socialOrder: String(input.socialOrder || '').trim().slice(0, 1200),
+    economyAndLaw: String(input.economyAndLaw || '').trim().slice(0, 1200),
+    technologyAndMedia: String(input.technologyAndMedia || '').trim().slice(0, 1000),
+    languageStyle: String(input.languageStyle || '').trim().slice(0, 800),
+    publicNorms: normalizeStringList(input.publicNorms),
+    institutions: normalizeStringList(input.institutions),
+    tensions: normalizeStringList(input.tensions),
+    currentPublicEvents: normalizeStringList(input.currentPublicEvents, { limit: 16, itemLength: 360 }),
+    updatedAt: input.updatedAt ? String(input.updatedAt).slice(0, 80) : null,
+  });
+}
+
 function normalizePlayableBootstrap(input = {}) {
   const status = Object.values(PLAYABLE_BOOTSTRAP_STATUS).includes(input?.status) ? input.status : PLAYABLE_BOOTSTRAP_STATUS.IDLE;
   return Object.freeze({
@@ -106,7 +128,7 @@ export class BetaSettingsService {
     const id = preferenceId(scope, player);
     return this.#unitOfWork.readonly({ stores: ['phoneUiPreferences'], scope }, async repositories => {
       const current = await repositories.phoneUiPreferences.get(id);
-      const base = current || Object.freeze({ id, storyId: scope.storyId, branchId: scope.branchId, playerInstanceId: player, ...resolveExperiencePreset(EXPERIENCE_PRESET.STORY), themeId: normalizePhoneTheme(null), developerDiagnosticsEnabled: false, continueStoryAfterCalls: false, playableBootstrap: normalizePlayableBootstrap(), ...voiceDefaults(), phase: 23 });
+      const base = current || Object.freeze({ id, storyId: scope.storyId, branchId: scope.branchId, playerInstanceId: player, ...resolveExperiencePreset(EXPERIENCE_PRESET.STORY), themeId: normalizePhoneTheme(null), developerDiagnosticsEnabled: false, continueStoryAfterCalls: false, playableBootstrap: normalizePlayableBootstrap(), worldSocialBible: normalizeWorldSocialBible(), ...voiceDefaults(), phase: 23 });
       const currentPreset = current?.preset === EXPERIENCE_PRESET.SIMPLE ? resolveExperiencePreset(EXPERIENCE_PRESET.SIMPLE) : null;
       const globalVoice = this.#readGlobalVoice();
       return Object.freeze({
@@ -115,6 +137,7 @@ export class BetaSettingsService {
         ...(globalVoice || normalizeVoiceFields({ ...voiceDefaults(), ...base })),
         ...this.#readGlobalImage(),
         playableBootstrap: normalizePlayableBootstrap(base.playableBootstrap),
+        worldSocialBible: normalizeWorldSocialBible(base.worldSocialBible),
         themeId: normalizePhoneTheme(base.themeId),
         phase: 23,
       });
@@ -147,6 +170,7 @@ export class BetaSettingsService {
   setDeveloperDiagnostics({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { developerDiagnosticsEnabled: Boolean(enabled) } }); }
   setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { continueStoryAfterCalls: Boolean(enabled) } }); }
   setPlayableBootstrapState({ scope, playerInstanceId, state }) { return this.#update({ scope, playerInstanceId, patch: { playableBootstrap: normalizePlayableBootstrap(state) } }); }
+  setWorldSocialBible({ scope, playerInstanceId, bible }) { return this.#update({ scope, playerInstanceId, patch: { worldSocialBible: normalizeWorldSocialBible(bible) } }); }
   async setImageApiKey({ scope, playerInstanceId, apiKey }) { this.#writeGlobalImage(apiKey); return this.get({ scope, playerInstanceId }); }
   setVoiceCalls({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { voiceCallsEnabled: Boolean(enabled), voiceSetupInitialized: true }, globalVoice: true }); }
   setBotCallsWithVoice({ scope, playerInstanceId, enabled }) { return this.#update({ scope, playerInstanceId, patch: { botCallsWithVoice: Boolean(enabled), voiceSetupInitialized: true }, globalVoice: true }); }
