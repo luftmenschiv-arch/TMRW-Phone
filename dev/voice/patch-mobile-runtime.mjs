@@ -1,4 +1,6 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function replaceRequired(source, search, replacement, label) {
   if (!source.includes(search)) throw new Error(`runtime-patch-anchor-missing:${label}`);
@@ -159,7 +161,7 @@ export function patchMobileRuntime(input) {
   return source;
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/u, value => value.slice(1)).replaceAll('/', '\\').toLowerCase() === process.argv[1].toLowerCase()) {
+if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
   const sourcePath = process.argv.slice(2).find(value => !value.startsWith('--'));
   const source = sourcePath ? await fs.readFile(sourcePath, 'utf8') : await new Promise((resolve, reject) => {
     let value = '';
