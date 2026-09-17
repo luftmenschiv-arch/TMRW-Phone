@@ -3,9 +3,13 @@ set -euo pipefail
 
 readonly TERMUX_PREFIX='/data/data/com.termux/files/usr'
 readonly TERMUX_HOME='/data/data/com.termux/files/home'
+readonly SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+readonly PACK_ROOT="$(dirname -- "$SCRIPT_DIR")"
 readonly WORKSPACE="${TMRW_VOICE_WORKSPACE:-$TERMUX_HOME/genie-tts-portable}"
 readonly GOLDEN_RUNTIME="$TERMUX_HOME/TMRW-VOICE-GOLDEN-MASTER/golden-core/runtime/tmrw_call_runtime_v093_deadline_gate.py"
-readonly RUNTIME="${TMRW_VOICE_RUNTIME:-$([[ -f "$GOLDEN_RUNTIME" ]] && printf '%s' "$GOLDEN_RUNTIME" || printf '%s' "$WORKSPACE/tmrw_call_runtime_v093_deadline_gate.py")}"
+readonly CURRENT_RUNTIME="$TERMUX_HOME/.tmrw-voice/current/runtime/tmrw_call_runtime_v093_deadline_gate.py"
+readonly PACK_RUNTIME="$PACK_ROOT/runtime/tmrw_call_runtime_v093_deadline_gate.py"
+readonly RUNTIME="${TMRW_VOICE_RUNTIME:-$([[ -f "$PACK_RUNTIME" ]] && printf '%s' "$PACK_RUNTIME" || { [[ -f "$CURRENT_RUNTIME" ]] && printf '%s' "$CURRENT_RUNTIME" || { [[ -f "$GOLDEN_RUNTIME" ]] && printf '%s' "$GOLDEN_RUNTIME" || printf '%s' "$WORKSPACE/tmrw_call_runtime_v093_deadline_gate.py"; }; })}"
 readonly STATE_DIR="$TERMUX_HOME/.tmrw-phone-runtime"
 readonly PID_FILE="$STATE_DIR/mobile-voice.pid"
 
