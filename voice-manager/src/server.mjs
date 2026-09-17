@@ -112,7 +112,28 @@ async function handle(request, response) {
     if (!characterId || !audioId || !transcript || transcript.length > 5000) throw Object.assign(new Error('invalid-clone-request'), { status: 400 });
     const normalizedAudio = path.join(root, 'incoming', `${audioId}.wav`); const originalAudio = path.join(root, 'incoming', `${audioId}.audio`); const audio = (await fs.stat(normalizedAudio).catch(() => null))?.isFile() ? normalizedAudio : originalAudio; if (!(await fs.stat(audio).catch(() => null))?.isFile()) throw Object.assign(new Error('audio-not-found'), { status: 404 });
     const profileDir = path.join(root, 'profiles', characterId); await fs.mkdir(profileDir, { recursive: true }); const profile = path.join(profileDir, 'voice.voiceprofile.npz');
-    const job = beginJob('clone-voice', async update => { update({ phase: 'extracting-profile' }); const worker = await activeTool('extract_voice_profile.py'); const python = await voicePython(); await run(python, [worker, '--audio', audio, '--transcript', transcript, '--language', input.language === 'ja' ? 'japanese' : 'English', '--output', profile]); const meta = { id: characterId, name: String(input.name || characterId).slice(0, 120), kind: 'clone', language: input.language === 'ja' ? 'ja' : 'en', profile, updatedAt: new Date().toISOString() }; await fs.writeFile(path.join(profileDir, 'profile.json'), `${JSON.stringify(meta, null, 2)}\n`); return meta; });
+    const job = beginJob('clone-voice', async update => {
+      const runtimeWasReachable = (await runtimeHealth()).reachable;
+      if (runtimeWasReachable) {
+        update({ phase: 'pausing-runtime' });
+        const stop = await commandScript('STOP-TMRW-VOICE-MOBILE.sh');
+        await run('bash', [stop], { env: { ...process.env, TMRW_VOICE_HOME: root } });
+      }
+      try {
+        update({ phase: 'extracting-profile' });
+        const worker = await activeTool('extract_voice_profile.py'); const python = await voicePython();
+        await run(python, [worker, '--audio', audio, '--transcript', transcript, '--language', input.language === 'ja' ? 'japanese' : 'English', '--output', profile]);
+        const meta = { id: characterId, name: String(input.name || characterId).slice(0, 120), kind: 'clone', language: input.language === 'ja' ? 'ja' : 'en', profile, updatedAt: new Date().toISOString() };
+        await fs.writeFile(path.join(profileDir, 'profile.json'), `${JSON.stringify(meta, null, 2)}\n`);
+        return meta;
+      } finally {
+        if (runtimeWasReachable) {
+          update({ phase: 'restarting-runtime' });
+          const start = await commandScript('START-TMRW-VOICE-MOBILE.sh');
+          await run('bash', [start], { env: { ...process.env, TMRW_VOICE_HOME: root } });
+        }
+      }
+    });
     return send(response, 202, job);
   }
   return send(response, 404, { ok: false, error: 'not-found' });
