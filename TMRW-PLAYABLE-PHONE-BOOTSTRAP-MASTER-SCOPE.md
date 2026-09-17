@@ -381,3 +381,22 @@ Result:
 - a rejected feed/bootstrap operation no longer disables unrelated phone writes
 - production package: 250 files, 771 import edges; verification passed
 - authoritative source, repository-installed `v3/` runtime, and packaged runtime synchronized for both changed runtime files
+
+### Checkpoint 15 — 2026-09-17
+
+Decoupled core one-click phone readiness from optional enrichment after the live device still reported a failed all-or-nothing setup beside an expired SillyTavern CSRF request. Approved identity/phone creation and current-history reconciliation remain required. Initial utility seeding and world-feed priming are now best-effort enrichments: either may be unavailable without rolling the whole phone back or leaving Settings in a failed state, and the omitted content can be filled later from its own app. A failed required stage is persisted with its stage name and rendered as Thai recovery guidance rather than a raw implementation error. The extension manifest version was advanced so the host can distinguish this runtime from the previously cached package.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/fenced-domain-rejection.test.mjs tests/phase23/mobile-lease-resume.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused bootstrap/settings/feed/write-fence/lease tests: 11 passed, 0 failed
+- simultaneous optional seed and feed failures still finish with a `ready` playable phone
+- failed required stages retain a specific recovery category without exposing raw errors in the normal UI
+- package verification passed after manifest cache-version advance
