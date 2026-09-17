@@ -46,8 +46,9 @@ export class InitialPhoneSeedService {
   }
 
   async seed({ scope: inputScope, context = {}, fingerprint = 'initial' } = {}) {
-    const scope = requireEventScope(inputScope); const owners = await this.#owners(scope); const now = this.#now();
+    const scope = requireEventScope(inputScope); const owners = await this.#owners(scope);
     const excerpt = storyText(context); const world = worldText(context); const currency = currencyFor(world); const fingerprintKey = clean(fingerprint) || 'initial';
+    const observedAt = clean(Array.isArray(context?.chat) ? (context.chat.at(-1)?.send_date ?? context.chat.at(-1)?.timestamp) : '') || null;
     let writes = 0;
     for (const owner of owners) {
       const key = await shortHash(`${scope.storyId}:${scope.branchId}:${owner.device.id}:${fingerprintKey}`);
@@ -56,16 +57,16 @@ export class InitialPhoneSeedService {
         const source = Object.freeze({ authority: 'playable-phone-bootstrap', kind: 'plausible-simulation', recordId, version: '1' });
         await this.#world[method]({ ...common, ...body, recordId, source, idempotencyKey: `initial-seed:${kind}:${owner.device.id}:${key}` }); writes += 1;
       };
-      await write('note', 'saveNote', `bootstrap-current-story:${owner.device.id}`, { title: 'ตอนนี้ในเรื่อง', text: excerpt, pinned: true });
-      await write('weather', 'recordWeather', `bootstrap-weather:${owner.device.id}`, { locationLabel: 'บริเวณตามฉากปัจจุบัน', condition: 'อากาศทั่วไป', temperatureC: 26, observedAt: now, provider: 'TMRW story estimate' });
+      await write('note', 'saveNote', `bootstrap-current-story:${owner.device.id}:${key}`, { title: 'ตอนนี้ในเรื่อง', text: excerpt, pinned: true });
+      await write('weather', 'recordWeather', `bootstrap-weather:${owner.device.id}:${key}`, { locationLabel: 'บริเวณตามฉากปัจจุบัน', condition: 'อากาศทั่วไป', temperatureC: 26, observedAt, provider: 'TMRW story estimate' });
       const number = Number.parseInt(key.slice(0, 6), 16);
-      await write('health-steps', 'recordHealth', `bootstrap-health-steps:${owner.device.id}`, { metric: 'steps', value: 1200 + (number % 6200), unit: 'ก้าว', observedAt: now, sourceLabel: 'TMRW story estimate' });
-      await write('health-sleep', 'recordHealth', `bootstrap-health-sleep:${owner.device.id}`, { metric: 'sleep-minutes', value: 360 + (number % 151), unit: 'นาที', observedAt: now, sourceLabel: 'TMRW story estimate' });
-      await write('calendar', 'setCalendarItem', `bootstrap-reminder:${owner.device.id}`, { itemKind: 'reminder', title: 'กลับมาดูสิ่งที่เกิดขึ้นล่าสุด', due: null, participantActorIds: [owner.actor.id], participantInstanceIds: [owner.instance.id], response: 'accepted' });
+      await write('health-steps', 'recordHealth', `bootstrap-health-steps:${owner.device.id}:${key}`, { metric: 'steps', value: 1200 + (number % 6200), unit: 'ก้าว', observedAt, sourceLabel: 'TMRW story estimate' });
+      await write('health-sleep', 'recordHealth', `bootstrap-health-sleep:${owner.device.id}:${key}`, { metric: 'sleep-minutes', value: 360 + (number % 151), unit: 'นาที', observedAt, sourceLabel: 'TMRW story estimate' });
+      await write('calendar', 'setCalendarItem', `bootstrap-reminder:${owner.device.id}:${key}`, { itemKind: 'reminder', title: 'กลับมาดูสิ่งที่เกิดขึ้นล่าสุด', due: null, participantActorIds: [owner.actor.id], participantInstanceIds: [owner.instance.id], response: 'accepted' });
       for (const [index, item] of [['เครื่องดื่มที่เข้ากับฉากนี้', 45], ['ของว่างสำหรับวันนี้', 65], ['ของใช้เล็ก ๆ ที่อาจจำเป็น', 120]].entries()) {
-        await write(`shop-${index}`, 'setShopItem', `bootstrap-shop-${index}:${owner.device.id}`, { name: item[0], description: 'รายการแนะนำที่สร้างจากบรรยากาศของเรื่อง ปรับเปลี่ยนได้เมื่อบริบทอัปเดต', price: item[1], currency: currency.code, available: true });
+        await write(`shop-${index}`, 'setShopItem', `bootstrap-shop-${index}:${owner.device.id}:${key}`, { name: item[0], description: 'รายการแนะนำที่สร้างจากบรรยากาศของเรื่อง ปรับเปลี่ยนได้เมื่อบริบทอัปเดต', price: item[1], currency: currency.code, available: true });
       }
-      if (!owner.playerOwned) await write('wallet', 'recordWalletEntry', `bootstrap-wallet:${owner.device.id}`, { entryKind: 'balance', label: 'ยอดโดยประมาณตามบริบท', amount: currency.base + (number % currency.base), currency: currency.code });
+      if (!owner.playerOwned) await write('wallet', 'recordWalletEntry', `bootstrap-wallet:${owner.device.id}:${key}`, { entryKind: 'balance', label: 'ยอดโดยประมาณตามบริบท', amount: currency.base + (number % currency.base), currency: currency.code });
     }
     return Object.freeze({ devices: owners.length, writes, sourceKind: 'plausible-simulation' });
   }

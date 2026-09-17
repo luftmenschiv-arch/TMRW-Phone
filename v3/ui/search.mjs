@@ -2,7 +2,8 @@ import { createPreviewIcon } from './app-icons.mjs';
 
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'search', title: text, compact: true });
 
 function localResults(sources, query) {
   const needle = String(query || '').trim().toLocaleLowerCase(); if (!needle) return [];
@@ -12,7 +13,7 @@ function localResults(sources, query) {
 export function renderSearch({ document, history = [], sources = [], authorizationGranted = true, error = null, query = '', submittedQuery = '', clearBusy = false, onQuery, onSubmit, onClearHistory }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-search tmrw-phone-personal-app tmrw-phone-search-hub';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'Search ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'ค้นหายังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
 
   const form = el(document, 'label'); form.className = 'tmrw-v3-search-form tmrw-phone-personal-search tmrw-phone-soft-search'; form.append(icon(document, 'search', 20)); const input = el(document, 'input'); input.type = 'search'; input.value = query; input.placeholder = 'Search in TMRW Phone'; input.setAttribute('aria-label', 'Search this phone'); form.append(input); root.append(form);
 

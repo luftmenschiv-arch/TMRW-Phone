@@ -1,4 +1,5 @@
 import { createPreviewIcon } from './app-icons.mjs';
+import { renderAppEmptyState } from './app-empty-state.mjs';
 
 const node = (document, tag, text = '') => { const value = document.createElement(tag); if (text) value.textContent = text; return value; };
 const languageLabel = value => value === 'en' ? 'English' : value === 'ja' ? 'Japanese' : 'Auto';
@@ -40,7 +41,7 @@ export function renderVoiceSetup({ document, settings, capability, runtimeHealth
   root.append(general);
 
   const profiles = node(document, 'section'); profiles.className = 'tmrw-v3-voice-card tmrw-v3-voice-profiles'; profiles.append(node(document, 'h4', 'เสียงของตัวละคร'));
-  if (roster.length === 0) profiles.append(node(document, 'p', 'ยังไม่มีตัวละครสำหรับตั้งค่าเสียงในเรื่องนี้'));
+  if (roster.length === 0) profiles.append(renderAppEmptyState({ document, app: 'voice', compact: true }));
   else { const actors = node(document, 'div'); actors.className = 'tmrw-v3-voice-actors'; for (const item of roster) { const button = node(document, 'button', item.label); button.type = 'button'; button.dataset.voiceActorId = item.actorId; button.setAttribute('aria-pressed', String(item.actorId === selectedActorId)); button.addEventListener('click', () => onSelectActor?.(item)); actors.append(button); } profiles.append(actors); }
 
   if (selectedIdentity) {

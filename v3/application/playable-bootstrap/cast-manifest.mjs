@@ -1,6 +1,14 @@
 const text = value => String(value ?? '').replace(/\r\n?/g, '\n').trim();
 const compact = value => text(value).replace(/\s+/gu, ' ');
 const unique = values => [...new Set(values.map(compact).filter(Boolean))];
+const CARD_FIELD_LABELS = new Set([
+  'age', 'animal features', 'appearance', 'background', 'body', 'build', 'clothing', 'description', 'eyes', 'eye color',
+  'gender', 'hair', 'hair color', 'height', 'history', 'likes', 'dislikes', 'name', 'note', 'notes', 'occupation',
+  'personality', 'pronouns', 'race', 'role', 'scenario', 'sex', 'species', 'speech', 'summary', 'traits', 'weight',
+  'อายุ', 'รูปร่าง', 'ลักษณะ', 'ลักษณะภายนอก', 'เสื้อผ้า', 'ดวงตา', 'สีตา', 'เพศ', 'ผม', 'สีผม', 'ส่วนสูง',
+  'ประวัติ', 'สิ่งที่ชอบ', 'สิ่งที่ไม่ชอบ', 'ชื่อ', 'โน้ต', 'หมายเหตุ', 'อาชีพ', 'นิสัย', 'บุคลิก', 'เผ่าพันธุ์',
+]);
+const fieldKey = value => compact(value).normalize('NFKC').toLocaleLowerCase().replace(/[：:]+$/u, '');
 
 function cardFromContext(context) {
   const characters = Array.isArray(context?.characters) ? context.characters : [];
@@ -46,7 +54,7 @@ function structuredNames(corpus) {
     const match = line.match(/^\s*(?:[-*•]\s*)?(?:#{1,4}\s*)?([\p{L}\p{N}][\p{L}\p{N} ._'’\-]{1,48})\s*(?::|—|–|\|)\s*\S/u);
     if (!match) continue;
     const name = compact(match[1]).replace(/^(?:name|character|ตัวละคร|ชื่อ)\s*[:：]?\s*/iu, '');
-    if (name.length >= 2 && name.length <= 50 && !/[.!?。！？]$/u.test(name)) rows.push(name);
+    if (name.length >= 2 && name.length <= 50 && !/[.!?。！？]$/u.test(name) && !CARD_FIELD_LABELS.has(fieldKey(name))) rows.push(name);
   }
   return rows;
 }
@@ -97,7 +105,7 @@ export async function extractPlayableCastManifest(context = {}) {
   for (const row of source.declaredCast) add(row, 'declared-cast', 'confirmed', 10);
   for (const row of source.groupCast) add(row, 'sillytavern-group', 'confirmed', 10);
   if (!context?.groupId && source.primaryCharacterName && source.declaredCast.length === 0) add({ name: source.primaryCharacterName, sourceId: context?.characters?.[context?.characterId]?.avatar }, 'active-card', 'confirmed', 10);
-  for (const name of unique(structuredNames(source.corpus))) add({ name }, 'card-structure', 'probable', 3);
+  for (const name of unique(structuredNames(source.corpus))) add({ name }, 'card-structure', 'candidate', 3);
   for (const row of dialogueNames(context)) add(row, 'recurring-dialogue', row.evidenceCount >= 4 ? 'probable' : 'candidate', row.evidenceCount);
 
   const merged = new Map();
@@ -110,7 +118,7 @@ export async function extractPlayableCastManifest(context = {}) {
   const rows = [];
   for (const row of merged.values()) {
     const stable = row.explicitSourceId || await shortDigest(`${source.cardName}\u0000${row.name.normalize('NFKC').toLocaleLowerCase()}`);
-    rows.push(Object.freeze({ sourceActorId: `cast:${stable}`, displayName: row.name, aliases: Object.freeze([]), avatar: row.avatar || null, confidence: row.confidence, evidence: Object.freeze(row.evidence), evidenceCount: row.evidenceCount, approved: row.confidence !== 'candidate' }));
+    rows.push(Object.freeze({ sourceActorId: `cast:${stable}`, displayName: row.name, aliases: Object.freeze([]), avatar: row.avatar || null, confidence: row.confidence, evidence: Object.freeze(row.evidence), evidenceCount: row.evidenceCount, approved: row.confidence === 'confirmed' }));
   }
   rows.sort((left, right) => (rank[right.confidence] - rank[left.confidence]) || right.evidenceCount - left.evidenceCount || left.displayName.localeCompare(right.displayName));
   return Object.freeze({ version: 1, cardName: source.cardName, cast: Object.freeze(rows), approvedCast: Object.freeze(rows.filter(row => row.approved)), candidates: Object.freeze(rows.filter(row => !row.approved)) });

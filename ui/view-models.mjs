@@ -44,6 +44,7 @@ export class PhoneShellViewModels {
   replayGuideTutorial({ scope, playerInstanceId }) { return this.#guide.replayTutorial({ scope, playerInstanceId }); }
   setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }) { return this.#settings.setContinueStoryAfterCalls({ scope, playerInstanceId, enabled }); }
   getPlayableBootstrapStatus({ scope, playerInstanceId }) { return this.#playableBootstrap ? this.#playableBootstrap.status({ scope, playerInstanceId }) : this.#settings.get({ scope, playerInstanceId }).then(row => row.playableBootstrap); }
+  previewPlayableCast() { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.preview(); }
   runPlayableBootstrap(input) { if (!this.#playableBootstrap) throw new Error('Playable Phone setup is unavailable'); return this.#playableBootstrap.run(input); }
   refreshFeed({ scope, count = 3 }) { if (!this.#worldPulse) throw new Error('Adaptive Feed is unavailable'); return this.#worldPulse.refresh({ scope, count }); }
   async setImageApiKey({ scope, playerInstanceId, apiKey }) { const settings = await this.#settings.setImageApiKey({ scope, playerInstanceId, apiKey }); this.#imageProvider?.configureApiKey?.(settings.imageApiKey); return settings; }
@@ -186,7 +187,7 @@ export class PhoneShellViewModels {
       const secondary = primaryContact?.savedName ? primaryContact.number : (thread.kind === 'group' ? `${thread.participantAccountIds.length} คน` : '');
       const latestMessages = thread.threadId === activeThreadId ? messages : await this.#messaging.listMessages({ scope, viewerAccountId: opened.perspective.accountId, threadId: thread.threadId, limit: 1 });
       const latest = latestMessages.at(-1) || null;
-      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', participantCount: thread.participantAccountIds.length });
+      return Object.freeze({ threadId: thread.threadId, kind: thread.kind, label, secondary, preview: latest?.text || 'ยังไม่มีข้อความ', participantCount: thread.participantAccountIds.length, participantAccountIds: Object.freeze([...(thread.participantAccountIds || [])]), participantInstanceIds: Object.freeze([...(thread.participantInstanceIds || [])]) });
     }))) : Object.freeze([]);
     let callUi = route === 'calls' && this.#callCoordinator && opened.authorization.granted && opened.perspective.accountId ? await this.#callCoordinator.view({ scope, deviceId: opened.perspective.deviceId, playerActorId, playerInstanceId, selectedCallSessionId, contacts, directTargets: communicationTargets }) : emptyCallUi();
     const calls = callUi.sessions;
@@ -205,7 +206,12 @@ export class PhoneShellViewModels {
       if (!this.#social) socialError = 'Feed service is unavailable.';
       else { try {
         feed = await this.#social.listFeed({ scope, viewerAccountId: opened.perspective.accountId, limit: 20 });
-        const authorAccountIds = [...new Set((feed.items || []).map(row => row.authorAccountId).filter(Boolean))];
+        const enrichedItems = await Promise.all((feed.items || []).map(async post => {
+          const [comments, likes] = await Promise.all([this.#social.listComments({ scope, viewerAccountId: opened.perspective.accountId, postId: post.postId, limit: 3 }), this.#social.listEngagements({ scope, targetId: post.postId, limit: 100 })]);
+          return Object.freeze({ ...post, commentPreview: Object.freeze(comments.items || []), commentCount: (comments.items || []).length, likeCount: likes.length });
+        }));
+        feed = Object.freeze({ ...feed, items: Object.freeze(enrichedItems) });
+        const authorAccountIds = [...new Set((feed.items || []).flatMap(row => [row.authorAccountId, ...(row.commentPreview || []).map(comment => comment.authorAccountId)]).filter(Boolean))];
         feedAccountLabels = Object.freeze(await this.#unitOfWork.readonly({ stores: ['accounts'], scope }, async repositories => Object.fromEntries((await Promise.all(authorAccountIds.map(async accountId => [accountId, (await repositories.accounts.get(accountId))?.label || null]))).filter(([, label]) => label))));
       } catch (error) { socialError = error instanceof Error ? error.message : String(error); } }
     }

@@ -17,6 +17,8 @@ export class PlayableBootstrapService {
 
   async status({ scope, playerInstanceId }) { return (await this.#settings.get({ scope, playerInstanceId })).playableBootstrap; }
 
+  async preview() { return extractPlayableCastManifest(this.#getContext() || {}); }
+
   async #set(scope, playerInstanceId, patch) { const current = await this.status({ scope, playerInstanceId }); const next = { ...current, ...patch }; await this.#settings.setPlayableBootstrapState({ scope, playerInstanceId, state: next }); return next; }
 
   async #identitySeed(scope, playerInstanceId, manifest, headFingerprint) {
@@ -39,22 +41,29 @@ export class PlayableBootstrapService {
     return this.#running;
   }
 
-  async #run({ scope: inputScope, playerInstanceId, onProgress = null, recentMessages = 48, deepBackfill = true } = {}) {
+  async #run({ scope: inputScope, playerInstanceId, approvedSourceActorIds = null, onProgress = null, recentMessages = 48, deepBackfill = true } = {}) {
     const scope = requireEventScope(inputScope); const context = this.#getContext() || {}; const totalMessages = Array.isArray(context.chat) ? context.chat.length : 0; const runId = `bootstrap:${await digest(`${scope.storyId}:${scope.branchId}:${totalMessages}:${this.#now()}`)}`;
     const progress = async (stage, patch = {}) => { const state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage, runId, totalMessages, lastError: null, ...patch }); emit(onProgress, state); return state; };
+    const baseline = await this.status({ scope, playerInstanceId });
     try {
-      await progress('discovering-cast'); const manifest = await extractPlayableCastManifest(context); if (!manifest.approvedCast.length) throw new Error('No important character could be identified from the current card or story');
-      const fullHistory = await readPlayableHistory(context, { chunkMessages: 24, chunkCharacters: 12_000 }); const seed = await this.#identitySeed(scope, playerInstanceId, manifest, fullHistory.headFingerprint); await this.#identity.seedIdentityGraph(seed); await this.#phones.initializeScope(scope);
+      const discovered = await extractPlayableCastManifest(context); const approvedIds = Array.isArray(approvedSourceActorIds) ? new Set(approvedSourceActorIds.map(String)) : new Set(discovered.approvedCast.map(row => row.sourceActorId));
+      const selectedCast = discovered.cast.filter(row => approvedIds.has(row.sourceActorId)); const manifest = Object.freeze({ ...discovered, approvedCast: Object.freeze(selectedCast), candidates: Object.freeze(discovered.cast.filter(row => !approvedIds.has(row.sourceActorId))) });
+      if (!manifest.approvedCast.length) throw new Error('No important character selected; กรุณาเลือกตัวละครอย่างน้อยหนึ่งคนก่อนสร้างมือถือ');
+      const fullHistory = await readPlayableHistory(context, { chunkMessages: 24, chunkCharacters: 12_000 }); const castFingerprint = await digest(JSON.stringify(manifest.approvedCast.map(row => row.sourceActorId).sort()));
+      const previous = baseline; const seed = await this.#identitySeed(scope, playerInstanceId, manifest, fullHistory.headFingerprint);
+      const sameHead = previous.status === PLAYABLE_BOOTSTRAP_STATUS.READY && previous.headFingerprint === fullHistory.headFingerprint;
+      if (sameHead && (previous.castFingerprint === castFingerprint || (!previous.castFingerprint && previous.castCount === manifest.approvedCast.length))) return Object.freeze({ state: previous, manifest, identityManifestId: seed.manifestId, replayed: true, quickWindow: recentHistoryWindow(totalMessages, recentMessages), history: fullHistory });
+      await progress('discovering-cast'); await this.#identity.seedIdentityGraph(seed); await this.#phones.initializeScope(scope);
       const quick = recentHistoryWindow(totalMessages, recentMessages); await progress('quick-start', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: quick.startOrdinal });
       if (this.#runtime?.reconcileHistory) await this.#runtime.reconcileHistory({ ...quick, onProgress: value => emit(onProgress, { status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage: 'quick-start', totalMessages, processedOrdinal: value.ordinal, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length }) });
-      if (this.#initialSeed) { await progress('initial-seed', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: totalMessages }); await this.#initialSeed.seed({ scope, context, fingerprint: fullHistory.headFingerprint }); }
+      if (this.#initialSeed && !sameHead) { await progress('initial-seed', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: totalMessages }); await this.#initialSeed.seed({ scope, context, fingerprint: fullHistory.headFingerprint }); }
       if (this.#worldPulse) { await progress('world-pulse', { castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, headFingerprint: fullHistory.headFingerprint, processedOrdinal: totalMessages }); await this.#worldPulse.prime({ scope, minimum: 6 }); }
-      let state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.QUICK_READY, stage: 'quick-ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, lastError: null }); emit(onProgress, state);
+      let state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.QUICK_READY, stage: 'quick-ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, lastError: null }); emit(onProgress, state);
       if (deepBackfill && quick.startOrdinal > 0) {
         const chunks = fullHistory.chunks.filter(chunk => chunk.startOrdinal < quick.startOrdinal);
         for (const chunk of chunks) { const endOrdinal = Math.min(chunk.endOrdinal, quick.startOrdinal); if (this.#runtime?.reconcileHistory) await this.#runtime.reconcileHistory({ startOrdinal: chunk.startOrdinal, endOrdinal }); state = await this.#set(scope, playerInstanceId, { ...state, status: PLAYABLE_BOOTSTRAP_STATUS.RUNNING, stage: 'deep-backfill', processedOrdinal: endOrdinal }); emit(onProgress, state); }
       }
-      state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.READY, stage: 'ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, completedAt: this.#now(), lastError: null }); emit(onProgress, state);
+      state = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.READY, stage: 'ready', runId, totalMessages, processedOrdinal: totalMessages, headFingerprint: fullHistory.headFingerprint, castFingerprint, castCount: manifest.approvedCast.length, candidateCount: manifest.candidates.length, completedAt: this.#now(), lastError: null }); emit(onProgress, state);
       return Object.freeze({ state: Object.freeze(state), manifest, identityManifestId: seed.manifestId, quickWindow: quick, history: fullHistory });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error); const failed = await this.#set(scope, playerInstanceId, { status: PLAYABLE_BOOTSTRAP_STATUS.FAILED, stage: 'failed', runId, totalMessages, lastError: message }); emit(onProgress, failed); throw error;

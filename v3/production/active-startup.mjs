@@ -219,6 +219,46 @@ export class ProductionActiveStartupSession {
 
   get status() { return freezeStatus(this); }
 
+  async ensureAuthoringReady() {
+    if (this.disposed || !this.started) throw new Error('มือถือยังไม่พร้อมบันทึกข้อมูล กรุณาเปิดส่วนขยายใหม่');
+    const composition = this.runtime?.composition;
+    const gate = composition?.authoringGate;
+    const guard = composition?.runtimeGuard;
+    const heartbeat = composition?.heartbeat;
+    if (this.runtime?.role !== 'owner' || !gate || !guard || !heartbeat) throw new Error('ไม่พบ runtime เจ้าของมือถือที่พร้อมใช้งาน');
+
+    let validation = await guard.validateLease();
+    if (gate.allows?.('normal') && validation?.valid) return true;
+
+    const gateReason = String(gate.status?.reason || '');
+    const leaseReason = String(validation?.reason || '');
+    const suspensionLease = leaseReason === 'expired' || leaseReason === 'missing-lease';
+    const suspensionGate = gateReason.startsWith('heartbeat-') || gateReason === 'lease-expired' || gateReason === 'lease-missing-lease';
+    if (!suspensionLease && !suspensionGate) throw new Error('มือถือหยุดการบันทึกเพื่อป้องกันข้อมูลชนกัน กรุณาโหลดหน้าใหม่');
+
+    const heartbeatStatus = await heartbeat.start();
+    if (heartbeatStatus?.running !== true) throw new Error('ปลุกการเชื่อมต่อของมือถือไม่สำเร็จ กรุณาลองอีกครั้ง');
+    validation = await guard.validateLease();
+    if (!validation?.valid) throw new Error('สิทธิ์บันทึกของมือถือหมดอายุ กรุณาลองอีกครั้ง');
+
+    const checks = Object.freeze({
+      ...(this.finalHealth?.checks || {}),
+      productionHealthValid: this.finalHealth?.checks?.productionHealthValid === true,
+      previewExcluded: this.finalHealth?.checks?.previewExcluded === true,
+      identityResolved: Boolean(this.identity),
+      compositionServicesReady: true,
+      uniqueListenersReady: composition.listenerOwner?.status?.registered === true,
+      uniqueGenerationInterceptorReady: composition.generationOwner?.status?.delegateActive === true,
+      callIntegrationReady: true,
+      shellMountHealthy: this.mountManager?.status?.healthy === true,
+      heartbeatQualified: heartbeat.status?.running === true,
+    });
+    const opened = await gate.open(checks);
+    if (!opened?.opened) throw new Error('เปิดสิทธิ์บันทึกของมือถือไม่สำเร็จ กรุณาลองอีกครั้ง');
+    this.launcherOwner?.reconcile?.();
+    return true;
+  }
+
   async #createOwnerRuntimeWithRecovery({ runtimeFactory, runtimeOptions, clock, heartbeatIntervalMs, leaseRecoveryWaitFn }) {
     const waitFn = leaseRecoveryWaitFn === undefined ? defaultLeaseRecoveryWait : requireFunction(leaseRecoveryWaitFn, 'leaseRecoveryWaitFn');
     const retryIntervalMs = Number.isFinite(heartbeatIntervalMs) && heartbeatIntervalMs > 0
@@ -477,6 +517,7 @@ export class ProductionActiveStartupSession {
           const avatar = String(character?.avatar || '').trim(); if (!avatar) return null;
           return /^(?:https?:|data:|blob:)/iu.test(avatar) ? avatar : `/characters/${encodeURIComponent(avatar)}`;
         },
+        ensureAuthoringReady: () => this.ensureAuthoringReady(),
         onVisibilityChange: () => this.launcherOwner?.reconcile?.(),
       });
       await this.mountManager.mount(this.identity);

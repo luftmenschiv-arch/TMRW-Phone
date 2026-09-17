@@ -25,3 +25,11 @@ test('history reader chunks hundreds of messages with stable ordinals and finger
   const repeat = await readPlayableHistory(context, { chunkMessages: 20, chunkCharacters: 3000 }); assert.equal(repeat.headFingerprint, result.headFingerprint);
   context.chat[204].mes = 'revised'; const revised = await readPlayableHistory(context, { startOrdinal: 204 }); assert.notEqual(revised.headFingerprint, result.chunks.at(-1).fingerprint);
 });
+
+test('card schema labels never become phone owners and inferred names require confirmation', async () => {
+  const context = { characterId: 0, name2: 'Jeren', characters: [{ name: 'Jeren', avatar: 'jeren.png', description: 'Age: 28\nHair: black\nHeight: 190\nKaelan Vance: ผู้ร่วมเหตุการณ์' }], chat: [] };
+  const manifest = await extractPlayableCastManifest(context);
+  assert.deepEqual(manifest.approvedCast.map(row => row.displayName), ['Jeren']);
+  assert.equal(manifest.cast.some(row => ['Age', 'Hair', 'Height'].includes(row.displayName)), false);
+  assert.equal(manifest.cast.find(row => row.displayName === 'Kaelan Vance')?.approved, false);
+});

@@ -4,12 +4,13 @@ const el = (document, tag, text = '') => { const node = document.createElement(t
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
 const amountText = (amount, currency) => `${Number(amount)} ${currency}`;
 
-function emptyState(document, text) { const p = el(document, 'p', text); p.className = 'tmrw-phone-empty-state'; return p; }
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+function emptyState(document, text) { return renderAppEmptyState({ document, app: 'wallet', title: text, compact: true }); }
 
 export function renderWallet({ document, view = { entries: [], knownBalances: {} }, authorizationGranted = true, error = null, selectedRecordId = null, onSelect }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-wallet';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'กระเป๋าเงินยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'เปิดกระเป๋าเงินยังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
 
   const balances = Object.values(view.knownBalances || {}).sort((a, b) => String(a.currency).localeCompare(String(b.currency)));
   const balanceCard = el(document, 'section'); balanceCard.className = 'tmrw-phone-wallet-balance-card';

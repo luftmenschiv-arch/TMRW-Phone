@@ -2,12 +2,13 @@ import { createPreviewIcon } from './app-icons.mjs';
 
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 const icon = (document, name, size) => createPreviewIcon({ document, name, size });
-const emptyState = (document, text) => { const node = el(document, 'p', text); node.className = 'tmrw-phone-empty-state'; return node; };
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+const emptyState = (document, text) => renderAppEmptyState({ document, app: 'maps', title: text, compact: true });
 
 export function renderMaps({ document, authorizationGranted = true, error = null, items = [], audiences = [], selectedAudienceIds = [], draftLabel = '', viewerAccountId = null, viewerDeviceId = null, onDraft, onToggleAudience, onCheckIn, onShare, onStartLive, onEndLive }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-maps';
   if (!authorizationGranted) { root.append(emptyState(document, 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', 'Maps ยังไม่พร้อมใช้งาน'); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone:'error', title:'เปิด Maps ยังไม่สำเร็จ', detail:'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
 
   const canvas = el(document, 'section'); canvas.className = 'tmrw-phone-map-canvas'; canvas.setAttribute('aria-label', 'Story locations');
   const grid = el(document, 'div'); grid.className = 'tmrw-phone-map-grid'; grid.setAttribute('aria-hidden', 'true');

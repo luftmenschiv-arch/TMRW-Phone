@@ -8,18 +8,29 @@ import { ACTOR_CONTROL } from '../../domain/identity/control-authority.mjs';
 import { deterministicIdentityId } from '../../domain/identity/id.mjs';
 
 const VOICES = Object.freeze([
-  Object.freeze({ key: 'auntie-window', label: 'ป้าข้างบ้านท่านหนึ่ง', style: topic => `ไม่ได้อยากยุ่งนะ แต่เรื่อง “${topic}” นี่ขอเก้าอี้วงหนึ่งค่ะ 👀` }),
-  Object.freeze({ key: 'tea-table', label: 'วงน้ำชาหน้าปากซอย', style: topic => `สรุปเรื่อง ${topic} มีใครเล่าตั้งแต่ต้นได้บ้าง ชั้นตามไม่ทันแต่พร้อมฟังมาก` }),
-  Object.freeze({ key: 'night-owl', label: 'ชาวเน็ตไม่นอน', style: topic => `ตีไหนไม่รู้ แต่ประเด็น ${topic} ยังทำให้ฉันวางมือถือไม่ได้ 😭` }),
-  Object.freeze({ key: 'detective', label: 'นักสืบโซเชียล', style: topic => `หลักฐานยังไม่ครบ ขออนุญาตจับตา ${topic} ต่อแบบมีมารยาทหนึ่งกรุบ` }),
-  Object.freeze({ key: 'soft-heart', label: 'ทีมใจบาง', style: topic => `ใครไหวไปก่อนเลย เราแพ้ทางบรรยากาศ ${topic} แบบหมดรูปแล้วค่ะ` }),
-  Object.freeze({ key: 'front-row', label: 'แถวหน้ามุง', style: topic => `มาถึงแล้วค่ะ จุดชมวิวเรื่อง ${topic} อยู่ตรงไหน ขอที่หนึ่ง` }),
+  Object.freeze({ key: 'auntie-window', label: 'ป้าข้างบ้านท่านหนึ่ง', style: scene => `ไม่ได้อยากยุ่งนะ แต่แถว${scene}มีพิรุธจริง ใครผ่านไปผ่านมาเล่าซิคะ 👀` }),
+  Object.freeze({ key: 'tea-table', label: 'วงน้ำชาหน้าปากซอย', style: scene => `วงน้ำชาขอเปิดประเด็น: วันนี้${scene}คึกคักเกินปกติ ใครมีข้อมูลจริงเชิญค่ะ` }),
+  Object.freeze({ key: 'night-owl', label: 'ชาวเน็ตไม่นอน', style: scene => `นอนไม่หลับเลยมาเช็กข่าวแถว${scene} สรุปเราใกล้ตกข่าวอะไรอยู่หรือเปล่า 😭` }),
+  Object.freeze({ key: 'detective', label: 'นักสืบโซเชียล', style: scene => `ยังไม่ฟันธง แต่ไทม์ไลน์แถว${scene}น่าสนใจมาก ขอรวบรวมหลักฐานก่อนหนึ่งกรุบ` }),
+  Object.freeze({ key: 'soft-heart', label: 'ทีมใจบาง', style: scene => `บรรยากาศแถว${scene}วันนี้ทำคนใจบางทำงานหนักมาก ใครไหวไปก่อนเลยค่ะ` }),
+  Object.freeze({ key: 'front-row', label: 'แถวหน้ามุง', style: scene => `มาถึงแถว${scene}แล้วค่ะ ขอพิกัดวงมุงแบบสุภาพหนึ่งที่ 🪑` }),
 ]);
+const COMMENT_LINES = Object.freeze(['จริง เห็นคนพูดถึงเหมือนกัน', 'ขอหลักฐานเพิ่มค่ะ แต่เก้าอี้พร้อมแล้ว', 'โอ๊ย ฉันตกข่าวอะไรอีกเนี่ย', 'ฟังหูไว้หูก่อนนะทุกคน', 'มาตามอ่านเงียบ ๆ แต่ใจไม่เงียบเลย']);
 const clean = value => String(value ?? '').replace(/<[^>]+>/gu, ' ').replace(/\s+/gu, ' ').trim();
 function topicFrom(context) {
   const chat = Array.isArray(context?.chat) ? context.chat : [];
   const latest = [...chat].reverse().map(row => clean(row?.mes ?? row?.content)).find(Boolean);
-  return (latest || clean(context?.name2) || 'เรื่องนี้').slice(0, 54);
+  const combined = `${latest || ''} ${clean(context?.scenario)} ${clean(context?.name2)}`;
+  const scene = [
+    [/โรงเรียน|มหาวิทยาลัย|ห้องเรียน|school|college|academy/iu, 'โรงเรียน'],
+    [/คาเฟ่|กาแฟ|ร้านอาหาร|cafe|coffee|restaurant/iu, 'ร้านกาแฟ'],
+    [/โรงพยาบาล|คลินิก|hospital|clinic/iu, 'โรงพยาบาล'],
+    [/สนาม|กีฬา|บาส|ฟุตบอล|basket|sport/iu, 'สนามกีฬา'],
+    [/บ้าน|ห้อง|คอนโด|home|apartment/iu, 'ละแวกบ้าน'],
+    [/ฝน|พายุ|rain|storm/iu, 'ย่านนี้ตอนฝนตก'],
+    [/กลางคืน|ดึก|night|midnight/iu, 'ย่านนี้เมื่อคืน'],
+  ].find(([pattern]) => pattern.test(combined))?.[1];
+  return scene || (clean(context?.name2) ? `เรื่องของ ${clean(context.name2).slice(0, 30)}` : 'ละแวกนี้');
 }
 
 export class AdaptiveWorldPulseService {
@@ -51,14 +62,14 @@ export class AdaptiveWorldPulseService {
   }
 
   async #existingCount(scope, accountIds) {
-    return this.#unit.readonly({ stores: ['socialPosts'], scope }, async repositories => (await repositories.socialPosts.list()).filter(row => accountIds.has(row.authorAccountId) && row.currentness === 'current').length);
+    return this.#unit.readonly({ stores: ['socialPosts'], scope }, async repositories => (await repositories.socialPosts.list()).filter(row => accountIds.has(row.authorAccountId) && row.currentness === 'current' && !/เรื่อง “|สรุปเรื่อง |ประเด็น .*ยังทำให้|จับตา .*ต่อ|บรรยากาศ .*แบบหมดรูป|จุดชมวิวเรื่อง/u.test(row.text || '')).length);
   }
 
   #refill(scope, startIndex, topic) {
     const key = `${scope.storyId}:${scope.branchId}`; const batch = [];
     for (let offset = 0; offset < 9; offset += 1) {
       const index = startIndex + offset; const voiceIndex = index % VOICES.length; const voice = VOICES[voiceIndex];
-      const suffix = ['ขอเกาะติดแบบเงียบ ๆ', 'ใครมีข้อมูลเพิ่มวางไว้ได้เลย', 'ยังไม่ฟันธงแต่ใจไปแล้ว'][Math.floor(index / VOICES.length) % 3];
+      const suffix = ['ใครรู้จริงค่อยเล่านะ', 'ไม่รับข่าวลือ รับแต่รายละเอียดค่ะ', 'ขอพื้นที่ให้ชาวบ้านใส่ใจนิดหนึ่ง'][Math.floor(index / VOICES.length) % 3];
       batch.push(Object.freeze({ index, voiceIndex, text: `${voice.style(topic)} ${suffix}` }));
     }
     this.#buffers.set(key, batch); return batch;
@@ -69,8 +80,17 @@ export class AdaptiveWorldPulseService {
     let buffer = this.#buffers.get(key) || []; if (buffer.length < count) buffer = this.#refill(scope, existing, topic);
     const selected = buffer.splice(0, Math.max(1, Math.min(6, Number(count) || 3))); const created = [];
     for (const item of selected) {
-      const author = people[item.voiceIndex]; const recordId = `${scope.branchId}:pulse:${item.index}`;
+      const author = people[item.voiceIndex]; const recordId = `${scope.branchId}:pulse-v2:${item.index}`;
       const result = await this.#social.createPost({ scope, authorAccountId: author.accountId, actualAuthorActorId: author.actorId, actualAuthorInstanceId: author.instanceId, deviceId: author.deviceId, text: item.text, audience: { kind: 'public' }, source: { authority: 'tmrw-adaptive-world-pulse', kind: 'plausible-simulation', recordId, version: '1' }, producer: 'adaptive-world-pulse', idempotencyKey: `adaptive-world-pulse:${recordId}` });
+      const reactors = [1, 2, 3].map(step => people[(item.voiceIndex + step) % people.length]).filter(row => row.accountId !== author.accountId);
+      for (const [offset, reactor] of reactors.entries()) {
+        const reactionRecord = `${recordId}:like:${offset}`;
+        await this.#social.setEngagement({ scope, targetId: result.post.postId, actorAccountId: reactor.accountId, actualActorId: reactor.actorId, actualInstanceId: reactor.instanceId, active: true, source: { authority: 'tmrw-adaptive-world-pulse', kind: 'plausible-simulation', recordId: reactionRecord, version: '1' }, producer: 'adaptive-world-pulse', idempotencyKey: `adaptive-world-pulse:${reactionRecord}` });
+      }
+      for (const [offset, commenter] of reactors.slice(0, 2).entries()) {
+        const commentRecord = `${recordId}:comment:${offset}`;
+        await this.#social.createComment({ scope, postId: result.post.postId, authorAccountId: commenter.accountId, actualAuthorActorId: commenter.actorId, actualAuthorInstanceId: commenter.instanceId, deviceId: commenter.deviceId, text: COMMENT_LINES[(item.index + offset) % COMMENT_LINES.length], source: { authority: 'tmrw-adaptive-world-pulse', kind: 'plausible-simulation', recordId: commentRecord, version: '1' }, producer: 'adaptive-world-pulse', idempotencyKey: `adaptive-world-pulse:${commentRecord}` });
+      }
       created.push(result.post);
     }
     return Object.freeze({ created: Object.freeze(created), remainingBuffered: buffer.length, refilledInBatch: buffer.length + selected.length === 9, topic });

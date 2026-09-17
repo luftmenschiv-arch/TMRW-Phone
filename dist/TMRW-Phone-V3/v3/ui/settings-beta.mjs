@@ -22,6 +22,7 @@ function normalizePlayableBootstrap(input = {}) {
     processedOrdinal: Math.max(0, Math.trunc(Number(input?.processedOrdinal) || 0)),
     totalMessages: Math.max(0, Math.trunc(Number(input?.totalMessages) || 0)),
     headFingerprint: input?.headFingerprint ? String(input.headFingerprint).slice(0, 80) : null,
+    castFingerprint: input?.castFingerprint ? String(input.castFingerprint).slice(0, 80) : null,
     castCount: Math.max(0, Math.trunc(Number(input?.castCount) || 0)),
     candidateCount: Math.max(0, Math.trunc(Number(input?.candidateCount) || 0)),
     lastError: input?.lastError ? String(input.lastError).slice(0, 500) : null,

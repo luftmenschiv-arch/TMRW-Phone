@@ -8,6 +8,7 @@ import { PuzzleLocalRuntimeVoiceAdapter } from '../../platform/voice/puzzle-loca
 import { CallVoicePresenter } from '../../application/call-voice-presenter.mjs';
 import { VoiceProfileService } from '../../application/voice-profile-service.mjs';
 import { CallBotReplyCoordinator } from '../../application/call-bot-reply-coordinator.mjs';
+import { PHONE_ACCESS_MODE } from '../../domain/phone/player-access-policy.mjs';
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
 async function waitFor(predicate, label = 'Instant Connect UI') {
@@ -64,6 +65,7 @@ async function open(shell, route) {
 
 test('Simple is explicit Instant while Story remains evidence-gated', () => {
   assert.equal(resolveExperiencePreset(EXPERIENCE_PRESET.SIMPLE).phoneNumberDiscovery, PHONE_NUMBER_DISCOVERY.ON);
+  assert.equal(resolveExperiencePreset(EXPERIENCE_PRESET.SIMPLE).phoneAccessMode, PHONE_ACCESS_MODE.FREE_ACCESS);
   assert.equal(resolveExperiencePreset(EXPERIENCE_PRESET.STORY).phoneNumberDiscovery, PHONE_NUMBER_DISCOVERY.SMART);
 });
 
@@ -74,6 +76,7 @@ test('a persisted legacy Simple preference reads as the current Instant contract
   const normalized = await context.settings.get({ scope: context.scope, playerInstanceId: context.user.instanceId });
   assert.equal(normalized.preset, EXPERIENCE_PRESET.SIMPLE);
   assert.equal(normalized.phoneNumberDiscovery, PHONE_NUMBER_DISCOVERY.ON);
+  assert.equal(normalized.phoneAccessMode, PHONE_ACCESS_MODE.FREE_ACCESS);
 });
 
 test('Local Voice Runtime endpoint is explicit, validated, and preserved across Experience changes', async () => {

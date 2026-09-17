@@ -1,12 +1,14 @@
+import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
+
 const el = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
 
 export function renderFiles({ document, items = [], authorizationGranted = true, error = null, selectedRecordId = null, pendingRemovalRecordId = null, onOpen, onRequestRemove, onCancelRemove, onConfirmRemove }) {
   const root = el(document, 'section'); root.className = 'tmrw-v3-files';
-  if (!authorizationGranted) { root.append(el(document, 'p', 'โทรศัพท์เครื่องนี้ยังล็อกอยู่')); return root; }
-  if (error) { const alert = el(document, 'p', `Files error: ${error}`); alert.setAttribute('role', 'alert'); root.append(alert); return root; }
+  if (!authorizationGranted) { root.append(renderAppEmptyState({ document, app: 'files', title: 'ไฟล์ของเครื่องนี้ถูกล็อกอยู่', detail: 'กลับไปยังโทรศัพท์ของผู้เล่นหรือปลดสิทธิ์การเข้าถึงก่อนเปิดไฟล์' })); return root; }
+  if (error) { root.append(renderInlineNotice({ document, tone: 'error', title: 'เปิดไฟล์ยังไม่สำเร็จ', detail: 'ข้อมูลเดิมยังอยู่ ลองกลับเข้ามาใหม่อีกครั้ง' })); return root; }
   const selected = items.find(item => item.recordId === selectedRecordId) || null;
   if (!selected) {
-    if (items.length === 0) { root.append(el(document, 'p', 'ยังไม่มีไฟล์ในเครื่อง')); return root; }
+    if (items.length === 0) { root.append(renderAppEmptyState({ document, app: 'files' })); return root; }
     const list = el(document, 'div'); list.className = 'tmrw-phone-utility-list tmrw-v3-files-list';
     for (const item of items) { const button = el(document, 'button'); button.type = 'button'; button.dataset.fileRecordId = item.recordId; button.setAttribute('aria-label', `Open ${item.name}`); const copy = el(document, 'span'); copy.append(el(document, 'strong', item.name), el(document, 'small', `${item.folder || 'root'} · ${item.fileKind}`)); button.append(copy); button.addEventListener('click', () => onOpen?.(item.recordId)); list.append(button); }
     root.append(list); return root;

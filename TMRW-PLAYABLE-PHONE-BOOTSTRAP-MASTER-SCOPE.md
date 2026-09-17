@@ -254,3 +254,26 @@ Result:
 - production package: 250 files, 770 import edges
 - package verification passed; passive import true; protected paths false; retired Preview files not copied
 - broader legacy UI commands remain blocked at module load by the already-recorded missing `tests/phase17/notification-fixtures.mjs`; no focused checkpoint test failed
+
+### Checkpoint 9 — 2026-09-17
+
+Closed the device-test failures around bootstrap review, stale runtime delivery, Messages, Simple access, and Adaptive Feed. Cast discovery now rejects card-schema labels such as Age, Hair, Height, Build, and Note; inferred names remain candidates and Settings presents a required selection/review panel before any phone identities are changed. Confirming a corrected cast retires obsolete active card memberships, so earlier false phones disappear from the owner roster. An unchanged completed bootstrap is a true no-op, while changed-history seed records use fingerprinted identities and deterministic payloads to avoid idempotency collisions. Simple now grants read access to Their Phone by contract. Messages retains unstarted Instant contacts beside existing threads, renders a designed empty conversation state, and makes Their Phone explicitly read-only. Adaptive Feed v2 no longer quotes raw RP prose, filters legacy malformed pulse posts, and commits real deterministic likes plus Thai-netizen comment previews.
+
+The repository-installed runtime under `v3/` is now mechanically synchronized with the authoritative source and verified byte-for-byte against the packaged runtime. This fixes the deployment gap where Git updated successfully but the browser continued importing stale `v3/` files.
+
+Commands:
+
+```powershell
+node --test tests/phase23/playable-cast-history.test.mjs tests/phase23/playable-bootstrap-service.test.mjs tests/phase23/adaptive-world-pulse.test.mjs tests/phase23/playable-bootstrap-settings-ui.test.mjs
+node --test tests/phase23/instant-connect.test.mjs tests/phase23/gallery-files-ui.test.mjs tests/phase23/p23-d-shell.test.mjs tests/phase23/production-home-presentation.test.mjs
+npm run build:production-package
+npm run verify:production-package
+```
+
+Result:
+
+- focused bootstrap/cast/feed tests: 7 passed, 0 failed
+- Instant/Calls/Messages regression file: 17 passed, 0 failed
+- three broader UI files remain blocked at module load by the pre-existing missing `tests/phase17/notification-fixtures.mjs`
+- production package: 250 files, 770 import edges; verification passed
+- authoritative source, installed `v3/` runtime, and packaged `dist/.../v3/` hashes match for every touched runtime file

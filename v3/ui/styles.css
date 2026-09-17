@@ -108,3 +108,9 @@
     #tmrw-v3-phone-launcher,
     #tmrw-phone-root * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.tmrw-phone-cast-review{margin:0 22px 16px;padding:18px;border:1px solid rgba(30,30,35,.12);border-radius:24px;background:#fff;box-shadow:0 12px 34px rgba(30,35,45,.07)}
+.tmrw-phone-cast-review>header{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}.tmrw-phone-cast-review>header strong{font-size:18px}.tmrw-phone-cast-review>header small{color:#7c7f87}
+.tmrw-phone-cast-review>button{width:100%;display:flex;align-items:center;gap:12px;border:0;border-top:1px solid rgba(30,30,35,.08);background:transparent;padding:14px 4px;text-align:left;color:#222}.tmrw-phone-cast-review>button i{width:28px;height:28px;border:1px solid #c8cbd1;border-radius:50%;display:grid;place-items:center;font-style:normal}.tmrw-phone-cast-review>button.is-selected i{background:#222;color:#fff;border-color:#222}.tmrw-phone-cast-review>button span{display:flex;flex-direction:column;gap:2px}.tmrw-phone-cast-review>button small{color:#888}
+.tmrw-phone-cast-review>footer{display:flex;gap:10px;margin-top:12px}.tmrw-phone-cast-review>footer button{flex:1;border:1px solid #222;border-radius:999px;padding:12px;background:#fff;color:#222}.tmrw-phone-cast-review>footer button.is-primary{background:#222;color:#fff}.tmrw-phone-cast-review>footer button:disabled{opacity:.4}
+.tmrw-phone-post-comments{margin:2px 20px 14px;padding:10px 12px;border-radius:14px;background:#f6f6f8}.tmrw-phone-post-comments p{margin:0 0 6px;font-size:13px;line-height:1.45}.tmrw-phone-post-comments p:last-child{margin-bottom:0}.tmrw-phone-post-comments strong{margin-right:4px}

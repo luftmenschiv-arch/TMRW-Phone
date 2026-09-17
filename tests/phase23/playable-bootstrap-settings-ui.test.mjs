@@ -32,6 +32,7 @@ test('Settings magic action runs bootstrap once and becomes the update action', 
   let runs = 0;
   const playableBootstrapService = {
     status: input => c.settings.get(input).then(row => row.playableBootstrap),
+    preview: async () => Object.freeze({ cast: Object.freeze([{ sourceActorId: 'cast:kaelan', displayName: 'Kaelan', confidence: 'confirmed', evidence: Object.freeze(['active-card']), approved: true }]), approvedCast: Object.freeze([]), candidates: Object.freeze([]) }),
     run: async ({ scope, playerInstanceId, onProgress }) => {
       runs += 1;
       onProgress?.({ stage: 'quick-ready', status: 'quick-ready', processedOrdinal: 20, totalMessages: 80 });
@@ -50,6 +51,10 @@ test('Settings magic action runs bootstrap once and becomes the update action', 
   assert.deepEqual(findAll(shell.root, node => Boolean(node.dataset?.providerArea)).map(node => node.dataset.providerArea), ['image', 'voice']);
   assert.match(text(action), /ทำให้มือถือพร้อมเล่น/);
   action.click();
+  await waitFor(() => Boolean(find(shell.root, node => node.dataset?.castActorId === 'cast:kaelan')), 'cast review');
+  find(shell.root, node => node.dataset?.castActorId === 'cast:kaelan');
+  const confirm = find(shell.root, node => node.dataset?.action === 'confirm-playable-cast');
+  assert.ok(confirm); confirm.click();
   await waitFor(async () => runs === 1 && (await c.settings.get({ scope: c.scope, playerInstanceId: c.user.instanceId })).playableBootstrap.status === 'ready', 'bootstrap');
   await waitFor(() => /อัปเดตมือถือให้ทันเรื่อง/.test(text(find(shell.root, node => node.dataset?.action === 'playable-bootstrap'))), 'ready label');
   shell.dispose();
