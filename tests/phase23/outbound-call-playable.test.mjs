@@ -98,6 +98,27 @@ test('call prompt uses the contact name the bot saved, not the SillyTavern perso
   assert.doesNotMatch(h.prompts[0].quietPrompt, /เฮคเตอร์/);
 });
 
+test('retrying the same committed call turn invokes SillyTavern generation again after a failure', async () => {
+  let attempts = 0;
+  const h = coordinatorHarness(async () => {
+    attempts += 1;
+    if (attempts < 3) throw new Error('No message generated');
+    return JSON.stringify({ segments: [{ subtitle_th: 'ได้ยินแล้ว', spoken_text: 'I hear you.' }] });
+  });
+  const input = { scope, playerInstanceId: 'character-instance:user', commit: userCommit };
+  const first = await h.coordinator.prepareReplyToCommittedUserTranscript(input);
+  const second = await h.coordinator.prepareReplyToCommittedUserTranscript(input);
+  const third = await h.coordinator.prepareReplyToCommittedUserTranscript(input);
+  assert.equal(first.reason, 'generation-failed');
+  assert.equal(second.reason, 'generation-failed');
+  assert.equal(first.modelAttempted, true);
+  assert.equal(second.modelAttempted, true);
+  assert.equal(third.status, 'prepared');
+  assert.equal(attempts, 3);
+  assert.equal(h.prompts.length, 3);
+  assert.equal(h.writes.length, 0, 'retry must not duplicate the canonical user transcript');
+});
+
 test('invalid one-language model output fails closed instead of being spoken or exposed as a fake Thai subtitle', async () => {
   const h = coordinatorHarness(async () => 'Good morning.');
   const result = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });

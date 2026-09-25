@@ -91,8 +91,8 @@ function parseGeneratedReply(value) {
   } catch { return null; }
 }
 
-function generationFailure(reason, error = null) {
-  return Object.freeze({ status: reason === 'generation-cancelled' ? 'cancelled' : 'failed', reason, retryable: reason !== 'generation-cancelled', error: error ? String(error?.message || error) : null });
+function generationFailure(reason, error = null, modelAttempted = false) {
+  return Object.freeze({ status: reason === 'generation-cancelled' ? 'cancelled' : 'failed', reason, retryable: reason !== 'generation-cancelled', error: error ? String(error?.message || error) : null, modelAttempted });
 }
 
 async function withDeadline(task, { signal = null, timeoutMs = CALL_LLM_DEADLINE_MS, onExpire = null } = {}) {
@@ -165,17 +165,18 @@ export class CallBotReplyCoordinator {
     this.#timing?.begin?.(timingId, { callSessionId: userTranscript.callSessionId });
     if (this.#prepared.has(key)) return this.#prepared.get(key);
     if (this.#inflight.has(key)) return this.#inflight.get(key);
+    const attempt = { modelAttempted: false };
     const promise = withDeadline(
-      () => this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal }),
+      () => this.#prepare({ scope, playerInstanceId, commit, userTranscript, signal, attempt }),
       // A replaced/hung-up UI turn only owns this coordinator promise. Calling
       // SillyTavern's global stopGeneration for that abort can race with and
       // instantly kill the replacement request. Only a real deadline is
       // allowed to stop the host generator globally.
       { signal, timeoutMs, onExpire: reason => { if (reason === 'generation-timeout') this.#stopGeneration(reason); } },
     ).catch(error => {
-      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
-      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error);
-      return generationFailure('generation-failed', error);
+      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error, attempt.modelAttempted);
+      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error, attempt.modelAttempted);
+      return generationFailure('generation-failed', error, attempt.modelAttempted);
     }).then(result => {
       if (result?.status === 'prepared') {
         this.#prepared.set(key, result);
@@ -222,7 +223,7 @@ export class CallBotReplyCoordinator {
     return this.commitPreparedReply({ scope: input.scope, prepared });
   }
 
-  async #prepare({ scope, playerInstanceId, commit, userTranscript, signal }) {
+  async #prepare({ scope, playerInstanceId, commit, userTranscript, signal, attempt }) {
     const session = await this.#calls.getSession({ scope, callSessionId: userTranscript.callSessionId });
     if (!session || session.state !== CALL_STATE.ACTIVE) return generationFailure('call-not-active');
     if (!session.participantAccountIds.includes(userTranscript.speakerAccountId)) return generationFailure('speaker-not-participant');
@@ -252,6 +253,7 @@ export class CallBotReplyCoordinator {
         incremental: deliveryCapability.incremental,
         incrementalReason: deliveryCapability.reason,
       });
+      attempt.modelAttempted = true;
       const generated = await context.generateQuietPrompt({
         quietPrompt: prompt,
         quietToLoud: false,
@@ -277,7 +279,7 @@ export class CallBotReplyCoordinator {
       if (signal?.aborted) return generationFailure('generation-cancelled');
       const reply = parseGeneratedReply(generated);
       this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'structured-validation', { outcome: reply ? 'valid' : 'invalid' });
-      if (!reply) return generationFailure('invalid-structured-model-response');
+      if (!reply) return generationFailure('invalid-structured-model-response', null, true);
       return Object.freeze({
         status: 'prepared',
         preparedId: String(commit.event?.id || userTranscript.transcriptEntryId),
@@ -290,13 +292,14 @@ export class CallBotReplyCoordinator {
         segments: reply.segments,
         structured: reply.structured,
         deliveryMode: deliveryCapability.mode,
+        modelAttempted: true,
         incremental: deliveryCapability.incremental,
         incrementalReason: deliveryCapability.reason,
       });
     } catch (error) {
-      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error);
-      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error);
-      return generationFailure('generation-failed', error);
+      if (error?.code === 'generation-cancelled' || signal?.aborted) return generationFailure('generation-cancelled', error, attempt.modelAttempted);
+      if (error?.code === 'generation-timeout') return generationFailure('generation-timeout', error, attempt.modelAttempted);
+      return generationFailure('generation-failed', error, attempt.modelAttempted);
     }
   }
 }

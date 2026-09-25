@@ -142,6 +142,20 @@ test('bot chooses and persists a distinct saved name for the player on its own p
   assert.equal(Object.values(view.accountPresentations).some(row => row.actorId === c.user.actorId && row.label === 'เฮคเตอร์'), false);
 });
 
+test('one-tap setup fills only missing bot-saved names and preserves a name the player likes', async () => {
+  const c = await setupPhase15({ castSize: 1, manifestId: 'bot-saved-name-bootstrap' });
+  let requests = 0;
+  const pulse = new AdaptiveWorldPulseService({ database: c.database, socialService: c.social, settingsService: c.settings, getContext: () => ({ name1: 'เฮคเตอร์', name2: 'Dr. Kaelan Vance', chat: [], generateQuietPrompt: async () => { requests += 1; return JSON.stringify({ savedName: 'เด็กปากดี' }); } }) });
+  const first = await pulse.primeBotSavedNames({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceIds: [c.user.deviceId, c.alice.deviceId] });
+  assert.equal(first.created, 1);
+  assert.equal(first.failures.length, 0);
+  const second = await pulse.primeBotSavedNames({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceIds: [c.alice.deviceId] });
+  assert.equal(second.created, 0);
+  assert.equal(second.existing, 1);
+  assert.equal(requests, 1);
+  assert.equal((await c.settings.get({ scope: c.scope, playerInstanceId: c.user.instanceId })).botSavedNames[c.alice.instanceId], 'เด็กปากดี');
+});
+
 test('Their Phone hides old ambient chats that duplicate the current player name', async () => {
   const c = await setupPhase15({ castSize: 1, manifestId: 'phone-player-alias-visibility' });
   const context = { name1: 'คุณ', name2: 'Dr. Kaelan Vance', scenario: 'โรงพยาบาล', chat: [], generateQuietPrompt: async options => {

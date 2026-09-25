@@ -303,11 +303,29 @@ export class AdaptiveWorldPulseService {
       'Character and world:', cardContext(context).slice(0, 10000),
       'Recent conversation:', historyContext(context, { recent: 35, maxCharacters: 10000 }),
     ].join('\n');
-    const response = await this.#generate({ prompt, jsonSchema: { type: 'object', additionalProperties: false, required: ['savedName'], properties: { savedName: { type: 'string' } } }, name: 'TMRW Bot Saved Name', responseLength: 512 });
+    const response = await this.#generate({ prompt, jsonSchema: { type: 'object', additionalProperties: false, required: ['savedName'], properties: { savedName: { type: 'string' } } }, name: 'TMRW Bot Saved Name', responseLength: 1024 });
     const savedName = bounded(JSON.parse(jsonCandidate(response))?.savedName, 60);
     if (!savedName || /^(?:คุณ|ผู้เล่น|user|you|\{\{user\}\})$/iu.test(savedName) || identityNameKey(savedName) === identityNameKey(context.name1) || identityNameKey(savedName) === identityNameKey(owner.handle)) throw new Error('The model did not choose a distinct contact name');
     await this.#settings.setBotSavedName({ scope, playerInstanceId, ownerInstanceId: owner.instanceId, savedName });
     return Object.freeze({ savedName, ownerInstanceId: owner.instanceId });
+  }
+
+  async primeBotSavedNames({ scope: inputScope, playerInstanceId, deviceIds = null }) {
+    const scope = requireEventScope(inputScope);
+    const owners = [...new Map((await this.#phoneOwners(scope, deviceIds)).map(owner => [owner.instanceId, owner])).values()];
+    const settings = await this.#settings.get({ scope, playerInstanceId });
+    let created = 0;
+    const failures = [];
+    for (const owner of owners) {
+      if (settings.botSavedNames?.[owner.instanceId]) continue;
+      try {
+        await this.generateBotSavedName({ scope, playerInstanceId, deviceId: owner.deviceId });
+        created += 1;
+      } catch (error) {
+        failures.push(Object.freeze({ ownerInstanceId: owner.instanceId, message: error instanceof Error ? error.message : String(error) }));
+      }
+    }
+    return Object.freeze({ created, existing: owners.length - created - failures.length, failures: Object.freeze(failures) });
   }
 
   async #generateBatch(scope, bible, startIndex) {
