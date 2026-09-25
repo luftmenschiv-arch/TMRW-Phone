@@ -132,6 +132,10 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-feed-intro small { color: var(--owner-accent); font-size: 8px; font-weight: 800; letter-spacing: .14em; }
 .tmrw-phone-feed-intro strong { margin-top: 4px; font-size: 12px; }
 .tmrw-phone-feed-intro button, .tmrw-phone-post header button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; color: inherit; border: 0; border-radius: 50%; background: #f0f1f3; }
+.tmrw-phone-feed-detail-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--tmrw-line); background: #fff; }
+.tmrw-phone-feed-detail-bar strong { min-width: 0; font-size: 11px; line-height: 1.4; }
+.tmrw-phone-feed-detail-bar button { flex: none; padding: 8px 12px; border: 0; border-radius: 999px; background: #eef2f6; color: #303b46; font-family: inherit; font-size: 10px; font-weight: 700; line-height: 1.3; cursor: pointer; }
+.tmrw-phone-feed-detail-bar button:active { background: #e1e9f1; }
 .tmrw-phone-post { padding: 17px 18px 14px; border-bottom: 1px solid var(--tmrw-line); background: #fff; }
 .tmrw-phone-post header { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 10px; }
 .tmrw-phone-post header > div { min-width: 0; display: flex; flex-direction: column; }

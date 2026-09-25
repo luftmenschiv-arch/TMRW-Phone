@@ -51,8 +51,9 @@ const callReplyError = result => {
   if (result?.reason === 'current-character-not-call-counterpart') return 'เปิดแชทของตัวละครที่กำลังโทรก่อน แล้วลองตอบใหม่';
   if (result?.reason === 'v1-direct-character-only') return 'การโทรด้วยเสียงยังใช้กับแชทกลุ่มไม่ได้';
   if (result?.reason === 'quiet-generation-unavailable') return 'SillyTavern ยังไม่พร้อมสร้างคำตอบ';
-  if (/response status 500|http 500/iu.test(result?.error || '')) return 'SillyTavern ส่งคำขอไปโมเดลแล้วได้ HTTP 500 • ตรวจ API ที่ใช้กับแชทก่อนลองใหม่';
+  if (/response status 500|http 500/iu.test(result?.error || '')) return 'โมเดลที่เลือกใน SillyTavern ตอบ HTTP 500 • ลองใหม่อีกครู่หรือตรวจ API';
   if (/abort/iu.test(result?.error || '')) return 'ระบบสร้างคำตอบใน SillyTavern ถูกยกเลิก • ตรวจ API แล้วลองใหม่';
+  if (result?.reason === 'generation-failed') return 'โมเดลที่เลือกใน SillyTavern ยังสร้างคำตอบไม่ได้ • ลองใหม่ภายหลังหรือตรวจการตั้งค่า API';
   return `สร้างคำตอบไม่สำเร็จ (${result?.reason || 'unknown'})`;
 };
 export async function legacyCallArchive(indexedDb = globalThis.indexedDB) {
