@@ -34,18 +34,19 @@ function callServiceHarness() {
   };
 }
 
-function coordinatorHarness(generateQuietPrompt, { callService = null, stopGeneration = null } = {}) {
+function coordinatorHarness(generateQuietPrompt, { callService = null, stopGeneration = null, savedName = null } = {}) {
   const calls = callServiceHarness();
   const prompts = [];
   const bindingInputs = [];
   const coordinator = new CallBotReplyCoordinator({
     callService: callService || calls.service,
     voiceProfileService: { resolve: async () => ({ actorId: botBinding.actorId, instanceId: botBinding.instanceId, profileName: null, language: 'auto', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
-    settingsService: { get: async () => ({ voiceLanguagePreference: 'ja' }) },
+    settingsService: { get: async () => ({ voiceLanguagePreference: 'ja', botSavedNames: savedName ? { [botBinding.instanceId]: savedName } : {} }) },
     bindingResolver: async input => { bindingInputs.push(input); return { actorBinding: botBinding }; },
     getContext: () => ({
       groupId: null,
       characterId: 7,
+      name1: 'เฮคเตอร์',
       name2: 'Kaelan Vance',
       generateQuietPrompt: options => { prompts.push(options); return generateQuietPrompt(options); },
       stopGeneration,
@@ -77,6 +78,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.match(h.prompts[0].quietPrompt, /strict JSON/i);
   assert.match(h.prompts[0].quietPrompt, /natural Japanese/);
   assert.match(h.prompts[0].quietPrompt, /Never answer as a different character/);
+  assert.doesNotMatch(h.prompts[0].quietPrompt, /เฮคเตอร์/);
   assert.equal(h.prompts[0].jsonSchema.properties.segments.maxItems, 3);
   assert.deepEqual(h.prompts[0].jsonSchema.properties.segments.items.required, ['subtitle_th', 'spoken_text']);
 
@@ -86,6 +88,14 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.equal(h.writes[0].text, 'อรุณสวัสดิ์ครับ เมื่อคืนหลับสบายไหมครับ');
   await h.coordinator.commitPreparedReply({ scope, prepared });
   assert.equal(h.writes.length, 1, 'commit must be idempotent');
+});
+
+test('call prompt uses the contact name the bot saved, not the SillyTavern persona name', async () => {
+  const h = coordinatorHarness(async () => JSON.stringify({ segments: [{ subtitle_th: 'ได้สิ', spoken_text: 'もちろん。' }] }), { savedName: 'เจ้าตัวปัญหา' });
+  const prepared = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });
+  assert.equal(prepared.status, 'prepared');
+  assert.match(h.prompts[0].quietPrompt, /saved the caller as เจ้าตัวปัญหา/);
+  assert.doesNotMatch(h.prompts[0].quietPrompt, /เฮคเตอร์/);
 });
 
 test('invalid one-language model output fails closed instead of being spoken or exposed as a fake Thai subtitle', async () => {
@@ -469,8 +479,8 @@ test('same-route Call state refresh keeps the current surface visible while view
   find(shell.root, node => node.dataset?.action === 'unlock').click();
   for (let index = 0; index < 100 && !find(shell.root, node => node.dataset?.app === 'calls'); index += 1) await new Promise(resolve => setImmediate(resolve));
   find(shell.root, node => node.dataset?.app === 'calls').click();
-  for (let index = 0; index < 100 && !/ยังไม่มี Call History/.test(allText(shell.root)); index += 1) await new Promise(resolve => setImmediate(resolve));
-  assert.match(allText(shell.root), /ยังไม่มี Call History/);
+  for (let index = 0; index < 100 && !/ยังไม่มีประวัติสาย/.test(allText(shell.root)); index += 1) await new Promise(resolve => setImmediate(resolve));
+  assert.match(allText(shell.root), /ยังไม่มีประวัติสาย/);
   const screen = find(shell.root, node => node.id === 'tmrw-phone-screen');
   const visibleCallSurface = screen.children[0];
 

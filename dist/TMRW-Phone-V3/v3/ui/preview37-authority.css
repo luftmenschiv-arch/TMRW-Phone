@@ -181,6 +181,17 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-message-section-title strong { font-size: 16px; }
 .tmrw-phone-message-section-title button { padding: 0; color: #6579c7; border: 0; background: transparent; font-size: 11px; font-weight: 700; }
 .tmrw-phone-thread-list { padding-bottom: 18px; }
+.tmrw-phone-bot-saved-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 12px; margin: 8px 18px 14px; padding: 14px 16px; border: 1px solid #e4e8ed; border-radius: 16px; background: #f8faff; }
+.tmrw-phone-bot-saved-name > span { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.tmrw-phone-bot-saved-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.tmrw-phone-bot-saved-name small { color: #737d89; font-size: 10px; line-height: 1.4; }
+.tmrw-phone-bot-saved-name > small { grid-column: 1 / -1; }
+.tmrw-phone-bot-saved-name button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 99px; background: #282b31; color: #fff; font: inherit; font-size: 11px; font-weight: 700; }
+.tmrw-phone-bot-saved-name button:disabled { opacity: .55; }
+.tmrw-phone-more-conversations { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 12px 18px 24px; padding: 18px; border: 1px solid #e4e8ed; border-radius: 18px; background: #f8faff; text-align: center; }
+.tmrw-phone-more-conversations button { min-height: 40px; padding: 0 20px; border: 0; border-radius: 99px; background: #282b31; color: #fff; font: inherit; font-weight: 700; }
+.tmrw-phone-more-conversations button:disabled { opacity: .55; }
+.tmrw-phone-more-conversations small { color: #737d89; font-size: 10px; line-height: 1.5; }
 .tmrw-phone-thread { width: 100%; min-height: 73px; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 8px 18px; color: inherit; border: 0; background: transparent; text-align: left; }
 .tmrw-phone-thread:active { background: #f1f2f4; }
 .tmrw-phone-thread > span { min-width: 0; display: flex; flex-direction: column; }

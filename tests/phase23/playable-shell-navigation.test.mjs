@@ -24,3 +24,10 @@ test('home pager restores the supplied page immediately without waiting for a ge
   assert.equal(dots.children[1].attributes.get('aria-current'), 'true');
   assert.equal(observed.at(-1), 1);
 });
+
+test('opening Insungram from the home screen lands in chats', () => {
+  const document = new FakeDocument(); let opened = null;
+  const root = createPreviewHome({ document, ownerLabel: 'Their Phone', overview, onApp: route => { opened = route; } });
+  find(root, node => node.dataset?.app === 'insungram').click();
+  assert.equal(opened, 'messages');
+});

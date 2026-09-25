@@ -35,7 +35,8 @@ function spokenLanguageName(language) {
   return language === VOICE_LANGUAGE.JAPANESE ? 'Japanese' : 'English';
 }
 
-function promptFor({ transcript, botAccountId, language, targetName }) {
+function promptFor({ transcript, botAccountId, language, targetName, savedName }) {
+  const safeSavedName = String(savedName || '').replace(/[\r\n\t]+/gu, ' ').trim().slice(0, 60);
   const rows = transcript.slice(-MAX_PROMPT_TRANSCRIPT).map(row => {
     const label = row.speakerAccountId === botAccountId ? 'YOU' : 'CALLER';
     return `${label}: ${String(row.text || '').trim()}`;
@@ -46,6 +47,7 @@ function promptFor({ transcript, botAccountId, language, targetName }) {
   return [
     `You are ${targetName || 'the selected character'} speaking inside an active private TMRW phone call.`,
     'The caller deliberately selected you. Never answer as a different character.',
+    safeSavedName ? `In your own phone you saved the caller as ${safeSavedName}. You chose this contact name based on your relationship. Keep it consistent when you use a name for them.` : 'You have not chosen a saved contact name for the caller. Use a natural form of address if needed.',
     'Return only strict JSON. Do not use markdown or code fences.',
     '{"segments":[{"subtitle_th":"คำบรรยายภาษาไทย","spoken_text":"spoken voice text"}]}',
     `subtitle_th must be natural Thai. spoken_text must be natural ${spokenLanguage}.`,
@@ -242,7 +244,7 @@ export class CallBotReplyCoordinator {
     const settings = await this.#settings.get({ scope, playerInstanceId });
     const language = resolveLanguage(profile, settings);
     const transcript = await this.#calls.listTranscript({ scope, viewerAccountId: userTranscript.speakerAccountId, callSessionId: session.callSessionId, limit: MAX_PROMPT_TRANSCRIPT });
-    const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim() });
+    const prompt = promptFor({ transcript, botAccountId: bot.accountId, language, targetName: String(context.name2 || '').trim(), savedName: settings.botSavedNames?.[bot.instanceId] });
     const forceChId = Number.isInteger(context.characterId) ? context.characterId : null;
     try {
       this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-start', {

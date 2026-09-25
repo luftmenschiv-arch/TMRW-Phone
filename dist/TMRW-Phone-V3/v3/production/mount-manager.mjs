@@ -201,6 +201,7 @@ export class ProductionMountManager {
         playerActorId: identity.player.actorId,
         playerInstanceId: identity.player.instanceId,
         playerDisplayName: this.#playerDisplayNameResolver?.() || null,
+        playerDisplayNameResolver: this.#playerDisplayNameResolver,
         playerAvatarUrl: this.#playerAvatarUrlResolver?.() || null,
         activeCharacterDisplayName: this.#activeCharacterDisplayNameResolver?.() || null,
         activeCharacterAvatarUrl: this.#activeCharacterAvatarUrlResolver?.() || null,

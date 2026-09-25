@@ -90,3 +90,72 @@ test('phone activity failure produces three distinct readable conversations inst
   assert.equal(sets.every(rows=>rows.length===4),true);
   assert.equal(sets.flat().some(row=>row.text==='ไว้ฉันจะลองดูสถานการณ์อีกที'),false);
 });
+
+test('manual phone refresh excludes the player and existing contacts without inventing fallback chats', async () => {
+  const c = await setupPhase15({ castSize: 1, manifestId: 'phone-activity-manual-refresh' });
+  const context = { name1: 'เฮคเตอร์', name2: 'Dr. Kaelan Vance', scenario: 'โรงพยาบาลกำลังจัดเวรใหม่', chat: [], generateQuietPrompt: async options => {
+    if (options.quietName === 'TMRW World Social Bible') return JSON.stringify({ worldSummary: 'โรงพยาบาลกำลังจัดเวรใหม่', socialOrder: 'ทีมแพทย์และพยาบาล', economyAndLaw: 'ยึดกฎโรงพยาบาล', technologyAndMedia: 'โทรศัพท์', languageStyle: 'ภาษาไทย', publicNorms: ['คุยเรื่องงาน'], institutions: ['โรงพยาบาล'], tensions: ['เวรไม่พอ'], currentPublicEvents: ['ปรับตารางเวร'] });
+    if (options.quietName === 'TMRW Phone Activity') return JSON.stringify({ conversations: [
+      { ownerKey: 'owner-1', contact: 'เฮคเตอร์ โลคาซันเดอร์', messages: [{ sender: 'contact', text: 'ไม่ควรเป็นอีกคน' }, { sender: 'owner', text: 'ไม่ควรเห็น' }] },
+      { ownerKey: 'owner-1', contact: 'คนในทีม', messages: [{ sender: 'contact', text: 'แชทเก่าที่มีแล้ว' }, { sender: 'owner', text: 'ไม่ควรซ้ำ' }] },
+      { ownerKey: 'owner-1', contact: 'พยาบาลเวรบ่าย', messages: [{ sender: 'contact', text: 'ตารางเวรใหม่ออกแล้วค่ะ' }, { sender: 'owner', text: 'ส่งมาให้ฉันดูหน่อย' }] },
+    ], lives: [] });
+    throw new Error('unexpected prompt');
+  } };
+  const pulse = new AdaptiveWorldPulseService({ database: c.database, socialService: c.social, messageService: c.messages, settingsService: c.settings, getContext: () => context });
+  const result = await pulse.refreshPhoneActivity({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceId: c.alice.deviceId, excludedContacts: ['คนในทีม'] });
+  assert.equal(result.conversations, 1);
+  const threads = await c.messages.listThreads({ scope: c.scope, viewerAccountId: c.alice.accountId });
+  assert.equal(threads.length, 1);
+  const messages = await c.messages.listMessages({ scope: c.scope, viewerAccountId: c.alice.accountId, threadId: threads[0].threadId });
+  assert.equal(messages[0].text, 'ตารางเวรใหม่ออกแล้วค่ะ');
+});
+
+test('manual phone refresh reports an unavailable API without creating placeholder conversations', async () => {
+  const c = await setupPhase15({ castSize: 1, manifestId: 'phone-activity-manual-503' });
+  const context = { name1: 'เฮคเตอร์', name2: 'Dr. Kaelan Vance', scenario: 'โรงพยาบาล', chat: [], generateQuietPrompt: async options => {
+    if (options.quietName === 'TMRW World Social Bible') return JSON.stringify({ worldSummary: 'โรงพยาบาล', socialOrder: 'ทีมแพทย์', economyAndLaw: 'กฎโรงพยาบาล', technologyAndMedia: 'โทรศัพท์', languageStyle: 'ภาษาไทย', publicNorms: ['คุยเรื่องงาน'], institutions: ['โรงพยาบาล'], tensions: [], currentPublicEvents: [] });
+    throw new Error('503 Service Unavailable');
+  } };
+  const pulse = new AdaptiveWorldPulseService({ database: c.database, socialService: c.social, messageService: c.messages, settingsService: c.settings, getContext: () => context });
+  await assert.rejects(pulse.refreshPhoneActivity({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceId: c.alice.deviceId }), /503/);
+  assert.equal((await c.messages.listThreads({ scope: c.scope, viewerAccountId: c.alice.accountId })).length, 0);
+});
+
+test('bot chooses and persists a distinct saved name for the player on its own phone', async () => {
+  const c = await setupPhase15({ castSize: 1, manifestId: 'bot-saved-player-name' });
+  const prompts = [];
+  const context = { name1: 'เฮคเตอร์', name2: 'Dr. Kaelan Vance', scenario: 'ทำงานในโรงพยาบาลเดียวกัน', chat: [], generateQuietPrompt: async options => { prompts.push(options); return JSON.stringify({ savedName: 'เจ้าตัวปัญหา' }); } };
+  const pulse = new AdaptiveWorldPulseService({ database: c.database, socialService: c.social, settingsService: c.settings, getContext: () => context });
+  const chosen = await pulse.generateBotSavedName({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceId: c.alice.deviceId });
+  assert.equal(chosen.savedName, 'เจ้าตัวปัญหา');
+  assert.match(prompts[0].quietPrompt, /Choose the private contact name/);
+  const persisted = await c.settings.get({ scope: c.scope, playerInstanceId: c.user.instanceId });
+  assert.equal(persisted.botSavedNames[c.alice.instanceId], 'เจ้าตัวปัญหา');
+  const dm = await c.messages.createThread({ scope: c.scope, kind: 'dm', participantAccountIds: [c.user.accountId, c.alice.accountId], source: { authority: 'bot-saved-name-test', kind: 'test', recordId: 'player-dm', version: '1' }, idempotencyKey: 'bot-saved-name-player-dm' });
+  await c.messages.sendMessage({ scope: c.scope, threadId: dm.thread.threadId, senderAccountId: c.user.accountId, actualAuthorActorId: c.user.actorId, actualAuthorInstanceId: c.user.instanceId, deviceId: c.user.deviceId, text: 'อาจารย์แวนซ์ครับ', source: { authority: 'bot-saved-name-test', kind: 'test', recordId: 'hello', version: '1' }, idempotencyKey: 'bot-saved-name-hello' });
+  await c.overrides.grant({ scope: c.scope, deviceId: c.alice.deviceId, action: 'inspect', playerActorId: c.user.actorId, playerInstanceId: c.user.instanceId });
+  const view = await c.viewModels.selected({ scope: c.scope, deviceId: c.alice.deviceId, playerActorId: c.user.actorId, playerInstanceId: c.user.instanceId, playerDisplayName: 'เฮคเตอร์', route: 'messages', controller: c.controller });
+  assert.equal(view.botSavedName, 'เจ้าตัวปัญหา');
+  assert.equal(view.threadRows.find(row => row.threadId === dm.thread.threadId)?.label, 'เจ้าตัวปัญหา');
+  assert.equal(Object.values(view.accountPresentations).some(row => row.actorId === c.user.actorId && row.label === 'เจ้าตัวปัญหา'), true);
+  assert.equal(Object.values(view.accountPresentations).some(row => row.actorId === c.user.actorId && row.label === 'เฮคเตอร์'), false);
+});
+
+test('Their Phone hides old ambient chats that duplicate the current player name', async () => {
+  const c = await setupPhase15({ castSize: 1, manifestId: 'phone-player-alias-visibility' });
+  const context = { name1: 'คุณ', name2: 'Dr. Kaelan Vance', scenario: 'โรงพยาบาล', chat: [], generateQuietPrompt: async options => {
+    if (options.quietName === 'TMRW World Social Bible') return JSON.stringify({ worldSummary: 'โรงพยาบาล', socialOrder: 'ทีมแพทย์', economyAndLaw: 'กฎโรงพยาบาล', technologyAndMedia: 'โทรศัพท์', languageStyle: 'ภาษาไทย', publicNorms: ['คุยเรื่องงาน'], institutions: ['โรงพยาบาล'], tensions: [], currentPublicEvents: [] });
+    if (options.quietName === 'TMRW Phone Activity') return JSON.stringify({ conversations: [
+      { ownerKey: 'owner-1', contact: 'เฮคเตอร์ โลคาซันเดอร์', messages: [{ sender: 'contact', text: 'นี่คือตัวผู้เล่น' }, { sender: 'owner', text: 'ไม่ควรเป็น NPC' }] },
+      { ownerKey: 'owner-1', contact: 'พยาบาลเวรบ่าย', messages: [{ sender: 'contact', text: 'มีรายงานใหม่' }, { sender: 'owner', text: 'ส่งมา' }] },
+    ], lives: [] });
+    throw new Error('unexpected prompt');
+  } };
+  const pulse = new AdaptiveWorldPulseService({ database: c.database, socialService: c.social, messageService: c.messages, settingsService: c.settings, getContext: () => context });
+  await pulse.primePhoneActivity({ scope: c.scope, playerInstanceId: c.user.instanceId, deviceIds: [c.alice.deviceId], fingerprint: 'old-generic-player-name' });
+  await c.overrides.grant({ scope: c.scope, deviceId: c.alice.deviceId, action: 'inspect', playerActorId: c.user.actorId, playerInstanceId: c.user.instanceId });
+  const view = await c.viewModels.selected({ scope: c.scope, deviceId: c.alice.deviceId, playerActorId: c.user.actorId, playerInstanceId: c.user.instanceId, playerDisplayName: 'เฮคเตอร์', route: 'messages', controller: c.controller });
+  assert.equal(view.threadRows.some(row => row.label.includes('เฮคเตอร์')), false);
+  assert.equal(view.threadRows.some(row => row.label.includes('พยาบาลเวรบ่าย')), true);
+});

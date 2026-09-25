@@ -229,14 +229,14 @@ export class AdaptiveWorldPulseService {
     return this.#unit.readonly({ stores:['eventIdempotency'], scope }, async repositories => new Set((await repositories.eventIdempotency.list()).filter(row=>row.producer==='adaptive-world-pulse').map(row=>row.idempotencyKey)));
   }
 
-  async primePhoneActivity({ scope: inputScope, playerInstanceId = null, deviceIds = null, fingerprint = null } = {}) {
+  async primePhoneActivity({ scope: inputScope, playerInstanceId = null, deviceIds = null, fingerprint = null, excludedContacts = [], includeLive = true, allowFallback = true } = {}) {
     const scope=requireEventScope(inputScope);
     if(!this.#messages&&!this.#live)return Object.freeze({conversations:0,lives:0,skipped:true});
     const owners=await this.#phoneOwners(scope,deviceIds);if(!owners.length)return Object.freeze({conversations:0,lives:0,skipped:true});
     const bible=await this.prepareWorld({scope,playerInstanceId});const activityFingerprint=clean(fingerprint)||bible.sourceFingerprint;const applied=await this.#appliedPhoneActivityKeys(scope);
     const ownerSpecs=owners.map((owner,index)=>Object.freeze({...owner,ownerKey:`owner-${index+1}`}));
     const pendingOwners=this.#messages?ownerSpecs.filter(owner=>!applied.has(`phone-activity-v3:${activityFingerprint}:${owner.accountId}:conversation:0:message:0`)):[];
-    const liveKey=`phone-activity:${activityFingerprint}:live:0`;const needsLive=this.#live&&!applied.has(liveKey);
+    const liveKey=`phone-activity:${activityFingerprint}:live:0`;const needsLive=includeLive&&this.#live&&!applied.has(liveKey);
     if(!pendingOwners.length&&!needsLive)return Object.freeze({conversations:0,lives:0,replayed:true});
     const context=this.#getContext()||{};
     const prompt=[
@@ -249,7 +249,7 @@ export class AdaptiveWorldPulseService {
       'ใช้ภาษาไทยทั้งหมด ห้ามใส่ภาษาต่างประเทศแล้ววงเล็บคำแปลไทย ห้ามเขียนข้อความอธิบายระบบ',
       'sender ใช้ได้เฉพาะ owner หรือ contact',
       'JSON: {"conversations":[{"ownerKey":"owner-1","contact":"ชื่อคู่สนทนา","messages":[{"sender":"owner","text":"ข้อความ"}]}],"lives":[{"host":"ชื่อบัญชี","title":"ชื่อไลฟ์","topic":"หัวข้อ","description":"คำอธิบาย","comments":[{"author":"ชื่อบัญชี","text":"ข้อความสด"}]}]}',
-      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>`${row.ownerKey} = ${row.handle}`).join(' / ')}`,`ห้ามใช้เป็นคู่สนทนา: ${unique([context?.name1,...pendingOwners.map(row=>row.handle)]).join(', ')}`,'','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,24),
+      '',`เจ้าของเครื่อง: ${pendingOwners.map(row=>`${row.ownerKey} = ${row.handle}`).join(' / ')}`,`ห้ามใช้เป็นคู่สนทนา รวมถึงชื่อที่คล้ายหรือชื่อเต็ม: ${unique([context?.name1,...pendingOwners.map(row=>row.handle),...excludedContacts]).join(', ')}`,includeLive?'':'ไม่ต้องสร้างไลฟ์ใหม่ ให้ lives เป็น []','','คัมภีร์สังคม:',JSON.stringify(bible),'','เหตุการณ์ช่วงล่าสุด:',publicRecentContext(context,24),
     ].join('\n');
     const schema = {
       type: 'object', additionalProperties: false, required: ['conversations', 'lives'], properties: {
@@ -262,13 +262,13 @@ export class AdaptiveWorldPulseService {
       },
     };
     let activity=Object.freeze({conversations:Object.freeze([]),lives:Object.freeze([])});
-    try { activity=parsePhoneActivity(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Phone Activity',responseLength:12288})); } catch {}
-    const byOwner=new Map(ownerSpecs.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));const protectedNames=unique([context?.name1,...owners.map(owner=>owner.handle)]);let conversations=0;let lives=0;
+    try { activity=parsePhoneActivity(await this.#generate({prompt,jsonSchema:schema,name:'TMRW Phone Activity',responseLength:12288})); } catch (error) { if (!allowFallback) throw error; }
+    const byOwner=new Map(ownerSpecs.map(owner=>[clean(owner.handle).normalize('NFKC').toLocaleLowerCase(),owner]));const protectedNames=unique([context?.name1,...owners.map(owner=>owner.handle),...excludedContacts]);let conversations=0;let lives=0;
     for(const owner of pendingOwners){
       const seenContacts=new Set();const specs=[];
       for(const row of activity.conversations){const ownerMatches=row.ownerKey===owner.ownerKey||(!row.ownerKey&&clean(row.owner).normalize('NFKC').toLocaleLowerCase()===clean(owner.handle).normalize('NFKC').toLocaleLowerCase());if(!ownerMatches||looksLikeStructuredPromptLeak(row.contact)||identityNameCollides(row.contact,protectedNames))continue;const key=identityNameKey(row.contact);if(!key||seenContacts.has(key))continue;seenContacts.add(key);specs.push(row);if(specs.length>=3)break;}
       const facts=unique([...(bible.currentPublicEvents||[]),...(bible.tensions||[]),...(bible.publicNorms||[]),bible.worldSummary]).filter(value=>value&&!looksLikeStructuredPromptLeak(value));
-      for(const [profileIndex,profile] of fallbackConversationProfiles.entries()){if(specs.length>=3)break;if(identityNameCollides(profile.contact,protectedNames)||seenContacts.has(identityNameKey(profile.contact)))continue;const fact=bounded(facts[profileIndex%Math.max(1,facts.length)]||publicFallbackText,220);seenContacts.add(identityNameKey(profile.contact));specs.push({ownerKey:owner.ownerKey,contact:profile.contact,messages:[{sender:'contact',text:profile.opening(fact)},{sender:'owner',text:profile.owner},{sender:'contact',text:profile.followup},{sender:'owner',text:profile.closing}]});}
+      if(allowFallback)for(const [profileIndex,profile] of fallbackConversationProfiles.entries()){if(specs.length>=3)break;if(identityNameCollides(profile.contact,protectedNames)||seenContacts.has(identityNameKey(profile.contact)))continue;const fact=bounded(facts[profileIndex%Math.max(1,facts.length)]||publicFallbackText,220);seenContacts.add(identityNameKey(profile.contact));specs.push({ownerKey:owner.ownerKey,contact:profile.contact,messages:[{sender:'contact',text:profile.opening(fact)},{sender:'owner',text:profile.owner},{sender:'contact',text:profile.followup},{sender:'owner',text:profile.closing}]});}
       for(const [conversationIndex,spec] of specs.entries()){const contact=await this.#identity(scope,spec.contact);const key=`phone-activity-v3:${activityFingerprint}:${owner.accountId}:conversation:${conversationIndex}`;const thread=await this.#messages.createThread({scope,kind:'dm',participantAccountIds:[owner.accountId,contact.accountId],source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:${contact.accountId}:thread:v3`,version:'3'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:thread`});for(const [index,message] of spec.messages.entries()){const sender=message.sender==='owner'?owner:contact;await this.#messages.sendMessage({scope,threadId:thread.thread.threadId,senderAccountId:sender.accountId,actualAuthorActorId:sender.actorId,actualAuthorInstanceId:sender.instanceId,deviceId:sender.deviceId,text:message.text,source:{authority:'tmrw-world-social',kind:'contextual-phone-activity',recordId:`${activityFingerprint}:${owner.accountId}:conversation:v3:${conversationIndex}:message:${index}`,version:'3'},producer:'adaptive-world-pulse',idempotencyKey:`${key}:message:${index}`});}conversations+=1;}
     }
     if(needsLive){
@@ -280,6 +280,34 @@ export class AdaptiveWorldPulseService {
       }
     }
     return Object.freeze({conversations,lives,replayed:false});
+  }
+
+  refreshPhoneActivity({ scope, playerInstanceId, deviceId, excludedContacts = [] }) {
+    if (!deviceId) throw new TypeError('deviceId is required to refresh phone conversations');
+    const nonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return this.primePhoneActivity({ scope, playerInstanceId, deviceIds: [deviceId], fingerprint: `phone-chat-refresh:${nonce}`, excludedContacts, includeLive: false, allowFallback: false });
+  }
+
+  async generateBotSavedName({ scope: inputScope, playerInstanceId, deviceId }) {
+    const scope = requireEventScope(inputScope);
+    if (!this.#settings?.setBotSavedName) throw new Error('Bot contact-name storage is unavailable');
+    const owner = (await this.#phoneOwners(scope, [deviceId]))[0];
+    if (!owner) throw new Error('A character-owned phone is required');
+    const context = this.#getContext() || {};
+    const prompt = [
+      `You are ${owner.handle}. Choose the private contact name you would save for the player in your own phone.`,
+      'Base it on your relationship, personality, and what you actually know from the current story.',
+      'Choose a short, specific name or nickname in the language of the story. Do not simply copy the player persona name, use a generic pronoun, or invent an unknown real identity.',
+      'Return only JSON: {"savedName":"..."}.',
+      `Player persona for identity reference only: ${bounded(context.name1, 80) || 'unspecified'}`,
+      'Character and world:', cardContext(context).slice(0, 10000),
+      'Recent conversation:', historyContext(context, { recent: 35, maxCharacters: 10000 }),
+    ].join('\n');
+    const response = await this.#generate({ prompt, jsonSchema: { type: 'object', additionalProperties: false, required: ['savedName'], properties: { savedName: { type: 'string' } } }, name: 'TMRW Bot Saved Name', responseLength: 512 });
+    const savedName = bounded(JSON.parse(jsonCandidate(response))?.savedName, 60);
+    if (!savedName || /^(?:คุณ|ผู้เล่น|user|you|\{\{user\}\})$/iu.test(savedName) || identityNameKey(savedName) === identityNameKey(context.name1) || identityNameKey(savedName) === identityNameKey(owner.handle)) throw new Error('The model did not choose a distinct contact name');
+    await this.#settings.setBotSavedName({ scope, playerInstanceId, ownerInstanceId: owner.instanceId, savedName });
+    return Object.freeze({ savedName, ownerInstanceId: owner.instanceId });
   }
 
   async #generateBatch(scope, bible, startIndex) {

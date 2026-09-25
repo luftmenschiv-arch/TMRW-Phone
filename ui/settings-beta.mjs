@@ -6,6 +6,7 @@ import { normalizeVoiceDelivery, normalizeVoiceLanguage, VOICE_DEFAULT_DELIVERY,
 import { normalizePhoneTheme } from './themes.mjs';
 
 const preferenceId = (scope, playerInstanceId) => `phone-ui-preferences:${scope.storyId}:${scope.branchId}:${playerInstanceId}`;
+const normalizeBotSavedNames = value => Object.freeze(Object.fromEntries(Object.entries(value && typeof value === 'object' && !Array.isArray(value) ? value : {}).filter(([id, name]) => id && typeof name === 'string').slice(0, 100).map(([id, name]) => [id, name.replace(/\s+/gu, ' ').trim().slice(0, 60)]).filter(([, name]) => name)));
 export const GLOBAL_VOICE_SETTINGS_KEY = 'tmrw-phone:global-voice-settings:v1';
 export const GLOBAL_IMAGE_SETTINGS_KEY = 'tmrw-phone:global-image-settings:v1';
 export const DEFAULT_VOICE_RUNTIME_BASE_URL = 'http://127.0.0.1:18769';
@@ -139,6 +140,7 @@ export class BetaSettingsService {
         ...(globalVoice || normalizeVoiceFields({ ...voiceDefaults(), ...base })),
         ...this.#readGlobalImage(),
         playableBootstrap: normalizePlayableBootstrap(base.playableBootstrap),
+        botSavedNames: normalizeBotSavedNames(base.botSavedNames),
         worldSocialBible: normalizeWorldSocialBible(base.worldSocialBible),
         themeId: normalizePhoneTheme(base.themeId),
         phase: 23,
@@ -155,6 +157,14 @@ export class BetaSettingsService {
     await this.#unitOfWork.readwrite({ stores: ['phoneUiPreferences'], scope }, repositories => repositories.phoneUiPreferences.put(Object.freeze(persistableRow)));
     if (globalVoice) this.#writeGlobalVoice(Object.fromEntries(GLOBAL_VOICE_FIELDS.map(field => [field, row[field]])));
     return row;
+  }
+
+  async setBotSavedName({ scope, playerInstanceId, ownerInstanceId, savedName }) {
+    const owner = requireText(ownerInstanceId, 'ownerInstanceId');
+    const name = String(savedName || '').replace(/\s+/gu, ' ').trim().slice(0, 60);
+    if (!name || /^(?:คุณ|ผู้เล่น|user|you|\{\{user\}\})$/iu.test(name)) throw new TypeError('A distinctive bot-saved name is required');
+    const current = await this.get({ scope, playerInstanceId });
+    return this.#update({ scope, playerInstanceId, patch: { botSavedNames: normalizeBotSavedNames({ ...current.botSavedNames, [owner]: name }) } });
   }
 
   async setPreset({ scope, playerInstanceId, preset, custom = {} }) {
