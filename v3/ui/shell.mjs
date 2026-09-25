@@ -50,6 +50,8 @@ const callReplyError = result => {
   if (result?.reason === 'generation-timeout') return 'บอทใช้เวลาตอบเกิน 30 วินาที';
   if (result?.reason === 'invalid-structured-model-response') return 'คำตอบจากโมเดลมาไม่ครบ';
   if (result?.reason === 'current-character-not-call-counterpart') return 'เปิดแชทของตัวละครที่กำลังโทรก่อน แล้วลองตอบใหม่';
+  if (/Production identity unresolved: active character does not match the Call counterpart/iu.test(result?.error || '')) return 'สายนี้ผูกกับตัวละครคนละการ์ดกับที่เปิดอยู่ • เปิดแชทของคนที่โทรแล้วลองใหม่';
+  if (/Production identity unresolved: active Call character is unavailable/iu.test(result?.error || '')) return 'ยังระบุการ์ดตัวละครที่เปิดอยู่ไม่ได้ • เปิดแชทตัวละครแล้วลองใหม่';
   if (result?.reason === 'v1-direct-character-only') return 'การโทรด้วยเสียงยังใช้กับแชทกลุ่มไม่ได้';
   if (result?.reason === 'quiet-generation-unavailable') return 'SillyTavern ยังไม่พร้อมสร้างคำตอบ';
   if (/response status 503|http 503|service unavailable/iu.test(result?.error || '')) return 'API ของโมเดลยังไม่พร้อม (HTTP 503) • ลองใหม่อีกครู่';

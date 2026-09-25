@@ -92,7 +92,7 @@ export class ProductionIdentityBindingResolver {
     return Object.freeze({ actorId: actor.id, instanceId: instance.id, accountId: account.id, deviceId: device.id });
   }
 
-  async resolveCanonicalAccountBinding({ scope: inputScope, accountId, sourceAuthority = null, sourceActorId = null, allowLegacySingleCharacterPlaceholder = false }) {
+  async resolveCanonicalAccountBinding({ scope: inputScope, accountId, sourceAuthority = null, sourceActorId = null, activeCharacterSourceId = null, allowLegacySingleCharacterPlaceholder = false }) {
     const scope = requireScope(inputScope);
     const canonicalAccountId = requireText(accountId, 'accountId');
     const chain = await this.#unitOfWork.readonly({ stores: ['accounts', 'instances', 'actors'], scope }, async repositories => {
@@ -103,6 +103,17 @@ export class ProductionIdentityBindingResolver {
     });
     if (!chain || chain.account.storyId !== scope.storyId || chain.account.branchId !== scope.branchId || chain.instance.storyId !== scope.storyId || chain.instance.branchId !== scope.branchId) {
       throw new Error(`Production identity unresolved: canonical Account ${canonicalAccountId} is unavailable in this Story/Branch`);
+    }
+    if (activeCharacterSourceId != null) {
+      const activeSourceId = requireText(activeCharacterSourceId, 'activeCharacterSourceId');
+      const migratedPrefix = `${activeSourceId}:actor_`;
+      const migratedMatch = chain.actor.sourceAuthority === 'preview37'
+        && chain.actor.sourceActorId.startsWith(migratedPrefix)
+        && /^[a-z0-9]+$/u.test(chain.actor.sourceActorId.slice(migratedPrefix.length));
+      const directMatch = chain.actor.sourceAuthority === 'sillytavern' && chain.actor.sourceActorId === activeSourceId;
+      if (!directMatch && !migratedMatch) {
+        throw new Error('Production identity unresolved: active character does not match the Call counterpart');
+      }
     }
     const legacyPlaceholder = allowLegacySingleCharacterPlaceholder === true
       && chain.actor.displayName === 'Character card'

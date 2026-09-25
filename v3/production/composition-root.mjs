@@ -116,6 +116,17 @@ function productionProjectors() {
 
 function createRuntimeBindingResolver({ identityResolver, messageIdentityResolver }) {
   return async input => {
+    if (input.requireActiveCallCounterpart === true) {
+      const context = input.context;
+      const avatar = String(context?.characters?.[context?.characterId]?.avatar || '').trim();
+      if (!input.canonicalAccountId || context?.groupId || !avatar) throw new Error('Production identity unresolved: active Call character is unavailable');
+      const actorBinding = await identityResolver.resolveCanonicalAccountBinding({
+        scope: input.scope,
+        accountId: input.canonicalAccountId,
+        activeCharacterSourceId: `character:${avatar}`,
+      });
+      return Object.freeze({ actorBinding, mentionBindings: Object.freeze({}), explicitPhoneActions: Object.freeze([]) });
+    }
     const exact = await messageIdentityResolver(input);
     if (!exact || typeof exact !== 'object') return Object.freeze({ actorBinding: null, mentionBindings: Object.freeze({}), explicitPhoneActions: Object.freeze([]) });
     const actor = exact.actor;

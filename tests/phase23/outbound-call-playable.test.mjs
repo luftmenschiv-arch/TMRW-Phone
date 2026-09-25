@@ -64,7 +64,7 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   const prepared = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });
   assert.equal(prepared.status, 'prepared');
   assert.equal(h.bindingInputs[0].canonicalAccountId, botBinding.accountId);
-  assert.equal(h.bindingInputs[0].allowLegacySingleCharacterPlaceholder, true);
+  assert.equal(h.bindingInputs[0].requireActiveCallCounterpart, true);
   assert.equal(h.prompts[0].responseLength, 4096, 'reasoning-capable providers must have enough output budget to close the bilingual JSON object');
   assert.equal(prepared.language, 'ja');
   assert.equal(prepared.deliveryMode, 'complete-response');

@@ -18,10 +18,11 @@ async function seedIdentity({
   storySourceId = `s06-story-${castSize}`,
   routeSourceId = `s06-route-${castSize}`,
   cast = null,
+  sourceAuthority = 'sillytavern',
 } = {}) {
   if (!database.isOpen) await database.open();
   const identityKernel = kernel || new V3IdentityKernel({ database, now: NOW });
-  const seed = { ...identitySeed({ castSize, manifestId, cardSourceId, storySourceId, routeSourceId, cast }), sourceAuthority: 'sillytavern' };
+  const seed = { ...identitySeed({ castSize, manifestId, cardSourceId, storySourceId, routeSourceId, cast }), sourceAuthority };
   const identity = await identityKernel.seedIdentityGraph(seed);
   return { database, kernel: identityKernel, identity, seed, scope: { storyId: identity.storyId, branchId: identity.branchId } };
 }
@@ -261,6 +262,30 @@ test('legacy single-character placeholder Accounts may bridge to the active dire
   const ordinaryBinding = await ordinaryResolver.resolveActorBinding({ scope: ordinary.scope, sourceActorId: ordinary.seed.cast[0].sourceActorId });
   await assert.rejects(
     () => ordinaryResolver.resolveCanonicalAccountBinding({ scope: ordinary.scope, accountId: ordinaryBinding.accountId, sourceAuthority: 'sillytavern', sourceActorId: 'different-real-character', allowLegacySingleCharacterPlaceholder: true }),
+    /active character does not match/i,
+  );
+});
+
+test('active call resolves its exact migrated counterpart despite a different first cast member', async () => {
+  const setup = await seedIdentity({
+    manifestId: 's06-preview-call-counterpart',
+    cardSourceId: 'character:Dr. Kaelan Vance.png',
+    storySourceId: 's06-preview-call-story',
+    routeSourceId: 's06-preview-call-route',
+    sourceAuthority: 'preview37',
+    cast: [
+      { sourceActorId: 'character:Kaelan Vance Alt.png:actor_abc123', displayName: 'Kaelan Alt', aliases: [] },
+      { sourceActorId: 'character:Dr. Kaelan Vance.png:actor_def456', displayName: 'Dr. Kaelan Vance', aliases: [] },
+    ],
+  });
+  const resolver = new ProductionIdentityBindingResolver({ identityKernel: setup.kernel, database: setup.database });
+  const counterpart = await resolver.resolveActorBinding({ scope: setup.scope, sourceAuthority: 'preview37', sourceActorId: setup.seed.cast[1].sourceActorId });
+  const before = setup.database.diagnostics.writeCommits;
+  const matched = await resolver.resolveCanonicalAccountBinding({ scope: setup.scope, accountId: counterpart.accountId, activeCharacterSourceId: 'character:Dr. Kaelan Vance.png' });
+  assert.deepEqual(matched, counterpart);
+  assert.equal(setup.database.diagnostics.writeCommits, before, 'call matching must not rewrite canonical identity');
+  await assert.rejects(
+    () => resolver.resolveCanonicalAccountBinding({ scope: setup.scope, accountId: counterpart.accountId, activeCharacterSourceId: 'character:Kaelan Vance Alt.png' }),
     /active character does not match/i,
   );
 });

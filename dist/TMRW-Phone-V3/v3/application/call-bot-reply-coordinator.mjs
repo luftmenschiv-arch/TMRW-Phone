@@ -237,7 +237,7 @@ export class CallBotReplyCoordinator {
     const counterpartAccountIds = session.participantAccountIds.filter(accountId => accountId !== userTranscript.speakerAccountId);
     if (counterpartAccountIds.length !== 1) return generationFailure('call-counterpart-not-exact');
     const counterpartAccountId = counterpartAccountIds[0];
-    const resolved = await this.#bindingResolver({ scope, role: 'assistant', context, canonicalAccountId: counterpartAccountId, allowLegacySingleCharacterPlaceholder: true, message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }) });
+    const resolved = await this.#bindingResolver({ scope, role: 'assistant', context, canonicalAccountId: counterpartAccountId, requireActiveCallCounterpart: true, message: Object.freeze({ is_user: false, name: String(context.name2 || ''), extra: Object.freeze({}) }) });
     const bot = resolved?.actorBinding || null;
     if (!bot || bot.accountId !== counterpartAccountId) return generationFailure('current-character-not-call-counterpart');
 
