@@ -104,6 +104,15 @@ export async function buildProductionPackage() {
     }
   }
 
+  // Preset auditions must be packaged as ready-to-play audio. They must not
+  // depend on an installed or running local voice service.
+  const previewSource = path.join(v3Root, 'voice-packs', 'previews');
+  const previewDestination = path.join(distRoot, 'voice-packs', 'previews');
+  const previews = (await fs.readdir(previewSource)).filter(name => /^(?:male|female)-[a-z0-9-]+-(?:en|ja)\.wav$/u.test(name));
+  if (previews.length !== 48) throw new Error(`Production package requires 48 preset previews, found ${previews.length}`);
+  await fs.mkdir(previewDestination, { recursive: true });
+  for (const name of previews) await fs.copyFile(path.join(previewSource, name), path.join(previewDestination, name));
+
   return Object.freeze({
     outputRoot: distRoot,
     templates: [...TEMPLATE_FILES],

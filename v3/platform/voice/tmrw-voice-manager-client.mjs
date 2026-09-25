@@ -1,4 +1,5 @@
 export const TMRW_VOICE_MANAGER_BASE_URL = 'http://127.0.0.1:18768';
+const PRESET_PREVIEW_PATH = '/scripts/extensions/third-party/TMRW-Phone-V3/voice-packs/previews/';
 
 export class TMRWVoiceManagerClient {
   #fetch;
@@ -17,9 +18,17 @@ export class TMRWVoiceManagerClient {
   health() { return this.#json('/v1/health'); }
   catalog() { return this.#json('/v1/catalog'); }
   profiles() { return this.#json('/v1/profiles'); }
+  presetPreviewUrl({ profileId, language = 'en' }) {
+    return /^(?:male|female)-[a-z0-9-]+$/u.test(profileId)
+      ? `${PRESET_PREVIEW_PATH}${profileId}-${language === 'ja' ? 'ja' : 'en'}.wav`
+      : null;
+  }
   async preview({ profileId, language = 'en' }) {
     if (!this.#fetch) throw new Error('voice-manager-fetch-unavailable');
-    const response = await this.#fetch(`${this.#baseUrl}/v1/previews`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId, language }) });
+    const presetUrl = this.presetPreviewUrl({ profileId, language });
+    const response = presetUrl
+      ? await this.#fetch(presetUrl)
+      : await this.#fetch(`${this.#baseUrl}/v1/previews`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId, language }) });
     if (!response.ok) { const value = await response.json().catch(() => null); throw new Error(value?.error || `voice-manager-http-${response.status}`); }
     return response.blob();
   }

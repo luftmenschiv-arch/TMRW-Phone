@@ -192,7 +192,7 @@ export class PhoneShellViewModels {
     const lockNotifications = Object.freeze((phoneWorld.recent || []).slice(0, 3).map(item => Object.freeze({
       icon: notificationIcons[item.appId] || 'notifications',
       app: notificationLabels[item.appId] || 'TMRW Phone',
-      time: item.storyTimeRef || 'ล่าสุด',
+      time: typeof item.storyTimeRef === 'string' ? item.storyTimeRef : 'ล่าสุด',
       title: item.display?.title || 'การแจ้งเตือน',
       body: item.display?.preview || '',
       target: notificationTargets[item.appId] || 'notifications',

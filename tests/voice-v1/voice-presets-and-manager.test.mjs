@@ -19,6 +19,18 @@ test('voice catalog exposes exactly 12 male and 12 female presets with stable id
   assert.equal(findVoicePreset('female-gentle-soft').baseProfile, 'tmrw-female-core');
 });
 
+test('preset audition fetches bundled WAV without contacting the voice manager', async () => {
+  const calls = [];
+  const client = new TMRWVoiceManagerClient({ fetchImpl: async url => {
+    calls.push(String(url));
+    return { ok: true, blob: async () => new Blob(['RIFFpreview'], { type: 'audio/wav' }) };
+  } });
+  const audio = await client.preview({ profileId: 'male-clever-charmer', language: 'ja' });
+  assert.equal(audio.type, 'audio/wav');
+  assert.deepEqual(calls, ['/scripts/extensions/third-party/TMRW-Phone-V3/voice-packs/previews/male-clever-charmer-ja.wav']);
+  assert.equal(client.presetPreviewUrl({ profileId: 'instance-custom', language: 'en' }), null);
+});
+
 test('release pack index rejects noncontiguous and mismatched parts', () => {
   const hash = 'a'.repeat(64);
   const valid = { schema: 'tmrw-voice-pack-index-v1', baseUrl: 'https://example.test/release/', packs: [{ id: 'android-arm64', size: 3, sha256: hash, parts: [{ index: 0, url: 'p0', size: 3, sha256: hash }] }] };

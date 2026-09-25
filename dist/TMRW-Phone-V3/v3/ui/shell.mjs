@@ -24,6 +24,7 @@ import { renderImageProviderSettings, renderVoiceProviderHeading } from './provi
 import { renderAppEmptyState, renderInlineNotice } from './app-empty-state.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY } from './experience-presets.mjs';
 import { CALL_EVENT_TYPES } from '../domain/calls/call-event-types.mjs';
+import { V3_DATABASE_NAME } from '../storage/schema.mjs';
 import { createPreviewRootChrome, createPreviewLockScreen, createPreviewHome, createPreviewOwnerSheet, createPreviewStatusBar, createPreviewAvatar, createPreviewCommerceNav, createPreviewLifestyleNav, wrapPreviewApp } from './preview37-surface.mjs';
 
 const element = (document, tag, text = '') => { const node = document.createElement(tag); node.textContent = text; return node; };
@@ -41,9 +42,59 @@ const looksLikeStructuredPromptLeak = value => {
   const text = String(value || '');
   return /(?:\[?#{1,6}\s*(?:world\s*setting|profile)|\{\{\s*(?:user|char)\s*\}\}|(?:^|[\s\[])\b(?:name|age|race|height|skin|status|personality|scenario)\s*:)/imu.test(text);
 };
+const localVoiceError = error => /failed to fetch|networkerror|fetch failed/iu.test(String(error?.message || error))
+  ? 'เชื่อมต่อระบบเสียงไม่ได้ • เปิด Termux แล้วรัน ~/.tmrw-voice/current/bin/START-TMRW-VOICE-SERVICES.sh'
+  : String(error?.message || error);
+const callReplyError = result => {
+  if (result?.reason === 'generation-timeout') return 'บอทใช้เวลาตอบเกิน 30 วินาที';
+  if (result?.reason === 'invalid-structured-model-response') return 'คำตอบจากโมเดลมาไม่ครบ';
+  if (result?.reason === 'current-character-not-call-counterpart') return 'เปิดแชทของตัวละครที่กำลังโทรก่อน แล้วลองตอบใหม่';
+  if (result?.reason === 'v1-direct-character-only') return 'การโทรด้วยเสียงยังใช้กับแชทกลุ่มไม่ได้';
+  if (result?.reason === 'quiet-generation-unavailable') return 'SillyTavern ยังไม่พร้อมสร้างคำตอบ';
+  if (/response status 500|http 500/iu.test(result?.error || '')) return 'SillyTavern ส่งคำขอไปโมเดลแล้วได้ HTTP 500 • ตรวจ API ที่ใช้กับแชทก่อนลองใหม่';
+  if (/abort/iu.test(result?.error || '')) return 'ระบบสร้างคำตอบใน SillyTavern ถูกยกเลิก • ตรวจ API แล้วลองใหม่';
+  return `สร้างคำตอบไม่สำเร็จ (${result?.reason || 'unknown'})`;
+};
+export async function legacyCallArchive(indexedDb = globalThis.indexedDB) {
+  if (!indexedDb?.databases || !(await indexedDb.databases()).some(row => row.name === V3_DATABASE_NAME)) return [];
+  const request = indexedDb.open(V3_DATABASE_NAME);
+  const database = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+  const read = name => new Promise((resolve, reject) => { const rows = database.transaction(name, 'readonly').objectStore(name).getAll(); rows.onsuccess = () => resolve(rows.result); rows.onerror = () => reject(rows.error); });
+  try {
+    const [stories, calls, transcripts, artifacts] = await Promise.all(['stories', 'callSessions', 'callTranscripts', 'voiceAudioArtifacts'].map(read));
+    const legacyIds = new Set(stories.filter(row => row.title === 'story:current').map(row => row.id));
+    return calls.filter(row => legacyIds.has(row.storyId)).map(call => ({
+      callSessionId: call.callSessionId,
+      updatedAt: call.updatedAt,
+      transcripts: transcripts.filter(row => row.storyId === call.storyId && row.callSessionId === call.callSessionId),
+      audio: artifacts.filter(row => row.storyId === call.storyId && row.callSessionId === call.callSessionId && row.audioBlob instanceof Blob),
+    })).sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  } finally { database.close(); }
+}
+export async function legacyMessageArchive(indexedDb = globalThis.indexedDB) {
+  if (!indexedDb?.databases || !(await indexedDb.databases()).some(row => row.name === V3_DATABASE_NAME)) return [];
+  const request = indexedDb.open(V3_DATABASE_NAME);
+  const database = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+  const read = name => new Promise((resolve, reject) => { const rows = database.transaction(name, 'readonly').objectStore(name).getAll(); rows.onsuccess = () => resolve(rows.result); rows.onerror = () => reject(rows.error); });
+  try {
+    const [stories, threads, messages, actors] = await Promise.all(['stories', 'threads', 'messages', 'actors'].map(read));
+    const legacyIds = new Set(stories.filter(row => row.title === 'story:current').map(row => row.id));
+    const names = new Map(actors.map(row => [row.id, row.displayName]));
+    return threads.filter(row => legacyIds.has(row.storyId)).map(thread => ({
+      threadId: thread.threadId,
+      label: (thread.participantActorIds || []).map(id => names.get(id) || 'ไม่ทราบชื่อ').join(' ↔ '),
+      messages: messages.filter(row => row.storyId === thread.storyId && row.threadId === thread.threadId && row.visibility === 'visible' && !row.unsentByEventId)
+        .sort((left, right) => Number(left.sourceEventSequence || 0) - Number(right.sourceEventSequence || 0))
+        .map(row => ({ author: names.get(row.actualAuthorActorId) || 'ไม่ทราบชื่อ', text: row.text })),
+      updatedAt: thread.updatedAt,
+    })).filter(thread => thread.messages.length).sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+  } finally { database.close(); }
+}
 
 export class TmrwPhoneShell {
   #callDetailsSessionId = null;
+  #legacyCallArchive = null;
+  #legacyMessageArchive = null;
   #voiceManager = new TMRWVoiceManagerClient();
   #voiceManagerHealth = null;
   #voiceManagerBusy = false;
@@ -299,7 +350,17 @@ export class TmrwPhoneShell {
       if (view.instantEligible) { const activate = element(this.#document, 'button', 'เชื่อมตัวละครทันที'); activate.type = 'button'; activate.dataset.action = 'enable-instant-connect'; activate.addEventListener('click', () => void this.#setPhoneNumberDiscovery(PHONE_NUMBER_DISCOVERY.ON)); empty.append(activate); } list.append(empty);
     }
     input.addEventListener('input', () => { const query = String(input.value || '').trim().toLocaleLowerCase(); for (const { row, thread } of rows) row.hidden = Boolean(query) && !`${thread.label} ${thread.secondary || ''} ${thread.preview}`.toLocaleLowerCase().includes(query); });
-    body.append(list); return this.#socialShell('messages', this.#selectedPerspectiveLabel, body);
+    body.append(list); if (this.#selectedPerspectiveKind === 'my-phone' && this.#legacyMessageArchive?.length) body.append(this.#renderLegacyMessageArchive()); return this.#socialShell('messages', this.#selectedPerspectiveLabel, body);
+  }
+  #renderLegacyMessageArchive() {
+    const archive = element(this.#document, 'details'); archive.className = 'tmrw-phone-legacy-message-archive';
+    archive.append(element(this.#document, 'summary', `แชทเก่าจากเวอร์ชันก่อน · ${this.#legacyMessageArchive.length} ห้อง`), element(this.#document, 'p', 'เปิดอ่านอย่างเดียว • ข้อความเดิมยังอยู่ แต่ยังไม่ย้ายปนกับแชทปัจจุบัน'));
+    for (const thread of this.#legacyMessageArchive) {
+      const item = element(this.#document, 'details'); item.className = 'tmrw-phone-legacy-message-thread'; item.append(element(this.#document, 'summary', thread.label));
+      for (const message of thread.messages) item.append(element(this.#document, 'p', `${message.author}: ${message.text}`));
+      archive.append(item);
+    }
+    return archive;
   }
   #renderThread(view) {
     const thread = (view.threadRows || []).find(row => row.threadId === this.#selectedThreadId) || (view.threadRows || [])[0] || null;
@@ -410,7 +471,33 @@ export class TmrwPhoneShell {
     const groups = element(this.#document, 'div'); groups.className = 'tmrw-phone-call-groups'; if (!visible.length) groups.append(renderAppEmptyState({ document:this.#document, app:'calls', compact:true, title:this.#callHistoryFilter === 'all' ? null : `ยังไม่มีสาย ${this.#callHistoryFilter}`, detail:this.#callHistoryFilter === 'all' ? null : 'เลือก All เพื่อดูประวัติสายประเภทอื่น' }));
     const sections = new Map();
     for (const call of visible) { let section = sections.get(call.dateGroupKey); if (!section) { section = element(this.#document, 'section'); section.className = 'tmrw-phone-call-group'; section.dataset.dateGroup = call.dateGroupKey; section.append(element(this.#document, 'h3', call.dateGroupLabel)); sections.set(call.dateGroupKey, section); groups.append(section); } const row = element(this.#document, 'button'); row.className = 'tmrw-phone-call-row'; row.dataset.callSessionId = call.callSessionId; row.append(createPreviewAvatar({ document:this.#document, label:call.displayLabel, size:'sm', imageUrl:this.#avatarUrlFor(call.displayName, call.counterpartInstanceId, view) })); const copy = element(this.#document, 'span'); copy.append(element(this.#document, 'strong', call.displayLabel), element(this.#document, 'small', `${call.statusLabel} · ${call.durationLabel}`)); row.append(copy, element(this.#document, 'time', call.timeLabel), createPreviewIcon({ document:this.#document, name:'more', size:17 })); row.addEventListener('click', () => { this.#selectedCallSessionId = call.callSessionId; this.#callDetailsSessionId = call.callSessionId; this.#closedCallSurfaceId = null; void this.renderActive(); }); section.append(row); }
-    body.append(groups); const page = wrapPreviewApp({ document:this.#document, kind:'personal', app:'calls', title:'Phone', subtitle:'Call History และ Saved Names ของเครื่องนี้', body, onBack:()=>this.#goHome() }); return this.#attachDialpadLauncher(page, view);
+    body.append(groups); if (this.#selectedPerspectiveKind === 'my-phone' && this.#legacyCallArchive?.length) body.append(this.#renderLegacyCallArchive()); const page = wrapPreviewApp({ document:this.#document, kind:'personal', app:'calls', title:'Phone', subtitle:'Call History และ Saved Names ของเครื่องนี้', body, onBack:()=>this.#goHome() }); return this.#attachDialpadLauncher(page, view);
+  }
+  #renderLegacyCallArchive() {
+    const archive = element(this.#document, 'details'); archive.className = 'tmrw-phone-legacy-call-archive';
+    const count = this.#legacyCallArchive.reduce((total, call) => total + call.audio.length, 0);
+    archive.append(element(this.#document, 'summary', `คลังสายเก่าจากเวอร์ชันก่อน · ${this.#legacyCallArchive.length} สาย · ${count} คลิป`), element(this.#document, 'p', 'ข้อมูลเก่าที่เคยบันทึกโดยยังไม่ผูกกับแชทนี้ • เปิดดูและดาวน์โหลดได้ ไม่ย้ายปนกับประวัติปัจจุบัน'));
+    for (const [index, call] of this.#legacyCallArchive.entries()) {
+      const item = element(this.#document, 'details'); item.className = 'tmrw-phone-legacy-call';
+      const date = call.updatedAt ? new Date(call.updatedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : `สาย ${index + 1}`;
+      item.append(element(this.#document, 'summary', `${date} · ${call.audio.length} คลิป`));
+      for (const transcript of call.transcripts) if (transcript.text) item.append(element(this.#document, 'p', transcript.text));
+      for (const [audioIndex, audio] of call.audio.entries()) {
+        const actions = element(this.#document, 'div'); actions.className = 'tmrw-phone-legacy-call-actions';
+        const play = element(this.#document, 'button', `ฟังคลิป ${audioIndex + 1}`); play.type = 'button'; play.addEventListener('click', () => this.#playLegacyCallAudio(audio));
+        const download = element(this.#document, 'button', 'ดาวน์โหลด'); download.type = 'button'; download.addEventListener('click', () => this.#downloadArchivedAudio(audio));
+        actions.append(play, download); item.append(actions);
+      }
+      archive.append(item);
+    }
+    return archive;
+  }
+  #playLegacyCallAudio(artifact) {
+    const url = globalThis.URL?.createObjectURL?.(artifact.audioBlob); if (!url) return false;
+    this.#voicePreviewAudio?.pause?.(); const audio = new globalThis.Audio(url); this.#voicePreviewAudio = audio;
+    audio.addEventListener?.('ended', () => globalThis.URL?.revokeObjectURL?.(url), { once: true });
+    Promise.resolve(audio.play()).catch(error => { globalThis.URL?.revokeObjectURL?.(url); this.#toastMessage(`เล่นเสียงไม่ได้: ${String(error?.message || error)}`); });
+    return true;
   }
   #renderCallDetails(view, detail) {
     const body=element(this.#document,'section');body.className='tmrw-phone-call-details';
@@ -544,12 +631,12 @@ export class TmrwPhoneShell {
   async #renderContent(view) {
     const route=this.#router.route;
     if(route==='feed') return this.#renderFeed(view);
-    if(route==='messages') return this.#renderMessages(view);
+    if(route==='messages') { if (this.#selectedPerspectiveKind === 'my-phone' && this.#legacyMessageArchive === null) this.#legacyMessageArchive = await legacyMessageArchive().catch(() => []); return this.#renderMessages(view); }
     if(route==='live') return this.#renderLive(view);
     if(route==='notifications') return this.#renderActivity(view);
     if(route==='insungram') return this.#renderProfile(view);
     if(route==='contacts') return this.#renderContactsWithConnectivity(view);
-    if(route==='calls') return this.#renderCallsWithConnectivity(view);
+    if(route==='calls') { if (this.#selectedPerspectiveKind === 'my-phone' && this.#legacyCallArchive === null) this.#legacyCallArchive = await legacyCallArchive().catch(() => []); return this.#renderCallsWithConnectivity(view); }
     if(route==='gallery') return this.#utilityWrap(route,renderGallery({document:this.#document,items:view.galleryItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedGalleryRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='gallery'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedGalleryRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'gallery',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeGalleryItem(view,item)}));
     if(route==='files') return this.#utilityWrap(route,renderFiles({document:this.#document,items:view.fileItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedFileRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='file'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedFileRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'file',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeFileItem(view,item)}));
     if(route==='maps') return this.#utilityWrap(route,renderMaps({document:this.#document,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,items:view.locationItems,audiences:view.locationAudienceChoices,selectedAudienceIds:[...this.#selectedLocationAudienceIds],draftLabel:this.#locationDraftLabel,viewerAccountId:view.opened.perspective.accountId,viewerDeviceId:view.opened.perspective.deviceId,onDraft:value=>{this.#locationDraftLabel=value;void this.renderActive();},onToggleAudience:accountId=>{if(this.#selectedLocationAudienceIds.has(accountId))this.#selectedLocationAudienceIds.delete(accountId);else this.#selectedLocationAudienceIds.add(accountId);void this.renderActive();},onCheckIn:()=>this.#createLocation(view,'check-in'),onShare:()=>this.#createLocation(view,'shared'),onStartLive:()=>this.#createLocation(view,'live'),onEndLive:item=>this.#endLiveLocation(view,item)}));
@@ -791,13 +878,13 @@ export class TmrwPhoneShell {
       const prepared = await this.#callBotReply.prepareReplyToCommittedUserTranscript({ scope: this.#scope, playerInstanceId: this.#player.instanceId, commit: userCommit, signal: controller.signal, timeoutMs: 30000 });
       if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
       if (prepared?.status !== 'prepared') {
-        const message = prepared?.reason === 'generation-timeout' ? 'บอทใช้เวลาตอบเกิน 30 วินาที' : prepared?.reason === 'invalid-structured-model-response' ? 'คำตอบจากโมเดลมาไม่ครบ' : 'สร้างคำตอบไม่สำเร็จ';
+        const message = callReplyError(prepared);
         this.#failCallTurn(callSessionId, message, 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit)); return false;
       }
       return this.#runPreparedVoice(call, prepared, { controller, committed: null, startIndex: 0 });
     } catch (error) {
       if (controller.signal.aborted || this.#callTurnControllers.get(callSessionId) !== controller) return false;
-      this.#failCallTurn(callSessionId, 'สร้างคำตอบไม่สำเร็จ', 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit));
+      this.#failCallTurn(callSessionId, callReplyError({ reason: 'generation-failed', error: String(error?.message || error) }), 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit));
       return false;
     } finally { clearTimeout(failSafe); }
   }
@@ -859,7 +946,7 @@ export class TmrwPhoneShell {
       this.#voiceCloneState = { phase: 'review', label: 'ตรวจข้อความที่ถอดได้', identity, language, audioId: transcription.audioId, transcript: transcription.text || '', name: identity.label };
       await this.renderActive();
       return true;
-    } catch (error) { this.#voiceCloneState = { phase: 'failed', label: `ถอดเสียงไม่สำเร็จ: ${String(error?.message || error)}`, identity }; await this.renderActive(); return false; }
+    } catch (error) { this.#voiceCloneState = { phase: 'failed', label: `ถอดเสียงไม่สำเร็จ: ${localVoiceError(error)}`, identity }; await this.renderActive(); return false; }
   }
   async #confirmVoiceClone({ transcript, name }) {
     const state = this.#voiceCloneState;
@@ -874,9 +961,19 @@ export class TmrwPhoneShell {
       this.#voiceCloneState = { phase: 'complete', label: 'บันทึกและเลือกเสียงนี้แล้ว', identity: state.identity };
       await this.renderActive();
       return true;
-    } catch (error) { this.#voiceCloneState = { ...state, phase: 'failed', label: `สร้างเสียงไม่สำเร็จ: ${String(error?.message || error)}` }; await this.renderActive(); return false; }
+    } catch (error) { this.#voiceCloneState = { ...state, phase: 'failed', label: `สร้างเสียงไม่สำเร็จ: ${localVoiceError(error)}` }; await this.renderActive(); return false; }
   }
   async #previewVoice(profileId, language = 'en') {
+    const presetUrl = this.#voiceManager.presetPreviewUrl({ profileId, language });
+    if (presetUrl) {
+      try {
+        this.#voicePreviewAudio?.pause?.();
+        const audio = new globalThis.Audio(presetUrl);
+        this.#voicePreviewAudio = audio;
+        Promise.resolve(audio.play()).catch(error => this.#toastMessage(`ฟังตัวอย่างไม่ได้: ${String(error?.message || error)}`));
+        return true;
+      } catch (error) { this.#toastMessage(`ฟังตัวอย่างไม่ได้: ${String(error?.message || error)}`); return false; }
+    }
     if (this.#voicePreviewBusyId) return false;
     this.#voicePreviewBusyId = profileId; await this.renderActive();
     try { const blob = await this.#voiceManager.preview({ profileId, language }); if (this.#voicePreviewAudio) { try { this.#voicePreviewAudio.pause(); } catch {} }

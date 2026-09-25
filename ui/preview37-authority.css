@@ -1492,6 +1492,18 @@ body.tmrw-phone-no-scroll { overflow: hidden !important; }
 .tmrw-phone-call-row small.is-missed{color:#d36f69}
 .tmrw-phone-call-row time{font-size:8.5px;color:#817b78;text-align:right}
 .tmrw-phone-call-row time em{display:block;font-style:normal;color:#aaa3a0;margin-top:2px}
+.tmrw-phone-legacy-call-archive{margin-top:20px;padding:16px;border:1px solid #e6e8ed;border-radius:18px;background:#f8fafc;color:#292c32}
+.tmrw-phone-legacy-call-archive>summary,.tmrw-phone-legacy-call>summary{cursor:pointer;font-weight:700;font-size:13px}
+.tmrw-phone-legacy-call-archive>p{color:#69717d;font-size:11px;line-height:1.5}
+.tmrw-phone-legacy-call{padding:11px 0;border-top:1px solid #e6e8ed}
+.tmrw-phone-legacy-call>p{font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.tmrw-phone-legacy-call-actions{display:flex;gap:8px;margin-top:7px}
+.tmrw-phone-legacy-call-actions>button{padding:8px 12px;border:1px solid #d8dde5;border-radius:10px;background:#fff;color:#292c32;font-size:12px}
+.tmrw-phone-legacy-message-archive{margin:20px 16px;padding:16px;border:1px solid #e6e8ed;border-radius:18px;background:#f8fafc;color:#292c32}
+.tmrw-phone-legacy-message-archive>summary,.tmrw-phone-legacy-message-thread>summary{cursor:pointer;font-weight:700;font-size:13px}
+.tmrw-phone-legacy-message-archive>p{color:#69717d;font-size:11px;line-height:1.5}
+.tmrw-phone-legacy-message-thread{padding:11px 0;border-top:1px solid #e6e8ed}
+.tmrw-phone-legacy-message-thread>p{font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .tmrw-phone-saved-group>button{grid-template-columns:auto minmax(0,1fr) 40px}
 .tmrw-phone-saved-group>button>b{width:38px;height:38px;border-radius:14px;background:#f7efeb;display:grid;place-items:center;color:#9d756c}
 @media(max-height:650px){

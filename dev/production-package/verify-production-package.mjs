@@ -40,6 +40,7 @@ async function walkFiles(root, relative = '') {
 }
 
 function assertPackagePath(relativePath) {
+  if (/^voice-packs\/previews\/(?:male|female)-[a-z0-9-]+-(?:en|ja)\.wav$/u.test(relativePath)) return;
   const parts = relativePath.split('/');
   if (parts.length === 1) {
     if (!TOP_LEVEL_FILES.has(relativePath)) throw new Error(`Unexpected top-level package file: ${relativePath}`);
@@ -74,6 +75,12 @@ export async function verifyProductionPackage() {
 
   const files = await walkFiles(distRoot);
   for (const relativePath of files) assertPackagePath(relativePath);
+  const previewFiles = files.filter(file => file.startsWith('voice-packs/previews/'));
+  if (previewFiles.length !== 48) throw new Error(`Production package requires 48 preset previews, found ${previewFiles.length}`);
+  for (const relativePath of previewFiles) {
+    const audio = await fs.readFile(path.join(distRoot, ...relativePath.split('/')));
+    if (audio.length < 44 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`Invalid preset WAV: ${relativePath}`);
+  }
   if (files.some(relativePath => /TMRW-Phone-Preview/i.test(relativePath))) throw new Error('Preview files were copied into the v3 package');
 
   const fileSet = new Set(files);
@@ -119,6 +126,7 @@ export async function verifyProductionPackage() {
     passiveImport: true,
     protectedPaths: false,
     previewFilesCopied: false,
+    voicePreviewFiles: previewFiles.length,
   });
 }
 

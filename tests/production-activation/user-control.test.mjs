@@ -12,7 +12,14 @@ import {
   PRODUCTION_USER_STATUS_ID,
   createProductionUserControl,
   resolveCurrentPreview37SourceIdentity,
+  stablePreviewScope,
 } from '../../production/user-control.mjs';
+
+test('production startup waits for a real chat identity instead of writing to story:current', async () => {
+  const pending = { characterId: 0, characters: [{ avatar: 'alice.png', name: 'Alice' }], chatId: null, chatMetadata: {}, chat: [] };
+  await assert.rejects(stablePreviewScope(() => pending, { setTimeout }, { attempts: 2, delayMs: 0 }), /chat identity is not ready/);
+  assert.equal((await stablePreviewScope(() => ({ ...pending, chatId: 'chat-a' }), { setTimeout }, { attempts: 2, delayMs: 0 })).storySourceId, 'story:chat-a');
+});
 
 class FakeElement {
   constructor(tagName, document) {

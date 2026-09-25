@@ -66,7 +66,7 @@ async function activeTool(name) {
 async function voicePython() {
   if (process.env.TMRW_VOICE_PYTHON) return process.env.TMRW_VOICE_PYTHON;
   const active = JSON.parse(await fs.readFile(path.join(root, 'active-pack.json'), 'utf8').catch(() => '{}'));
-  const candidates = [active.target && path.join(active.target, 'venv', 'bin', 'python'), active.target && path.join(active.target, 'python', 'bin', 'python'), path.join(root, 'current', 'venv', 'bin', 'python'), path.join(os.homedir(), 'genie-tts-portable', 'venv', 'bin', 'python')].filter(Boolean);
+  const candidates = [active.target && path.join(active.target, 'venv', 'bin', 'python'), active.target && path.join(active.target, 'python', 'bin', 'python'), path.join(root, 'current', 'venv', 'bin', 'python'), path.join(path.dirname(root), 'genie-tts-portable', 'venv', 'bin', 'python'), path.join(os.homedir(), 'genie-tts-portable', 'venv', 'bin', 'python')].filter(Boolean);
   for (const candidate of candidates) if ((await fs.stat(candidate).catch(() => null))?.isFile()) return candidate;
   return process.platform === 'win32' ? 'python' : 'python3';
 }

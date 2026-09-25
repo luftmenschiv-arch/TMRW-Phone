@@ -117,7 +117,7 @@ function exactPreviewScope(context) {
   });
 }
 
-async function stablePreviewScope(getContext, globalObject, { attempts = 6, delayMs = 75 } = {}) {
+export async function stablePreviewScope(getContext, globalObject, { attempts = 80, delayMs = 100 } = {}) {
   let previousKey = null;
   let stableCount = 0;
   let latest = null;
@@ -126,8 +126,9 @@ async function stablePreviewScope(getContext, globalObject, { attempts = 6, dela
     : async () => Promise.resolve();
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const context = getContext();
-    const hasCard = Boolean(context?.groupId || context?.characters?.[context?.characterId] || context?.name2);
-    if (hasCard) {
+    const hasCard = Boolean(context?.groupId || context?.characters?.[context?.characterId]);
+    const hasChat = Boolean(context?.chatId || context?.chatMetadata?.chat_id || context?.chatMetadata?.chatId || context?.chat?.[0]?.send_date);
+    if (hasCard && hasChat) {
       latest = exactPreviewScope(context);
       const key = JSON.stringify(latest);
       stableCount = key === previousKey ? stableCount + 1 : 1;
@@ -136,7 +137,8 @@ async function stablePreviewScope(getContext, globalObject, { attempts = 6, dela
     }
     if (attempt < attempts - 1) await wait(delayMs);
   }
-  return latest || exactPreviewScope(getContext());
+  if (!latest) throw new Error('SillyTavern chat identity is not ready; refusing to write phone data into a generic scope');
+  return latest;
 }
 
 export function resolveCurrentPreview37SourceIdentity({ context, record }) {
@@ -443,6 +445,7 @@ export class ProductionUserControl {
         if (pinStartupSourceIdentity && startupSourceIdentity) return startupSourceIdentity;
         this.#setStage('SILLYTAVERN_SCOPE');
         const resolved = exactPreviewScope(context);
+        if (resolved.storySourceId === 'story:current') throw new Error('SillyTavern chat identity is not ready; refusing generic phone scope');
         if (pinStartupSourceIdentity) startupSourceIdentity = resolved;
         this.#setStage('ACTIVE_STARTUP');
         return resolved;

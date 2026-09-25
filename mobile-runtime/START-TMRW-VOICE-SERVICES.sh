@@ -5,6 +5,12 @@ readonly TERMUX_PREFIX='/data/data/com.termux/files/usr'
 readonly TERMUX_HOME='/data/data/com.termux/files/home'
 readonly VOICE_HOME="${TMRW_VOICE_HOME:-$TERMUX_HOME/.tmrw-voice}"
 readonly MANAGER_HEALTH='http://127.0.0.1:18768/v1/health'
+export HOME="$TERMUX_HOME"
+export PREFIX="$TERMUX_PREFIX"
+export PATH="$TERMUX_PREFIX/bin:${PATH:-/system/bin}"
+if [[ -z "${TMRW_VOICE_PYTHON:-}" && -x "$TERMUX_HOME/genie-tts-portable/venv/bin/python" ]]; then
+  export TMRW_VOICE_PYTHON="$TERMUX_HOME/genie-tts-portable/venv/bin/python"
+fi
 
 if ! "$TERMUX_PREFIX/bin/curl" --silent --fail --max-time 2 "$MANAGER_HEALTH" >/dev/null 2>&1; then
   if [[ -f "$VOICE_HOME/manager.pid" ]]; then
