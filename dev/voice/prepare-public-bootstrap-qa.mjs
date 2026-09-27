@@ -1,0 +1,17 @@
+import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
+const home = '/data/data/com.termux/files/home';
+const root = `${home}/.tmrw-public-install-qa-20260928`;
+const index = JSON.parse(await fs.readFile('/data/local/tmp/tmrw-public-install-index.json', 'utf8'));
+const pack = index.packs.find(p => p.id === 'tmrw-local-voice-android-arm64');
+if (!/^[a-f0-9]{64}$/u.test(pack?.sha256 || '')) throw new Error('invalid-pack');
+if (await fs.stat(root).catch(() => null)) throw new Error('QA fixture exists');
+await fs.mkdir(`${root}/ST`, { recursive: true });
+for (const file of ['package.json', 'server.js', 'start.sh']) await fs.copyFile(`${home}/SillyTavern/${file}`, `${root}/ST/${file}`);
+await fs.mkdir(`${root}/voice/downloads/${pack.sha256}`, { recursive: true });
+await fs.copyFile(`${home}/.tmrw-distribution-stage-20260928-620917b2-205c-4c02-a967-45a1558b2781.tar.gz`, `${root}/voice/downloads/${pack.sha256}/pack.tar.gz`, constants.COPYFILE_EXCL);
+await fs.mkdir(`${root}/voice/profiles/user-keep`, { recursive: true });
+await fs.writeFile(`${root}/voice/profiles/user-keep/voice.voiceprofile.npz`, 'keep-user-profile');
+await fs.writeFile(`${root}/voice/history.json`, 'keep-user-history');
+await fs.mkdir(`${root}/bin`);
+console.log(JSON.stringify({ root, cache: 'preverified-final-archive; bootstrap still downloads public installer and index', modelSha256: pack.sha256 }));

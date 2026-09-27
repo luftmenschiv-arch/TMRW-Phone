@@ -1,0 +1,18 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { sha256, checkedPack } from '../../installers/android/download.mjs';
+const directory = path.resolve(process.argv[2] || '');
+const extensionCommit = process.argv[3];
+if (!/^[a-f0-9]{40}$/u.test(extensionCommit || '')) throw new Error('Pass verified public extension commit');
+if (!process.argv[2]) throw new Error('Pass captured final pack directory');
+const index = JSON.parse(await fs.readFile(path.join(directory, 'install-index.json'), 'utf8'));
+const pack = checkedPack(index, 'tmrw-local-voice-android-arm64');
+if (pack.version !== '1.0.0-beta.1') throw new Error('not-final-beta-pack');
+if (await sha256(path.join(directory, 'tmrw-runtime-candidate.tar.gz')) !== pack.sha256) throw new Error('archive-corrupt');
+for (const part of pack.parts) if (await sha256(path.join(directory, part.url)) !== part.sha256) throw new Error('part-corrupt');
+index.baseUrl = 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone/releases/download/v0.1.0-beta.3/';
+index.extension.commit = extensionCommit;
+index.qualification = { publishApproved: true, channel: 'beta', runtime: 'isolated-Android-13-en-ja-synthesis-ASR-clone-PASS', installer: 'complete-archive-install-and-repeat-31-profile-files-preserved-PASS', focusedTests: 64, notices: 'bundled-third-party-notices-and-python-soxr-source; optional-readline-gdbm-native-components-excluded', presetPermission: 'project-owner-confirmed-public-distribution-2026-09-28', limitations: ['one-Android-hardware-model', 'not-a-fresh-OS-install', 'not-a-live-provider-availability-test', 'automatic-updates-pending'] };
+const output = path.join(directory, 'public-install-index.json');
+await fs.writeFile(output, JSON.stringify(index, null, 2) + '\n', { flag: 'wx' });
+console.log(JSON.stringify({ output, sha256: await sha256(output), archive: pack.sha256, bytes: pack.size }));

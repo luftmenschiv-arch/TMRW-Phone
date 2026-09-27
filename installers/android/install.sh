@@ -1,73 +1,35 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
-
-readonly REPOSITORY_URL="${TMRW_PHONE_REPOSITORY_URL:-https://github.com/luftmenschiv-arch/TMRW-Phone-V3.git}"
-readonly VOICE_HOME="${TMRW_VOICE_HOME:-$HOME/.tmrw-voice}"
-readonly APP_DIR="$VOICE_HOME/app"
-
-echo 'ติดตั้ง TMRW Local Voice สำหรับ Android…'
-pkg update -y
-pkg install -y nodejs-lts git python ffmpeg curl tar
-mkdir -p "$VOICE_HOME"
-
-if [[ -d "$APP_DIR/.git" ]]; then
-  git -C "$APP_DIR" pull --ff-only
+# Release tooling replaces these pins only after package qualification.
+readonly RELEASE_BASE='@RELEASE_BASE@'
+readonly INSTALLER_SHA256='@INSTALLER_SHA256@'
+readonly INDEX_SHA256='@INDEX_SHA256@'
+if [[ "$RELEASE_BASE" == @* || "$INSTALLER_SHA256" == @* || "$INDEX_SHA256" == @* ]]; then
+  echo 'ตัวติดตั้งนี้ยังเป็น source template ไม่ใช่รุ่นแจก กรุณาใช้คำสั่งจาก release ที่ผ่านการตรวจแล้ว' >&2
+  exit 1
+fi
+[[ "${PREFIX:-}" == /data/data/com.termux/files/usr && "$(uname -m)" == aarch64 ]] || { echo 'ต้องใช้ Termux มาตรฐานบน Android 64-bit (arm64)' >&2; exit 1; }
+echo 'TMRW Phone + Local Voice (beta) — ไม่ลบแชท ไม่แทนที่ ST และไม่ลง Python ทับของเดิม'
+packages=()
+for program in git curl tar ffmpeg; do
+  command -v "$program" >/dev/null || packages+=("$program")
+done
+[[ -f "$PREFIX/lib/libsndfile.so" ]] || packages+=(libsndfile)
+if ! command -v node >/dev/null || ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+  packages+=(nodejs-lts)
+fi
+if (( ${#packages[@]} )); then
+  pkg update -y
+  pkg install -y "${packages[@]}"
 else
-  rm -rf "$APP_DIR.partial"
-  git clone --depth 1 "$REPOSITORY_URL" "$APP_DIR.partial"
-  mv "$APP_DIR.partial" "$APP_DIR"
+  echo 'ใช้เครื่องมือ Termux ที่มีอยู่แล้ว ไม่อัปเกรดแพ็กเกจระบบที่ไม่จำเป็น'
 fi
-
-mkdir -p "$VOICE_HOME/profiles/tmrw-male-core" "$VOICE_HOME/profiles/tmrw-female-core"
-cp "$APP_DIR/voice-packs/profiles/tmrw-male-core.voiceprofile.npz" "$VOICE_HOME/profiles/tmrw-male-core/voice.voiceprofile.npz"
-cp "$APP_DIR/voice-packs/profiles/tmrw-female-core.voiceprofile.npz" "$VOICE_HOME/profiles/tmrw-female-core/voice.voiceprofile.npz"
-mkdir -p "$VOICE_HOME/current/tools" "$VOICE_HOME/current/bin" "$VOICE_HOME/current/catalog" "$VOICE_HOME/logs"
-cp "$APP_DIR/voice-manager/tools/extract_voice_profile.py" "$VOICE_HOME/current/tools/"
-cp "$APP_DIR/voice-manager/tools/transcribe.py" "$VOICE_HOME/current/tools/"
-cp "$APP_DIR/voice-manager/tools/android_sitecustomize/sitecustomize.py" "$VOICE_HOME/current/tools/"
-cp "$APP_DIR/mobile-runtime/START-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin/"
-cp "$APP_DIR/mobile-runtime/STOP-TMRW-VOICE-MOBILE.sh" "$VOICE_HOME/current/bin/"
-cp "$APP_DIR/mobile-runtime/START-TMRW-VOICE-SERVICES.sh" "$VOICE_HOME/current/bin/"
-chmod 700 "$VOICE_HOME/current/bin/"*.sh
-cp "$APP_DIR/voice-packs/catalog/presets.v1.json" "$VOICE_HOME/current/catalog/"
-mkdir -p "$VOICE_HOME/current/stt"
-if ! command -v whisper-cli >/dev/null 2>&1 && [[ ! -x "$VOICE_HOME/current/stt/whisper-cli" ]]; then
-  if ! pkg install -y whisper-cpp; then
-    echo 'แพ็กเกจ whisper.cpp ไม่มีใน mirror นี้ กำลังสร้างตัวถอดเสียง local…'
-    pkg install -y cmake clang make
-    WHISPER_SOURCE="$VOICE_HOME/whisper.cpp-v1.9.4"
-    if [[ ! -d "$WHISPER_SOURCE/.git" ]]; then
-      git clone --depth 1 --branch v1.9.4 https://github.com/ggml-org/whisper.cpp.git "$WHISPER_SOURCE"
-    fi
-    cmake -S "$WHISPER_SOURCE" -B "$WHISPER_SOURCE/build-tmrw" -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON
-    cmake --build "$WHISPER_SOURCE/build-tmrw" --config Release --target whisper-cli -j 2
-    cp "$WHISPER_SOURCE/build-tmrw/bin/whisper-cli" "$VOICE_HOME/current/stt/whisper-cli"
-    chmod 700 "$VOICE_HOME/current/stt/whisper-cli"
-  fi
-fi
-if [[ ! -s "$VOICE_HOME/current/stt/ggml-base-q5_1.bin" ]]; then
-  curl -L --fail --retry 5 --retry-delay 5 --output "$VOICE_HOME/current/stt/ggml-base-q5_1.bin.partial" 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin'
-  mv "$VOICE_HOME/current/stt/ggml-base-q5_1.bin.partial" "$VOICE_HOME/current/stt/ggml-base-q5_1.bin"
-fi
-
-if [[ -f "$HOME/TMRW-VOICE-GOLDEN-MASTER/golden-core/runtime/tmrw_call_runtime_v093_deadline_gate.py" ]]; then
-  mkdir -p "$VOICE_HOME/current/runtime"
-  node "$APP_DIR/dev/voice/patch-mobile-runtime.mjs" "$HOME/TMRW-VOICE-GOLDEN-MASTER/golden-core/runtime/tmrw_call_runtime_v093_deadline_gate.py" --output="$VOICE_HOME/current/runtime/tmrw_call_runtime_v093_deadline_gate.py"
-  sha256sum "$VOICE_HOME/current/runtime/tmrw_call_runtime_v093_deadline_gate.py" | cut -d ' ' -f 1 > "$VOICE_HOME/current/.runtime.sha256"
-  if [[ ! -e "$VOICE_HOME/current/model" ]]; then
-    ln -s "$HOME/genie-tts-portable/CharacterModels/genie-v2proplus-base" "$VOICE_HOME/current/model"
-  fi
-  echo 'พบ runtime ที่ผ่านการปรับแต่งในเครื่องและสร้างสำเนาสำหรับ TMRW แล้ว'
-fi
-
-if [[ -f "$VOICE_HOME/manager.pid" ]]; then
-  kill "$(cat "$VOICE_HOME/manager.pid")" 2>/dev/null || true
-fi
-GENIE_DATA_DIR="$HOME/genie-tts-portable/GenieData" \
-PYTHONPATH="$VOICE_HOME/current/tools:$HOME/genie-onnx-private/site-packages" \
-LD_LIBRARY_PATH="$HOME/genie-python313/data/data/com.termux/files/usr/lib:$HOME/genie-onnx-private/lib:$HOME/genie-tts-portable/venv/lib:$PREFIX/lib" \
-TMRW_VOICE_HOME="$VOICE_HOME" nohup node "$APP_DIR/voice-manager/src/server.mjs" >"$VOICE_HOME/logs/manager.log" 2>&1 </dev/null &
-echo $! > "$VOICE_HOME/manager.pid"
-
-echo 'เสร็จแล้ว: เปิด TMRW Phone → Settings → Voice'
-echo 'Voice Manager: http://127.0.0.1:18768/v1/health'
+readonly WORK_DIR="$(mktemp -d "${TMPDIR:-$PREFIX/tmp}/tmrw-installer.XXXXXXXX")"
+# Keep this small diagnostic directory on error; model parts use persistent cache.
+trap 'echo "ติดตั้งยังไม่ครบ ดูข้อความด้านบนแล้วรันคำสั่งเดิมซ้ำได้ ส่วนโมเดลที่ตรวจแล้วจะไม่โหลดซ้ำ (ไฟล์ตรวจสอบ: $WORK_DIR)" >&2' ERR
+curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --connect-timeout 20 --output "$WORK_DIR/installer.tar.gz" "$RELEASE_BASE/installer.tar.gz"
+printf '%s  %s\n' "$INSTALLER_SHA256" "$WORK_DIR/installer.tar.gz" | sha256sum --check --status
+curl --proto '=https' --tlsv1.2 --fail --location --retry 3 --connect-timeout 20 --output "$WORK_DIR/install-index.json" "$RELEASE_BASE/install-index.json"
+printf '%s  %s\n' "$INDEX_SHA256" "$WORK_DIR/install-index.json" | sha256sum --check --status
+tar -xzf "$WORK_DIR/installer.tar.gz" -C "$WORK_DIR" --no-same-owner --no-same-permissions
+node "$WORK_DIR/installer/setup.mjs" "--index=$WORK_DIR/install-index.json" "--index-sha256=$INDEX_SHA256" "$@"
