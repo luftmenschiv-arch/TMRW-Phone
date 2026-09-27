@@ -1,5 +1,32 @@
 # Step 4 — Termux installation candidate (2026-09-28)
 
+## Final qualification — 2026-09-28 (supersedes checkpoint below)
+
+- Owner explicitly asked to continue after the quota checkpoint. Step 4 final
+  anonymous bootstrap qualification passed at 2026-09-27T20:35:28.826Z.
+- GitHub release v0.1.0-beta.3: all 52 assets match local SHA-256 and sizes.
+  Audit: C:/ai/tmrw-voice-assets/termux-release-0.1.0-beta.3/remote-assets-audit.json.
+- Actual Android downloaded install.sh, installer.tar.gz and install-index.json
+  from public HTTPS URLs without credentials; all pins passed. Installed into
+  .tmrw-public-install-qa-20260928 only. Complete archive was reused from verified
+  cache, not downloaded again. Existing Termux dependencies were reused.
+- Installed extension HEAD 1c40816e6501ed62950beaf86f679224b000c908, branch main,
+  upstream origin/main, clean checkout. Manager 18778 and runtime 18779 ready.
+  User profile and history sentinels preserved. No actual ST server was launched
+  in the entry-file fixture. Owner's ST/voice/data remain untouched.
+- Re-ran 64 tests: 64 pass, 0 fail. Public verifier: 313 files, 48 previews,
+  776 import edges, all checksums and 48/48 preview fetches pass.
+- Verification helper: dev/voice/verify-public-bootstrap-qa.mjs.
+- Public main and v0.1.0-beta.3 tag both confirmed at the qualified pinned commit
+  1c40816e6501ed62950beaf86f679224b000c908. Prerelease is published (not draft),
+  with final notes from dev/beta/TERMUX-BETA3-RELEASE.md. Step 4 is complete.
+- Stopped only the isolated final QA services, closed the owned localhost QA
+  artifact server, and removed our 28778/28779 forwards and 28780 reverse.
+  Test files retained for recovery; no player data or working services deleted.
+- Step 5 automatic updates remains NOT DONE; auto_update is still false.
+- Personal legacy installs deliberately require a separately reviewed migration;
+  do not tell the owner to install this over their working private setup.
+
 ## Latest checkpoint (supersedes earlier release gates below)
 
 - The user confirmed that public distribution permission for the 24 preset
