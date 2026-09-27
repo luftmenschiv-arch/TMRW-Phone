@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { constants } from 'node:fs';
 import { downloadPack, extractPack, verifyPayload, checkedPack, acquireLock } from './download.mjs';
 
-export async function installRuntime({ index, id, root, preflight = async () => {}, onProgress, downloadOptions = {} }) {
+export async function installRuntime({ index, id, root, activate = true, preflight = async () => {}, onProgress, downloadOptions = {} }) {
   root = path.resolve(root);
   const pack = checkedPack(index, id);
   if (root === path.parse(root).root) throw new Error('unsafe-install-root');
@@ -20,7 +20,7 @@ export async function installRuntime({ index, id, root, preflight = async () => 
   const activeFile = path.join(root, 'active-pack.json');
   const prior = JSON.parse(await fs.readFile(activeFile, 'utf8').catch(() => '{}'));
   if (prior.sha256 === pack.sha256 && prior.target === target) {
-    await verifyPayload(target); await preflight(target); return { target, reused: true };
+    await verifyPayload(target); await preflight(target); return { target, reused: true, activation: prior };
   }
   const existing = await fs.lstat(target).catch(() => null);
   if (existing) {
@@ -47,9 +47,16 @@ export async function installRuntime({ index, id, root, preflight = async () => 
     if ((await fs.lstat(destination)).isSymbolicLink()) throw new Error('symlink-profile');
     await fs.copyFile(path.join(bundled, entry.name, 'voice.voiceprofile.npz'), path.join(destination, 'voice.voiceprofile.npz'), constants.COPYFILE_EXCL).catch(e => { if (e.code !== 'EEXIST') throw e; });
   }
-  const temp = path.join(root, `active-pack-${crypto.randomUUID()}.tmp`);
-  await fs.writeFile(temp, `${JSON.stringify({ id: pack.id, version: pack.version, sha256: pack.sha256, target }, null, 2)}\n`, { flag: 'wx' });
-  await fs.rename(temp, activeFile);
-  return { target, reused: false };
+  const activation = { id: pack.id, version: pack.version, sha256: pack.sha256, target };
+  if (activate) await activateRuntime(root, activation);
+  return { target, reused: false, activation };
   } finally { await unlock(); }
+}
+
+export async function activateRuntime(root, activation) {
+  const rel = path.relative(path.join(root, 'packs'), activation.target);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('unsafe-active-pack');
+  const temp = path.join(root, `active-pack-${crypto.randomUUID()}.tmp`);
+  await fs.writeFile(temp, `${JSON.stringify(activation, null, 2)}\n`, { flag: 'wx' });
+  await fs.rename(temp, path.join(root, 'active-pack.json'));
 }

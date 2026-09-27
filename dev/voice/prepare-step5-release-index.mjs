@@ -1,0 +1,17 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+const [previous, output, commit] = process.argv.slice(2);
+if (!previous || !output || !/^[a-f0-9]{40}$/u.test(commit || '')) throw new Error('Pass beta.3 index, new beta.4 index path, final public commit');
+const bytes = await fs.readFile(previous);
+if (crypto.createHash('sha256').update(bytes).digest('hex') !== 'a6eda4612a74692ba299b65b35419d1677923f1ead61f358c4ea684ca6bd5ec5') throw new Error('not-qualified-beta3-index');
+const index = JSON.parse(bytes);
+for (const pack of index.packs) for (const part of pack.parts) part.url = new URL(part.url, index.baseUrl).href;
+index.baseUrl = 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone/releases/download/v0.1.0-beta.4/';
+index.extension.commit = commit;
+index.qualification.focusedTests = 78;
+index.qualification.limitations = index.qualification.limitations.filter(x => x !== 'automatic-updates-pending');
+index.qualification.updates = 'protocol-1; reviewed-main-fast-forward; voice-health-before-activation; user-files-preserved';
+await fs.mkdir(path.dirname(path.resolve(output)), { recursive: true });
+await fs.writeFile(output, JSON.stringify(index, null, 2) + '\n', { flag: 'wx' });
+console.log(output);

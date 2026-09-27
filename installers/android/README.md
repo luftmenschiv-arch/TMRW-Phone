@@ -63,3 +63,9 @@ Build scripts refuse existing output directories. Keep `payload.json`, the
 qualification report and SHA-256 values with each candidate; do not silently
 replace a published asset or tag. The bootstrap requires Node.js 22+ and installs
 missing Termux prerequisites, but never upgrades ST or runs auto-update jobs.
+# Current release status
+
+Step 5 is now released as public beta.4: startup auto-updates, independent pinned
+voice pack, health-gated activation/rollback and versioned updater engines.
+See ../../AUTO-UPDATE-HANDOFF.md and the public README for current installation
+and beta.3 one-time enablement. Any earlier pending gates below are historical.

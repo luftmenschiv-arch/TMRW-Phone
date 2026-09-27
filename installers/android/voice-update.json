@@ -1,0 +1,9 @@
+{
+  "schema": "tmrw-voice-update-v1",
+  "protocol": 1,
+  "id": "tmrw-local-voice-android-arm64",
+  "version": "1.0.0-beta.1",
+  "sha256": "0915b542c890f7903900253975596c52b606fb3563d31a7bef413d6129dab6ca",
+  "indexUrl": "https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone/releases/download/v0.1.0-beta.3/install-index.json",
+  "indexSha256": "a6eda4612a74692ba299b65b35419d1677923f1ead61f358c4ea684ca6bd5ec5"
+}

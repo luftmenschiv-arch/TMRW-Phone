@@ -9,13 +9,19 @@ if (!process.argv[2]) throw new Error('Pass existing reviewed public checkout');
 const origin = execFileSync('git', ['-C', repo, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
 if (origin.replace(/\.git$/u, '') !== 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone') throw new Error('not-public-player-repo');
 const dest = path.join(repo, 'scripts/termux'); await fs.mkdir(dest, { recursive: true });
-for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'install.sh']) await fs.writeFile(path.join(dest, file), (await fs.readFile(path.join(source, 'installers/android', file), 'utf8')).replace(/\r\n/gu, '\n'));
+for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'install.sh', 'auto-update.mjs', 'launch.mjs', 'launcher-tools.mjs', 'voice-update.json']) await fs.writeFile(path.join(dest, file), (await fs.readFile(path.join(source, 'installers/android', file), 'utf8')).replace(/\r\n/gu, '\n'));
 const release = JSON.parse(await fs.readFile(path.join(repo, 'release.json'), 'utf8'));
-release.version = '0.1.0-beta.3'; release.components.extension = release.version;
-release.components.voicePack = '1.0.0-beta.1'; release.components.termuxInstaller = '1.0.0-beta.1';
-release.compatibility.focusedTestsPassed = 64;
-release.pending = ['automatic-updates', 'fresh-android-termux-installation-matrix', 'live-provider-qualification'];
-release.termux = { channel: 'beta', platform: 'standard-Termux-Android-arm64', releaseTag: 'v0.1.0-beta.3', runtimePack: '1.0.0-beta.1', installIndexSchema: 'tmrw-termux-install-v1', tested: 'isolated-root-on-Realme-RMX3370-Android-13', notTested: ['fresh-OS-package-manager-bootstrap', 'all-Android-models', 'live-provider-503-recovery'], dataPreservation: 'repeat-install-31-profile-files-history-and-active-pointer-byte-identical', presetPermission: 'owner-confirmed-public-distribution-2026-09-28' };
+release.version = '0.1.0-beta.4'; release.components.extension = release.version;
+release.components.voicePack = '1.0.0-beta.1'; release.components.termuxInstaller = '1.0.0-beta.2';
+release.compatibility.focusedTestsPassed = 78;
+release.pending = ['fresh-android-termux-installation-matrix', 'live-provider-qualification'];
+release.termux = { channel: 'beta', platform: 'standard-Termux-Android-arm64', releaseTag: 'v0.1.0-beta.4', runtimePack: '1.0.0-beta.1', installIndexSchema: 'tmrw-termux-install-v1', updateProtocol: 1, tested: 'isolated-root-on-Realme-RMX3370-Android-13', notTested: ['fresh-OS-package-manager-bootstrap', 'all-Android-models', 'live-provider-503-recovery'], dataPreservation: 'repeat-install-31-profile-files-history-and-active-pointer-byte-identical', presetPermission: 'owner-confirmed-public-distribution-2026-09-28' };
+for (const name of ['manifest.json', 'package.json']) {
+  const value = JSON.parse(await fs.readFile(path.join(repo, name), 'utf8'));
+  value.version = release.version;
+  if (name === 'manifest.json') value.auto_update = true;
+  await fs.writeFile(path.join(repo, name), JSON.stringify(value, null, 2) + '\n');
+}
 delete release.companion; // beta.2 companion remains in that immutable old release.
 const files = [];
 async function walk(dir, prefix = '') {

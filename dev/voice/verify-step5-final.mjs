@@ -1,0 +1,18 @@
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+const base = '/data/data/com.termux/files/home/.tmrw-public-install-qa-20260928';
+const extension = `${base}/ST/public/scripts/extensions/third-party/SillyTavern-Extension-TMRW-Phone`;
+const commit = execFileSync('git', ['-C', extension, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+assert.equal(commit, 'a041de3144950357a994a7ed6980c63eb9efe345');
+assert.equal(execFileSync('git', ['-C', extension, 'status', '--porcelain'], { encoding: 'utf8' }).trim(), '');
+assert.equal(JSON.parse(await fs.readFile(`${extension}/manifest.json`, 'utf8')).auto_update, true);
+assert.equal(await fs.readFile(`${base}/voice/profiles/user-keep/voice.voiceprofile.npz`, 'utf8'), 'keep-user-profile');
+assert.equal(await fs.readFile(`${base}/voice/history.json`, 'utf8'), 'keep-user-history');
+assert.equal(JSON.parse(await fs.readFile(`${base}/voice/active-pack.json`, 'utf8')).sha256, '0915b542c890f7903900253975596c52b606fb3563d31a7bef413d6129dab6ca');
+const engine = JSON.parse(await fs.readFile(`${base}/voice/launcher/engine.json`, 'utf8')).id;
+assert.match(engine, /^[a-f0-9]{64}$/u);
+for (const [port, route] of [[18778, '/v1/health'], [18779, '/health']]) assert.equal((await (await fetch(`http://127.0.0.1:${port}${route}`)).json()).ready, true);
+const result = { checkedAt: new Date().toISOString(), publicBootstrap: 'v0.1.0-beta.4', commit, nativeAutoUpdate: true, engine, runtimeReady: true, managerReady: true, originalPackReused: true, userProfilePreserved: true, historyPreserved: true };
+await fs.writeFile(`${base}/step5-final-bootstrap.json`, JSON.stringify(result, null, 2));
+console.log(JSON.stringify(result));

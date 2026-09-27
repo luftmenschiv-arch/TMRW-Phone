@@ -3,7 +3,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { installRuntime } from './install-runtime.mjs';
-import { run, sha256, checkedPack } from './download.mjs';
+import { run, sha256, checkedPack, acquireLock } from './download.mjs';
+import { installLauncher } from './launcher-tools.mjs';
+import { isBusy } from './auto-update.mjs';
 
 const PUBLIC_REPOSITORY = 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone.git';
 const EXTENSION_FOLDER = 'SillyTavern-Extension-TMRW-Phone';
@@ -67,6 +69,11 @@ export async function setup({ indexFile, indexHash, st, root, noStart = false, l
   const priorWrapper = await fs.readFile(wrapper, 'utf8').catch(e => { if (e.code === 'ENOENT') return null; throw e; });
   if (priorWrapper !== null && priorWrapper !== wrapperText) throw new Error(`launcher-already-exists:${wrapper}; not overwritten`);
   await fs.mkdir(root, { recursive: true });
+  const unlock = await acquireLock(path.join(root, 'start.lock'));
+  try {
+  if (await fs.stat(path.join(root, 'active-pack.json')).catch(() => null)) {
+    if (await isBusy({ runtimePort: Number(process.env.TMRW_VOICE_PORT || 18769), managerPort: Number(process.env.TMRW_VOICE_MANAGER_PORT || 18768) })) throw new Error('close-ST-and-stop-voice-before-reinstall');
+  }
   console.log('ตรวจแพ็กและดาวน์โหลดส่วนที่ยังไม่มี…');
   const installed = await installRuntime({ index, id: 'tmrw-local-voice-android-arm64', root,
     onProgress: p => console.log(`ดาวน์โหลด ${Math.round(100 * p.completed / p.total)}%${p.reused ? ' (ใช้ส่วนที่ตรวจแล้ว)' : ''}`),
@@ -80,12 +87,17 @@ export async function setup({ indexFile, indexHash, st, root, noStart = false, l
   await installExtension(plan);
   const launcher = path.join(root, 'launcher'); await fs.mkdir(launcher, { recursive: true });
   if ((await fs.lstat(launcher)).isSymbolicLink()) throw new Error('unsafe-launcher-directory');
-  await fs.copyFile(path.join(here, 'start.mjs'), path.join(launcher, 'start.mjs'));
-  await fs.writeFile(path.join(launcher, 'config.json'), JSON.stringify({ root, st: path.resolve(st), runtimePort: Number(process.env.TMRW_VOICE_PORT || 18769), managerPort: Number(process.env.TMRW_VOICE_MANAGER_PORT || 18768) }));
+  const config = { root, st: path.resolve(st), runtimePort: Number(process.env.TMRW_VOICE_PORT || 18769), managerPort: Number(process.env.TMRW_VOICE_MANAGER_PORT || 18768) };
+  await installLauncher(config, here);
+  const dispatcher = path.join(launcher, `dispatcher-${crypto.randomUUID()}.tmp`);
+  await fs.copyFile(path.join(here, 'launch.mjs'), dispatcher);
+  await fs.rename(dispatcher, path.join(launcher, 'start.mjs'));
+  await fs.writeFile(path.join(launcher, 'config.json'), JSON.stringify(config));
   if (!priorWrapper) await fs.writeFile(wrapper, wrapperText, { flag: 'wx', mode: 0o700 });
   if (!noStart) console.log(await run('bash', [path.join(installed.target, 'bin/START-TMRW-VOICE-SERVICES.sh')], { env: { ...process.env, TMRW_VOICE_HOME: root } }));
-  console.log(`ติดตั้งสำเร็จ (beta) — เปิด ST ตามปกติแล้วรีเฟรชหลังงานที่ค้างจบ\nครั้งต่อไปเปิด Termux แล้วพิมพ์ tmrw-start\nไม่มีการล้างแชท/IndexedDB/ประวัติโทร และยังไม่เปิดอัปเดตอัตโนมัติ`);
+  console.log(`ติดตั้งสำเร็จ (beta) — เปิด ST ตามปกติแล้วรีเฟรชหลังงานที่ค้างจบ\nครั้งต่อไปเปิด Termux แล้วพิมพ์ tmrw-start\nตรวจอัปเดต Extension/เสียงแยกกันเมื่อเริ่มใช้งาน โดยไม่ล้างแชท/IndexedDB/ประวัติโทร`);
   return installed;
+  } finally { await unlock(); }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = Object.fromEntries(process.argv.slice(2).map(a => a.split(/=(.*)/su).slice(0, 2)));

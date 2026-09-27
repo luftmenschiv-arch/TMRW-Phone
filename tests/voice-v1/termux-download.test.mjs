@@ -68,6 +68,9 @@ test('real tar extraction, payload integrity, install repeat and clone preservat
   const root = path.join(f.root, 'user'); await fs.mkdir(path.join(root, 'profiles', 'male-soft-youth'), { recursive: true });
   const userFile = path.join(root, 'profiles', 'male-soft-youth', 'voice.voiceprofile.npz'); await fs.writeFile(userFile, 'user-clone-do-not-overwrite');
   await fs.writeFile(path.join(root, 'history.json'), 'keep-history');
+  const prepared = await installRuntime({ index, id: 'android-arm64', root, activate: false, downloadOptions: { spaceCheck: noSpaceCheck } });
+  assert.ok(prepared.activation.target);
+  await assert.rejects(fs.stat(path.join(root, 'active-pack.json')), /ENOENT/);
   const installed = await installRuntime({ index, id: 'android-arm64', root, downloadOptions: { spaceCheck: noSpaceCheck } });
   assert.equal(await fs.readFile(userFile, 'utf8'), 'user-clone-do-not-overwrite');
   assert.equal(await fs.readFile(path.join(root, 'history.json'), 'utf8'), 'keep-history');

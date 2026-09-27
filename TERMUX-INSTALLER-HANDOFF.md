@@ -1,5 +1,13 @@
 # Step 4 — Termux installation candidate (2026-09-28)
 
+## Current: Step 5 complete — beta.4 (2026-09-28)
+
+Public main/tag v0.1.0-beta.4 are at a041de3144950357a994a7ed6980c63eb9efe345.
+Automatic startup updates are shipped; details/evidence/limitations are in
+AUTO-UPDATE-HANDOFF.md. Earlier Step 5-pending statements below are historical.
+The owner's working private install was NOT migrated. Only the isolated QA
+installation has the new launcher. Do not tell them their live setup auto-updates.
+
 ## Final qualification — 2026-09-28 (supersedes checkpoint below)
 
 - Owner explicitly asked to continue after the quota checkpoint. Step 4 final
