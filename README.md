@@ -1,23 +1,79 @@
-# TMRW—Phone V3
+# TMRW Phone
 
-Private synchronization repository for the qualified TMRW Extension production candidate through Phase 23.
+โทรศัพท์ของตัวละครใน **SillyTavern** — แชท ฟีด Insungram การโทร และระบบเสียง
+อังกฤษ/ญี่ปุ่น พร้อมพรีเซ็ทชาย 12 + หญิง 12 และการโคลนเสียงของผู้เล่น
 
-Phase 21, Phase 22, and Phase 23 are PASS / CLOSED. Phase 24 is NOT STARTED.
+Repository นี้เป็น **ซอร์สและงานพัฒนาของ TMRW Phone** เดิมชื่อ `TMRW-Phone-V3`
+ไม่ใช่ช่องทางติดตั้งรุ่นสำหรับผู้เล่นโดยตรง งานพัฒนาและบันทึกการทดสอบในแต่ละ
+branch อาจอยู่คนละช่วงกับรุ่นที่ผ่านการตรวจแล้ว
 
-Qualification retained here includes P23-D 21/21 focused and 114/114 affected regression, P23-E 127/127 cross-app UX, and P23-F 153/153 Production lifecycle qualification. Phase23 patch1 corrected the real-Android Preview37 Thread→Message dependency defect. Patch2 proved Production activation but failed Product Owner visual acceptance. Patch3 directly ports the retained Preview37 UI/interaction shell and app presentation, retains the recovered Call UI authority, preserves Production canonical behavior, closes the two post-port content regressions, and passes the bounded direct-Preview qualification (7/7) plus the same 109/109 affected regression set. See `TMRW-PHASE23-AUDIT-MATRIX.md` for the durable matrix.
+## สำหรับผู้เล่น
 
-Preview37 remains returnable. Autonomous Social and Live AI boundaries remain disabled. Real Voice/TTS runtime is not integrated in Phase23. Production package `auto_update` remains `false`.
+ใช้ [SillyTavern-Extension-TMRW-Phone](https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone)
+ซึ่งเป็น repo แจกผู้เล่นแยกต่างหาก มีเฉพาะ snapshot ที่เตรียมปล่อยแล้ว
 
-Build with `npm run build:production-package`, verify with `npm run verify:production-package`, run the dependency patch gate with `npm run test:p23-patch`, run the designed-home patch gate with `npm run test:p23-ui-patch`, run Phase23 UX qualification with `npm run test:p23-e`, and run lifecycle qualification with `npm run test:p23-f`.
+- [วิธีติดตั้งและอัปเดต](https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone#readme)
+- [รุ่น beta.4 และคำสั่งติดตั้ง Termux](https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone/releases/tag/v0.1.0-beta.4)
+- [ผลทดสอบและข้อจำกัด](https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone/blob/main/QUALITY.md)
 
-Real-Android activation reached the Production V3 shell successfully. Patch2 corrected the raw grid but failed Product Owner visual acceptance because it remained a Production interpretation rather than the retained Preview37 product UI. Patch3 is the qualified direct-Preview candidate and now requires supported Android update plus Product Owner visual inspection. Activation/return must continue through supported Production controls and Preview37 must remain returnable.
+ผู้ใช้ Android arm64 ที่มี ST ใน Termux แล้วสามารถติดตั้ง Extension พร้อมระบบเสียง
+ด้วยคำสั่งในหน้า release เตรียมพื้นที่ว่าง 4 GiB และแนะนำ Wi-Fi แพ็กเสียงประมาณ
+780 MB ครั้งต่อไปเปิดด้วย `tmrw-start`
 
-Do not commit local user data, local QA/browser state, model assets, experiments, or secret local files.
+รุ่น beta.4 แยกการอัปเดต Extension กับแพ็กเสียง ไม่โหลดโมเดลเดิมซ้ำ เลื่อนอัปเดต
+เมื่อ ST/เสียงยังใช้งาน และตรวจแพ็กใหม่ก่อนเปิดใช้ ผู้ที่ลง public beta.3 ต้องทำ
+ขั้นตอนเปิดระบบอัปเดตครั้งเดียวตามคู่มือ อย่านำคำสั่งไปลงทับชุด private/ทดลองเก่า
+โดยไม่มีการตรวจย้ายรุ่นก่อน
 
-## Phase 23 Preview37 Visual Review Candidate
+ยังต้องตั้งผู้ให้บริการ/โมเดล/API ใน ST เอง ไม่ได้แถม API key หรือบริการสร้างคำตอบ
+HTTP 503 ของผู้ให้บริการยังเกิดได้ และการออกเสียงบางพรีเซ็ทยังมีข้อจำกัด
+**ยังเป็น beta ไม่ใช่ stable** การทดสอบบนมือถือหนึ่งรุ่นไม่รับรองทุกอุปกรณ์
 
-VISUAL REVIEW ONLY
-NOT RELEASE QUALIFIED
-PRODUCT OWNER ACCEPTANCE PENDING
+## สำหรับผู้พัฒนา
 
-This branch is for Product Owner visual review only. Phase 23 remains in progress and this candidate is not a qualified release.
+ใช้ Node.js 22 ขึ้นไป ดูคำสั่งใน `package.json`:
+
+```bash
+npm run test:voice
+node --test tests/phase12/*.test.mjs
+```
+
+`npm test` ในซอร์สพัฒนาชุดนี้ยังไม่ผ่านทั้งชุดจาก fixture เก่าที่หายไปก่อน
+งานนำ Pocket adapter ออก (`tests/phase1`, `tests/phase17`) และสคริปต์เก่า
+บางรายการ ไม่ควรตีความว่าเป็นปัญหาจากการเปลี่ยนชื่อ repo
+
+`build:production-package` สร้างไฟล์ใน `dist/TMRW-Phone-V3` ใหม่ จึงไม่ควรแก้ไฟล์
+ใน dist โดยตรงหรือใช้คำสั่งนี้ทับงานที่ยังไม่ได้เก็บ การปล่อย public snapshot ต้อง
+ผ่านการตรวจเพิ่ม ไม่ใช่ push ทุกการแก้ของ repo นี้ไปให้ผู้เล่น
+
+โครงสร้างหลัก:
+
+- `domain`, `application`, `storage`: ข้อมูลและพฤติกรรมของโทรศัพท์
+- `ui`, `production`, `v3`: หน้าจอ การประกอบแอป และไฟล์สำหรับใช้งานใน ST
+- `voice-manager`, `voice-packs`: ระบบจัดการเสียงและทรัพยากรพรีเซ็ท
+- `installers/android`: ตัวติดตั้งและตัวอัปเดต Termux
+- `tests`, `dev`: ชุดทดสอบและเครื่องมือพัฒนา/เตรียม release
+
+อ่าน [สถานะตัวติดตั้ง](TERMUX-INSTALLER-HANDOFF.md) และ
+[สถานะอัปเดตอัตโนมัติ](AUTO-UPDATE-HANDOFF.md) สำหรับขอบเขตงานล่าสุด
+เอกสาร Phase เก่าคงไว้เป็นประวัติ ไม่ใช่สถานะ release ปัจจุบัน
+
+## การเปลี่ยนชื่อและนำ Pocket adapter ออก
+
+ชื่อ repo เปลี่ยนเป็น **TMRW-Phone** แต่ไม่ได้เปลี่ยนพาธติดตั้งเดิม ชื่อฐานข้อมูล
+คีย์ข้อมูล หรือชื่อภายใน `TMRW-Phone-V3` ที่ยังใช้เพื่อความเข้ากันได้
+ไม่ต้องลบแชท ประวัติโทร เสียงที่โคลน หรือข้อมูลเบราว์เซอร์เพื่อเปลี่ยนชื่อ repo
+
+นำ `adapters/pocket` และ fixture เฉพาะของ adapter เก่าที่ไม่ได้อยู่ใน Production
+ออกแล้ว ชุดทดสอบ Preview37 ใช้ฐานทดสอบหลักโดยตรงแทน ส่วน schema/ข้อมูลเก่า
+ไม่ได้ถูกล้างหรือย้าย การเชื่อม Pocket shadow แบบเก่าไม่ใช่ฟังก์ชันที่คงไว้ในรุ่นนี้
+ซอร์สก่อนนำออกยังค้นคืนได้จากประวัติ Git
+
+## ข้อมูลส่วนตัวและสิทธิ์
+
+อย่า commit คีย์ API, settings ส่วนตัว, แชท, ไฟล์บันทึกเสียงผู้เล่น หรือข้อมูล QA
+ส่วนตัว เปิด issue โดยบอกเวอร์ชันและขั้นตอนทำซ้ำแทนการแนบข้อมูลลับ
+ประวัติการพัฒนาเก่ามีตัวอย่างพาธ/IP ของเครื่องทดสอบ ไม่ใช่ค่าที่ผู้เล่นควรใช้
+
+ส่วนประกอบภายนอกคงสิทธิ์และเงื่อนไขของเจ้าของเดิม ดู notices/source ที่แนบมากับ
+แพ็ก runtime การเปิด repo เป็น Public ไม่ได้เปลี่ยนสิทธิ์ของส่วนประกอบเหล่านั้น

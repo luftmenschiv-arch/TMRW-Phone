@@ -1,4 +1,4 @@
-import { setupPhase11 } from '../phase11/pocket-shadow-fixtures.mjs';
+import { setupPhase10 } from '../phase10/handoff-fixtures.mjs';
 import { Preview37RawReader } from '../../migration/preview37/raw-reader.mjs';
 import { Preview37CopyMigrationCoordinator } from '../../migration/preview37/coordinator.mjs';
 import { Preview37MigrationManifest } from '../../migration/preview37/manifest.mjs';
@@ -19,7 +19,7 @@ export function preview37Project({ castSize = 3, suffix = 'base', includeGroup =
 }
 
 export async function setupPhase12({ source = preview37Project(), castSize = 4, manifestId = 'phase12-host' } = {}) {
-  const context = await setupPhase11({ castSize, manifestId }); let current = structuredClone(source); let previewReads = 0; let previewWrites = 0;
+  const context = await setupPhase10({ castSize, manifestId }); let current = structuredClone(source); let previewReads = 0; let previewWrites = 0;
   const reader = new Preview37RawReader({ readSource: async () => { previewReads += 1; return current == null ? { available: false } : { available: true, sourceVersion: current.schemaVersion, sourceLocation: 'phase12-fixture', record: structuredClone(current) }; } });
   const manifest = new Preview37MigrationManifest({ database: context.database, now: () => '2026-08-13T12:00:00.000Z' });
   const migration = new Preview37CopyMigrationCoordinator({ database: context.database, rawReader: reader, identityKernel: context.kernel, phoneStateService: context.phones, messageService: context.messages, callService: context.calls, manifest });
