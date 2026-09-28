@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
-import argparse, gc, os
+import argparse, ctypes.util, gc, os
 from pathlib import Path
 import numpy as np
+
+# python-soundfile uses find_library(), which does not see Termux's private
+# library directory on Android even when libsndfile is installed there.
+_find_library = ctypes.util.find_library
+_termux_sndfile = Path('/data/data/com.termux/files/usr/lib/libsndfile.so')
+if _termux_sndfile.is_file():
+    ctypes.util.find_library = lambda name: str(_termux_sndfile) if name == 'sndfile' else _find_library(name)
+
 from genie_tts.Audio.ReferenceAudio import ReferenceAudio
 from genie_tts.ModelManager import model_manager, load_session_with_fp16_conversion
 

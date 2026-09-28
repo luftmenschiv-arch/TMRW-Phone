@@ -61,13 +61,23 @@ async function resolveRuntimeSource(relativePath) {
   return sourcePath;
 }
 
-export async function buildProductionPackage() {
-  await fs.rm(distRoot, { recursive: true, force: true });
-  await fs.mkdir(distRoot, { recursive: true });
-  for (const directory of ALLOWED_RUNTIME_DIRS) await fs.mkdir(path.join(distRoot, 'v3', directory), { recursive: true });
+export async function buildProductionPackage({ outputRoot = distRoot, version = null } = {}) {
+  const packageRoot = path.resolve(outputRoot);
+  if (packageRoot === v3Root || v3Root.startsWith(`${packageRoot}${path.sep}`)) throw new Error('Refusing to build over the source tree');
+  if (packageRoot !== distRoot && await fs.stat(packageRoot).catch(() => null)) throw new Error(`Custom package output already exists: ${packageRoot}`);
+  await fs.rm(packageRoot, { recursive: true, force: true });
+  await fs.mkdir(packageRoot, { recursive: true });
+  for (const directory of ALLOWED_RUNTIME_DIRS) await fs.mkdir(path.join(packageRoot, 'v3', directory), { recursive: true });
 
   for (const fileName of TEMPLATE_FILES) {
-    await fs.copyFile(path.join(templateRoot, fileName), path.join(distRoot, fileName));
+    await fs.copyFile(path.join(templateRoot, fileName), path.join(packageRoot, fileName));
+  }
+  if (version !== null) {
+    if (!/^\d+\.\d+\.\d+-beta\.\d+$/u.test(version)) throw new Error('Invalid beta package version');
+    const manifestPath = path.join(packageRoot, 'manifest.json');
+    const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+    manifest.version = version;
+    await fs.writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
   const queue = [];
@@ -93,7 +103,7 @@ export async function buildProductionPackage() {
     const relativePath = queue.shift();
     const sourcePath = await resolveRuntimeSource(relativePath);
     const source = await fs.readFile(sourcePath, 'utf8');
-    const destinationPath = path.join(distRoot, ...relativePath.split('/'));
+    const destinationPath = path.join(packageRoot, ...relativePath.split('/'));
     await fs.mkdir(path.dirname(destinationPath), { recursive: true });
     await fs.copyFile(sourcePath, destinationPath);
     copied.push(relativePath);
@@ -107,14 +117,14 @@ export async function buildProductionPackage() {
   // Preset auditions must be packaged as ready-to-play audio. They must not
   // depend on an installed or running local voice service.
   const previewSource = path.join(v3Root, 'voice-packs', 'previews');
-  const previewDestination = path.join(distRoot, 'voice-packs', 'previews');
+  const previewDestination = path.join(packageRoot, 'voice-packs', 'previews');
   const previews = (await fs.readdir(previewSource)).filter(name => /^(?:male|female)-[a-z0-9-]+-(?:en|ja)\.wav$/u.test(name));
   if (previews.length !== 48) throw new Error(`Production package requires 48 preset previews, found ${previews.length}`);
   await fs.mkdir(previewDestination, { recursive: true });
   for (const name of previews) await fs.copyFile(path.join(previewSource, name), path.join(previewDestination, name));
 
   return Object.freeze({
-    outputRoot: distRoot,
+    outputRoot: packageRoot,
     templates: [...TEMPLATE_FILES],
     runtimeFiles: copied.sort(),
     runtimeDirectories: [...ALLOWED_RUNTIME_DIRS],

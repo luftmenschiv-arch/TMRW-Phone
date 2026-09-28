@@ -69,6 +69,7 @@ import { AdaptiveWorldPulseService } from '../application/playable-bootstrap/ada
 import { WalletRpEvidenceService } from '../application/playable-bootstrap/wallet-rp-evidence.mjs';
 import { createPhase19VoiceCapabilityState, createProductionVoiceV1CapabilityState } from '../domain/voice/voice-capability.mjs';
 import { TMRWLocalVoiceAdapter } from '../platform/voice/tmrw-local-voice-adapter.mjs';
+import { ensureLocalVoiceService } from '../platform/voice/runtime-bootstrap-client.mjs';
 import { CallVoicePlaybackController } from '../ui/calls/call-voice-playback.mjs';
 import { SillyTavernV3RuntimeIntegration } from '../platform/sillytavern/runtime-integration.mjs';
 import { PhoneShellViewModels } from '../ui/view-models.mjs';
@@ -617,6 +618,7 @@ async function buildRuntime(options, entry) {
     await activation.mark('voice-audio-history-service');
     const voiceCapability = createProductionVoiceV1CapabilityState();
     const voiceAdapter = new TMRWLocalVoiceAdapter({
+      ensureRuntime: ({ signal }) => ensureLocalVoiceService({ fetchImpl: globalObject.fetch?.bind?.(globalObject), headers: getContext()?.getRequestHeaders?.() || {}, signal }),
       fetchImpl: globalObject.fetch?.bind?.(globalObject) || null,
       createObjectURL: globalObject.URL?.createObjectURL?.bind?.(globalObject.URL) || null,
       revokeObjectURL: globalObject.URL?.revokeObjectURL?.bind?.(globalObject.URL) || null,
@@ -705,12 +707,13 @@ async function buildRuntime(options, entry) {
           const exactPreviewScopes = previewIdentityItemCountForSource(migrationResult.plan, sourceIdentity);
           if (exactPreviewScopes === 1) return provisionProductionScopeAliases({ rawDatabase, runtimeGuard, gate, migrationResult, sourceIdentity, now });
           if (exactPreviewScopes > 1) throw new Error('Production scope aliasing found ambiguous committed Preview identity items for the current SillyTavern scope');
-          if (typeof freshIdentitySeedResolver === 'function') {
-            const seed = await freshIdentitySeedResolver(sourceIdentity);
-            return seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now });
-          }
         }
-        if (bootstrapResult?.committed && typeof freshIdentitySeedResolver === 'function') {
+        // A card migrated in an earlier session can already have an exact,
+        // validated Story/Branch mapping even when it is absent from this
+        // session's Preview plan. Reuse it before considering fresh seeding.
+        const existingScope = await contextAdapter.findExistingScope(sourceIdentity);
+        if (existingScope) return Object.freeze({ attempted: false, committed: true, mode: 'existing-mapped-scope', scope: existingScope });
+        if ((migrationResult?.committed || bootstrapResult?.committed) && typeof freshIdentitySeedResolver === 'function') {
           const seed = await freshIdentitySeedResolver(sourceIdentity);
           return seedFreshProductionIdentity({ rawDatabase, runtimeGuard, gate, seed, now });
         }

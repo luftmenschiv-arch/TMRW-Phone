@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-export const engineFiles = ['start.mjs', 'auto-update.mjs', 'download.mjs', 'install-runtime.mjs', 'launcher-tools.mjs'];
+export const engineFiles = ['start.mjs', 'auto-update.mjs', 'download.mjs', 'install-runtime.mjs', 'launcher-tools.mjs', 'install-voice-bootstrap.mjs', 'voice-bootstrap-entry.mjs', 'voice-supervisor.mjs'];
 // Version the small updater itself; never leave a mixture of old/new source files.
 export async function installLauncher(config, source) {
   const launcher = path.join(config.root, 'launcher');

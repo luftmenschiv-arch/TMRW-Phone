@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { TMRW_VOICE_PRESETS, findVoicePreset } from '../../domain/voice/voice-preset-catalog.mjs';
-import { TMRWVoiceManagerClient } from '../../platform/voice/tmrw-voice-manager-client.mjs';
+import { TMRWVoiceManagerClient, presetPreviewBaseUrl } from '../../platform/voice/tmrw-voice-manager-client.mjs';
 import { installPack, validatePackIndex } from '../../voice-manager/src/pack-installer.mjs';
 
 test('voice catalog exposes exactly 12 male and 12 female presets with stable ids', () => {
@@ -19,6 +19,27 @@ test('voice catalog exposes exactly 12 male and 12 female presets with stable id
   assert.equal(findVoicePreset('female-gentle-soft').baseProfile, 'tmrw-female-core');
 });
 
+test('every bundled preset has its own voice identity file', async () => {
+  const hashes = new Map();
+  for (const preset of TMRW_VOICE_PRESETS) {
+    const file = path.resolve('voice-packs', 'profiles', `${preset.id}.voiceprofile.npz`);
+    const bytes = await fs.readFile(file);
+    assert.ok(bytes.length > 1024, preset.id);
+    const hash = crypto.createHash('sha256').update(bytes).digest('hex');
+    assert.equal(hashes.has(hash), false, `${preset.id} duplicates ${hashes.get(hash)}`);
+    hashes.set(hash, preset.id);
+  }
+  assert.equal(hashes.size, 24);
+  assert.equal(findVoicePreset('male-clever-charmer').name, 'Clever Charmer');
+  assert.equal(findVoicePreset('male-polite-dangerous').name, 'Polite Dangerous');
+});
+
+test('mobile runtime keeps cloned audio unmodified after synthesis', async () => {
+  const patch = await fs.readFile(path.resolve('dev/voice/patch-mobile-runtime.mjs'), 'utf8');
+  assert.match(patch, /audio, dt = vits_run\(seq, sem, self\.ref\)\\n        raw = wav_bytes\(audio\)/u);
+  assert.doesNotMatch(patch, /apply_voice_preset|np\.interp\(/u);
+});
+
 test('preset audition fetches bundled WAV without contacting the voice manager', async () => {
   const calls = [];
   const client = new TMRWVoiceManagerClient({ fetchImpl: async url => {
@@ -27,8 +48,17 @@ test('preset audition fetches bundled WAV without contacting the voice manager',
   } });
   const audio = await client.preview({ profileId: 'male-clever-charmer', language: 'ja' });
   assert.equal(audio.type, 'audio/wav');
-  assert.deepEqual(calls, ['/scripts/extensions/third-party/TMRW-Phone-V3/voice-packs/previews/male-clever-charmer-ja.wav']);
+  assert.deepEqual(calls, [new URL('../../voice-packs/previews/male-clever-charmer-ja.wav?v=clone-only-20260926', import.meta.url).href]);
   assert.equal(client.presetPreviewUrl({ profileId: 'instance-custom', language: 'en' }), null);
+});
+
+test('preset previews resolve in renamed and per-user extension installs', () => {
+  for (const prefix of ['/scripts/extensions/third-party/', '/scripts/extensions/third-party/user/']) {
+    for (const folder of ['TMRW-Phone-V3', 'SillyTavern-Extension-TMRW-Phone', 'Phone%20Beta']) {
+      const root = `http://localhost:8000${prefix}${folder}/`;
+      assert.equal(presetPreviewBaseUrl(`${root}v3/platform/voice/tmrw-voice-manager-client.mjs`), `${root}voice-packs/previews/`);
+    }
+  }
 });
 
 test('release pack index rejects noncontiguous and mismatched parts', () => {

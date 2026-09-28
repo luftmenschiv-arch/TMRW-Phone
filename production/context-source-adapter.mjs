@@ -48,6 +48,21 @@ export class ProductionSillyTavernContextAdapter {
   async resolveScope(context = this.#getContext()) {
     requireContext(context);
     const sourceIdentity = await this.#sourceIdentityResolver(context);
+    return this.resolveScopeForSourceIdentity(sourceIdentity, context);
+  }
+
+  async findExistingScope(sourceIdentity, context = this.#getContext()) {
+    try { return await this.resolveScopeForSourceIdentity(sourceIdentity, context); }
+    catch (error) {
+      // A wholly new Character Card can be provisioned. A partially mapped
+      // existing card or ambiguous identity must fail closed, never be reseeded.
+      if (error?.message === 'Production identity unresolved: missing Character Card mapping') return null;
+      throw error;
+    }
+  }
+
+  async resolveScopeForSourceIdentity(sourceIdentity, context = this.#getContext()) {
+    requireContext(context);
     const candidate = createProductionSillyTavernScopeCandidate({ context, sourceIdentity });
     const mappings = await this.#unitOfWork.readonly({ stores: ['identityMappings'] }, repositories => repositories.identityMappings.listByIndex('by_mapping_status', 'active'));
 

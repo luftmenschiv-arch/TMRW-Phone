@@ -17,15 +17,32 @@ export function renderMaps({ document, authorizationGranted = true, error = null
   const layers = el(document, 'button'); layers.type = 'button'; layers.className = 'tmrw-phone-map-layers'; layers.disabled = true; layers.setAttribute('aria-label', 'ชั้นแผนที่ยังไม่พร้อมใช้งาน'); layers.append(icon(document, 'layers', 18)); const locate = el(document, 'button'); locate.type = 'button'; locate.className = 'tmrw-phone-map-locate'; locate.disabled = true; locate.setAttribute('aria-label', 'ตำแหน่งปัจจุบันยังไม่มีพิกัด'); locate.append(icon(document, 'navigation', 19)); canvas.append(layers, locate); root.append(canvas);
 
   const panel = el(document, 'section'); panel.className = 'tmrw-phone-map-panel';
-  const search = el(document, 'label'); search.append(icon(document, 'search', 18)); const input = el(document, 'input'); input.type = 'text'; input.value = draftLabel; input.placeholder = 'ค้นหาหรือระบุสถานที่...'; input.setAttribute('aria-label', 'Story-world location label'); input.addEventListener('input', () => onDraft?.(String(input.value || ''))); search.append(input); if (draftLabel) { const clear = el(document, 'button'); clear.type = 'button'; clear.append(icon(document, 'close', 15)); clear.addEventListener('click', () => { input.value = ''; onDraft?.(''); }); search.append(clear); } else { const nav = el(document, 'i'); nav.append(icon(document, 'navigation', 15)); search.append(nav); } panel.append(search);
+  const search = el(document, 'label'); search.append(icon(document, 'search', 18));
+  const input = el(document, 'input'); input.type = 'text'; input.value = draftLabel;
+  input.placeholder = 'ค้นหาหรือระบุสถานที่...'; input.setAttribute('aria-label', 'Story-world location label');
+  const clear = el(document, 'button'); clear.type = 'button'; clear.setAttribute('aria-label', 'ล้างสถานที่');
+  clear.append(icon(document, 'close', 15));
+  const nav = el(document, 'i'); nav.append(icon(document, 'navigation', 15));
+  search.append(input, clear, nav); panel.append(search);
 
   const ready = Boolean(String(draftLabel || '').trim()); const audienceReady = selectedAudienceIds.length > 0;
   const shortcuts = el(document, 'div'); shortcuts.className = 'tmrw-phone-map-shortcuts';
-  const shortcut = (id, label, detail, iconName, disabled, callback) => { const button = el(document, 'button'); button.type = 'button'; button.dataset.locationAction = id; button.disabled = disabled; const mark = el(document, 'i'); mark.append(icon(document, iconName, 18)); const copy = el(document, 'span'); copy.append(el(document, 'strong', label), el(document, 'small', detail)); button.append(mark, copy); let busy = false; button.addEventListener('click', () => { if (busy || button.disabled) return; busy = true; button.disabled = true; void Promise.resolve(callback?.()).finally(() => { busy = false; }); }); shortcuts.append(button); };
-  shortcut('check-in', 'Check In', ready ? 'บันทึกสถานที่นี้' : 'ระบุสถานที่ก่อน', 'location', !ready, onCheckIn);
-  shortcut('share', 'Share', audienceReady ? `${selectedAudienceIds.length} คน` : 'เลือกผู้รับก่อน', 'send', !ready || !audienceReady, onShare);
-  shortcut('live', 'Live', audienceReady ? 'แชร์ตำแหน่งสด' : 'เลือกผู้รับก่อน', 'live', !ready || !audienceReady, onStartLive);
+  const shortcut = (id, label, detail, iconName, disabled, callback) => { const button = el(document, 'button'); button.type = 'button'; button.dataset.locationAction = id; button.disabled = disabled; const mark = el(document, 'i'); mark.append(icon(document, iconName, 18)); const copy = el(document, 'span'); copy.append(el(document, 'strong', label), el(document, 'small', detail)); button.append(mark, copy); let busy = false; button.addEventListener('click', () => { if (busy || button.disabled) return; busy = true; button.disabled = true; void Promise.resolve(callback?.()).finally(() => { busy = false; }); }); shortcuts.append(button); return { button, detail: copy.children[1] }; };
+  const checkIn = shortcut('check-in', 'Check In', ready ? 'บันทึกสถานที่นี้' : 'ระบุสถานที่ก่อน', 'location', !ready, onCheckIn);
+  const share = shortcut('share', 'Share', audienceReady ? `${selectedAudienceIds.length} คน` : 'เลือกผู้รับก่อน', 'send', !ready || !audienceReady, onShare);
+  const live = shortcut('live', 'Live', audienceReady ? 'แชร์ตำแหน่งสด' : 'เลือกผู้รับก่อน', 'live', !ready || !audienceReady, onStartLive);
   shortcut('more', 'เพิ่มเติม', 'ไม่มีคำสั่งเพิ่มเติม', 'more', true, null); panel.append(shortcuts);
+  const syncDraft = () => {
+    const hasLocation = Boolean(String(input.value || '').trim());
+    clear.hidden = !hasLocation; nav.hidden = hasLocation;
+    checkIn.button.disabled = !hasLocation;
+    checkIn.detail.textContent = hasLocation ? 'บันทึกสถานที่นี้' : 'ระบุสถานที่ก่อน';
+    share.button.disabled = !hasLocation || !audienceReady;
+    live.button.disabled = !hasLocation || !audienceReady;
+  };
+  input.addEventListener('input', () => { onDraft?.(String(input.value || '')); syncDraft(); });
+  clear.addEventListener('click', () => { input.value = ''; onDraft?.(''); syncDraft(); input.focus?.(); });
+  syncDraft();
 
   if (audiences.length) { const audience = el(document, 'section'); audience.className = 'tmrw-phone-filter-chips tmrw-v3-location-audiences'; const label = el(document, 'strong', 'แชร์กับ'); audience.append(label); for (const choice of audiences) { const button = el(document, 'button', choice.label); button.type = 'button'; button.dataset.locationAudience = choice.accountId; button.setAttribute('aria-pressed', String(selectedAudienceIds.includes(choice.accountId))); button.className = selectedAudienceIds.includes(choice.accountId) ? 'is-active' : ''; button.addEventListener('click', () => onToggleAudience?.(choice.accountId)); audience.append(button); } panel.append(audience); }
 

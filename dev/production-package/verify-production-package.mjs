@@ -59,11 +59,12 @@ function resolveImport(importerRelative, specifier) {
   return path.posix.normalize(path.posix.join(path.posix.dirname(importerRelative), specifier));
 }
 
-export async function verifyProductionPackage() {
-  const stat = await fs.stat(distRoot).catch(() => null);
-  if (!stat?.isDirectory()) throw new Error(`Production package output is missing: ${distRoot}`);
+export async function verifyProductionPackage({ outputRoot = distRoot } = {}) {
+  const packageRoot = path.resolve(outputRoot);
+  const stat = await fs.stat(packageRoot).catch(() => null);
+  if (!stat?.isDirectory()) throw new Error(`Production package output is missing: ${packageRoot}`);
 
-  const manifest = JSON.parse(await fs.readFile(path.join(distRoot, 'manifest.json'), 'utf8'));
+  const manifest = JSON.parse(await fs.readFile(path.join(packageRoot, 'manifest.json'), 'utf8'));
   if (manifest.display_name !== 'TMRW Phone') throw new Error('Production package display_name mismatch');
   if (manifest.loading_order !== 60) throw new Error('Production package candidate loading_order mismatch');
   if (manifest.js !== 'index.js' || manifest.css !== 'style.css') throw new Error('Production package entry paths mismatch');
@@ -73,12 +74,12 @@ export async function verifyProductionPackage() {
   }
   if (manifest.generate_interceptor !== V3_GENERATION_INTERCEPTOR_KEY) throw new Error('Production package generation interceptor ownership mismatch');
 
-  const files = await walkFiles(distRoot);
+  const files = await walkFiles(packageRoot);
   for (const relativePath of files) assertPackagePath(relativePath);
   const previewFiles = files.filter(file => file.startsWith('voice-packs/previews/'));
   if (previewFiles.length !== 48) throw new Error(`Production package requires 48 preset previews, found ${previewFiles.length}`);
   for (const relativePath of previewFiles) {
-    const audio = await fs.readFile(path.join(distRoot, ...relativePath.split('/')));
+    const audio = await fs.readFile(path.join(packageRoot, ...relativePath.split('/')));
     if (audio.length < 44 || audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') throw new Error(`Invalid preset WAV: ${relativePath}`);
   }
   if (files.some(relativePath => /TMRW-Phone-Preview/i.test(relativePath))) throw new Error('Preview files were copied into the v3 package');
@@ -86,7 +87,7 @@ export async function verifyProductionPackage() {
   const fileSet = new Set(files);
   let importCount = 0;
   for (const relativePath of files.filter(file => /\.(?:js|mjs|css)$/i.test(file))) {
-    const source = await fs.readFile(path.join(distRoot, ...relativePath.split('/')), 'utf8');
+    const source = await fs.readFile(path.join(packageRoot, ...relativePath.split('/')), 'utf8');
     if (/C:\\ai\\|C:\/ai\/|tmrw-extension-phase\d+-shadow|TMRW-Voice-(?:Golden|PC-Runtime|Mobile-Optimization)/i.test(source)) {
       throw new Error(`Protected filesystem path leaked into browser runtime package: ${relativePath}`);
     }
@@ -100,7 +101,7 @@ export async function verifyProductionPackage() {
   const previousShim = globalThis[V3_GENERATION_INTERCEPTOR_KEY];
   try {
     delete globalThis[V3_GENERATION_INTERCEPTOR_KEY];
-    const module = await import(`${pathToFileURL(path.join(distRoot, 'index.js')).href}?verify=${Date.now()}`);
+    const module = await import(`${pathToFileURL(path.join(packageRoot, 'index.js')).href}?verify=${Date.now()}`);
     if (typeof module.onActivate !== 'function' || typeof module.onEnable !== 'function' || typeof module.onDisable !== 'function') {
       throw new Error('Built package lifecycle exports are incomplete');
     }
@@ -115,7 +116,7 @@ export async function verifyProductionPackage() {
   }
 
   return Object.freeze({
-    outputRoot: distRoot,
+    outputRoot: packageRoot,
     files: files.length,
     importEdges: importCount,
     manifest: Object.freeze({

@@ -1,0 +1,8 @@
+{
+  "name": "tmrw-phone-public-beta",
+  "version": "0.1.0-beta.2",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node scripts/verify-release.mjs" },
+  "engines": { "node": ">=22" }
+}

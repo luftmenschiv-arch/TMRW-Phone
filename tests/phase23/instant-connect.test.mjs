@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupPhase9 } from '../phase9/call-fixtures.mjs';
+import { setupPhase9, addCallText } from '../phase9/call-fixtures.mjs';
 import { TmrwPhoneShell } from '../../ui/shell.mjs';
 import { EXPERIENCE_PRESET, PHONE_NUMBER_DISCOVERY, resolveExperiencePreset } from '../../ui/experience-presets.mjs';
 import { DEFAULT_VOICE_RUNTIME_BASE_URL } from '../../ui/settings-beta.mjs';
@@ -54,8 +54,8 @@ async function open(shell, route) {
     const social = find(shell.root, node => node.dataset?.app === 'insungram');
     assert.ok(social, 'missing Insungram route');
     social.click();
-    await waitFor(() => shell.root.dataset?.route === 'insungram', 'Insungram route');
-    button = find(shell.root, node => node.attributes?.get?.('aria-label') === 'ข้อความ');
+    await waitFor(() => shell.root.dataset?.route === 'messages', 'Insungram opens chats');
+    return shell.root.children[1].children[0].children[0];
   }
   assert.ok(button, `missing ${route} route`);
   button.click();
@@ -311,6 +311,112 @@ test('Instant Calls auto-answers the exact current Character, creates one canoni
   assert.equal(calls[0].state, 'active');
   await waitFor(() => Boolean(find(shell.root, node => node.dataset?.callAction === 'end')), 'approved active Call surface');
   assert.deepEqual(await context.contacts.listContacts({ scope: context.scope, ownerAccountId: context.user.accountId }), []);
+});
+
+test('retrying a failed Call text send reuses the original event and does not duplicate the transcript', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-call-send-retry' });
+  const canonical = context.viewModels.callCoordinator;
+  const call = await canonical.startOutgoing({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    autoAcceptTarget: true,
+    source: { authority: 'p23-instant-test', kind: 'call-retry', recordId: 'retry-call', version: '1' },
+    idempotencyKey: 'retry-call',
+  });
+  const attempts = [];
+  const callCoordinator = { sendText: async input => {
+    attempts.push(input);
+    const committed = await canonical.sendText(input);
+    if (attempts.length === 1) throw new Error('response-lost-after-commit');
+    return committed;
+  } };
+  const shell = new TmrwPhoneShell({
+    document: context.document,
+    viewModels: context.viewModels,
+    controller: context.controller,
+    messageService: context.messages,
+    callService: context.calls,
+    callCoordinator,
+    scope: context.scope,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    activeCharacterDisplayName: 'Kaelan Vance',
+    selectedDeviceId: context.user.deviceId,
+  });
+  await shell.mount(context.target);
+  await open(shell, 'calls');
+  await waitFor(() => Boolean(find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text')), 'active Call composer');
+  const input = find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text');
+  input.value = 'ยังอยู่ในสายไหม';
+  for (const listener of input.listeners.get('input') || []) listener({ currentTarget: input });
+  find(shell.root, node => node.dataset?.callAction === 'send-text').click();
+  await waitFor(() => /ส่งข้อความไม่สำเร็จ/.test(allText(shell.root)), 'Call send failure');
+  const retry = find(shell.root, node => node.dataset?.callAction === 'retry-reply');
+  assert.equal(retry.textContent, 'ลองส่งใหม่');
+  retry.click();
+  await waitFor(() => attempts.length === 2, 'Call send retry');
+  await waitFor(() => /ระบบตอบกลับด้วยเสียงยังไม่พร้อม/.test(allText(shell.root)), 'retry completion');
+  assert.equal(attempts[0].text, attempts[1].text);
+  assert.equal(attempts[0].idempotencyKey, attempts[1].idempotencyKey);
+  const transcript = await context.calls.listTranscript({ scope: context.scope, viewerAccountId: context.user.accountId, callSessionId: call.session.callSessionId });
+  assert.deepEqual(transcript.filter(row => row.speakerAccountId === context.user.accountId).map(row => row.text), ['ยังอยู่ในสายไหม']);
+  shell.dispose();
+});
+
+test('completed Call speech shows an archive warning when replay bytes were not saved', async () => {
+  const context = await setupPhase9({ castSize: 1, manifestId: 'p23-call-archive-warning' });
+  const coordinator = context.viewModels.callCoordinator;
+  await coordinator.startOutgoing({
+    scope: context.scope,
+    deviceId: context.user.deviceId,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    targetAccountId: context.alice.accountId,
+    autoAcceptTarget: true,
+    source: { authority: 'p23-instant-test', kind: 'archive-warning', recordId: 'archive-warning-call', version: '1' },
+    idempotencyKey: 'archive-warning-call',
+  });
+  const callBotReply = {
+    async prepareReplyToCommittedUserTranscript({ commit }) {
+      return { status: 'prepared', callSessionId: commit.transcript.callSessionId, segments: [{ subtitleThai: 'รับทราบ', spokenText: 'Understood.' }] };
+    },
+    commitPreparedReply({ prepared }) { return addCallText(context, prepared.callSessionId, { speaker: context.alice, text: 'รับทราบ', key: 'archive-warning-bot' }); },
+    cancelCall() {},
+  };
+  const callVoicePresenter = {
+    async presentPreparedBotReply({ commit }) { await commit(); return { status: 'played', audioHistory: { status: 'failed', savedSegments: 0, failedSegments: 1, totalSegments: 1 } }; },
+    cancelCall() { return false; },
+    dispose() {},
+  };
+  const shell = new TmrwPhoneShell({
+    document: context.document,
+    viewModels: context.viewModels,
+    controller: context.controller,
+    messageService: context.messages,
+    callService: context.calls,
+    callCoordinator: coordinator,
+    callBotReply,
+    callVoicePresenter,
+    scope: context.scope,
+    playerActorId: context.user.actorId,
+    playerInstanceId: context.user.instanceId,
+    selectedDeviceId: context.user.deviceId,
+  });
+  await shell.mount(context.target);
+  await open(shell, 'calls');
+  await waitFor(() => Boolean(find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text')), 'archive-warning Call composer');
+  const input = find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text');
+  input.value = 'ทดสอบเสียงย้อนหลัง';
+  for (const listener of input.listeners.get('input') || []) listener({ currentTarget: input });
+  find(shell.root, node => node.dataset?.callAction === 'send-text').click();
+  await waitFor(() => /บันทึกไว้ฟังย้อนหลังไม่สำเร็จ/.test(allText(find(shell.root, node => node.attributes?.get?.('role') === 'alert')))
+    && find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text')?.disabled === false, 'archive warning');
+  assert.equal(find(shell.root, node => node.attributes?.get?.('aria-label') === 'Call text').disabled, false);
+  assert.ok(find(shell.root, node => node.attributes?.get?.('role') === 'alert'));
+  shell.dispose();
 });
 
 test('opening TMRW Phone releases the SillyTavern text focus so the mobile keyboard does not follow it inside', async () => {

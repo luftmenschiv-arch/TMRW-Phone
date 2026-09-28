@@ -16,6 +16,8 @@ function child(command, args, options = {}) {
 }
 const unlock = await acquireLock(path.join(config.root, 'start.lock'));
 try {
+if (action === '--stop-voice') await atomicJson(path.join(config.root, 'voice-autostart-paused.json'), { paused: true });
+if (['start', '--voice-only'].includes(action)) await fs.unlink(path.join(config.root, 'voice-autostart-paused.json')).catch(error => { if (error.code !== 'ENOENT') throw error; });
 if (['--updates-off', '--updates-on'].includes(action)) {
   await atomicJson(path.join(config.root, 'update-settings.json'), { enabled: action === '--updates-on' });
   console.log(action === '--updates-on' ? 'เปิดอัปเดตตอนเริ่มใช้งานแล้ว' : 'ปิดอัปเดตของ tmrw-start แล้ว (การอัปเดตใน ST เป็นคนละส่วน)');

@@ -6,6 +6,8 @@ import { V3_GENERATION_INTERCEPTOR_KEY, V3_PRODUCTION_RUNTIME_ID } from '../../p
 import { ProductionSillyTavernContextAdapter } from '../../production/context-source-adapter.mjs';
 import { ProductionIdentityBindingResolver } from '../../production/identity-binding-resolver.mjs';
 import { MemoryV3Database } from '../../storage/memory-v3-database.mjs';
+import { V3IdentityKernel } from '../../domain/identity/identity-kernel.mjs';
+import { identitySeed } from '../phase2/identity-fixtures.mjs';
 import { V3RuntimeGuard } from '../../beta/runtime-guard.mjs';
 import { V3_RUNTIME_LEASE_KEY } from '../../storage/schema.mjs';
 
@@ -169,6 +171,26 @@ test('S08 constructs one exact fenced production graph in blueprint order and st
   assert.equal(root.finalHealth.ready, false);
   assert.ok(root.finalHealth.blockers.includes('shellMountHealthy'));
   await root.dispose();
+});
+
+test('previously mapped card outside the current migration plan is reused without fresh seeding', async () => {
+  const h = baseOptions();
+  const db = new MemoryV3Database({ registry: h.registry });
+  await db.open();
+  const kernel = new V3IdentityKernel({ database: db, now: () => '2026-08-29T00:00:00.000Z' });
+  const previous = await kernel.seedIdentityGraph({
+    ...identitySeed({ manifestId: 'prior-kaelan', cardSourceId: 'character:Dr. Kaelan Vance.png', storySourceId: 'story:kaelan-chat', routeSourceId: 'branch:main' }),
+    sourceAuthority: 'sillytavern',
+  });
+  db.close();
+  const root = await createTmrwV3ProductionRuntime(h.options);
+  const activeDb = h.rawDatabases[0];
+  const before = activeDb.diagnostics.writeCommits;
+  const result = await root.provisionProductionScopeAliases({ characterCardSourceId: 'character:Dr. Kaelan Vance.png', storySourceId: 'story:kaelan-chat', routeSourceId: 'branch:main' });
+  assert.equal(result.mode, 'existing-mapped-scope');
+  assert.deepEqual(result.scope, { storyId: previous.storyId, branchId: previous.branchId });
+  assert.equal(activeDb.diagnostics.writeCommits, before);
+  await root.dispose('existing-scope-reuse-test');
 });
 
 test('raw DB stays private and every normal canonical consumer shares the one normal fenced boundary', async () => {

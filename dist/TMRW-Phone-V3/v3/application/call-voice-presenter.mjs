@@ -81,7 +81,22 @@ export class CallVoicePresenter {
     const scope = requireEventScope(inputScope);
     const callSessionId = String(prepared?.callSessionId || committed?.transcript?.callSessionId || '').trim();
     const timingTurnId = String(prepared?.preparedId || committed?.transcript?.transcriptEntryId || '').trim();
-    const complete = result => { if (timingTurnId) this.#timing?.finish?.(timingTurnId, result?.status || result?.reason || 'finished', { outcome: result?.reason || result?.status }); return this.#record(result); };
+    const pendingHistoryWrites = [];
+    const complete = async result => {
+      // Playback and the next segment must not wait for IndexedDB, but a
+      // completed turn still waits for its archive writes before reporting success.
+      const historyWrites = pendingHistoryWrites.length ? await Promise.all(pendingHistoryWrites) : [];
+      const savedSegments = historyWrites.filter(write => write.saved).length;
+      const failedSegments = historyWrites.length - savedSegments;
+      const audioHistory = Object.freeze({
+        status: !historyWrites.length ? 'not-attempted' : !failedSegments ? 'saved' : !savedSegments ? 'failed' : 'partial',
+        savedSegments,
+        failedSegments,
+        totalSegments: historyWrites.length,
+      });
+      if (timingTurnId) this.#timing?.finish?.(timingTurnId, result?.status || result?.reason || 'finished', { outcome: result?.reason || result?.status });
+      return this.#record({ ...result, audioHistory });
+    };
     const segments = preparedSegments(prepared);
     const firstIndex = Math.max(0, Number(startIndex) || 0);
     if (!callSessionId || !segments.length || firstIndex >= segments.length) return this.#record({ status: 'failed', reason: 'invalid-prepared-voice-reply', failedIndex: firstIndex });
@@ -148,8 +163,8 @@ export class CallVoicePresenter {
         const transcriptEntryId = String(currentCommit.transcript?.transcriptEntryId || prepared.preparedId || callSessionId);
         if (renderResult.audioBlob && this.#audioHistory?.registerDerivedArtifact) {
           const artifactId = `${transcriptEntryId}:audio:${absoluteIndex}`;
-          try {
-            await this.#audioHistory.registerDerivedArtifact({ scope, artifact: {
+          this.#timing?.mark?.(timingTurnId, 'audio-history-start', { segmentIndex: absoluteIndex });
+          const historyWrite = Promise.resolve().then(() => this.#audioHistory.registerDerivedArtifact({ scope, artifact: {
               id: artifactId,
               callSessionId,
               transcriptEntryId,
@@ -167,8 +182,14 @@ export class CallVoicePresenter {
               durationMs: Number(renderResult.durationMs || 0),
               retention: 'temporary',
               sourceKind: 'tmrw-local-voice',
-            } });
-          } catch (error) { this.#timing?.mark?.(timingTurnId, 'audio-history-failed', { segmentIndex: absoluteIndex, outcome: error?.code || 'storage-failed' }); }
+            } })).then(
+            () => { this.#timing?.mark?.(timingTurnId, 'audio-history-ready', { segmentIndex: absoluteIndex }); return { segmentIndex: absoluteIndex, saved: true }; },
+            error => { this.#timing?.mark?.(timingTurnId, 'audio-history-failed', { segmentIndex: absoluteIndex, outcome: error?.code || 'storage-failed' }); return { segmentIndex: absoluteIndex, saved: false }; },
+          );
+          pendingHistoryWrites.push(historyWrite);
+        } else {
+          this.#timing?.mark?.(timingTurnId, 'audio-history-failed', { segmentIndex: absoluteIndex, outcome: renderResult.audioBlob ? 'history-unavailable' : 'audio-blob-unavailable' });
+          pendingHistoryWrites.push(Promise.resolve({ segmentIndex: absoluteIndex, saved: false }));
         }
         this.#timing?.mark?.(timingTurnId, 'playback-start', { segmentIndex: absoluteIndex, segmentCount: segments.length, durationMs: renderResult.durationMs, language });
         const playback = await this.#playback.play({ callSessionId, transcriptEntryId: `${transcriptEntryId}:segment:${absoluteIndex}`, audioArtifactRef: renderResult.audioArtifactRef });

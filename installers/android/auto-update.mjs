@@ -5,6 +5,7 @@ import net from 'node:net';
 import { run, acquireLock, checkedPack } from './download.mjs';
 import { installRuntime, activateRuntime } from './install-runtime.mjs';
 import { installLauncher } from './launcher-tools.mjs';
+import { installVoiceBootstrap } from './install-voice-bootstrap.mjs';
 
 export const REPOSITORY = 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone';
 const ASSETS = `${REPOSITORY}/releases/download/`;
@@ -131,7 +132,7 @@ export async function updateVoice(config, channel, { fetchImpl = fetch, install 
     throw error;
   }
 }
-export async function autoUpdate(config, { extensionUpdater = updateExtension, voiceUpdater = updateVoice, refreshLauncher = installLauncher, busy = isBusy, log = console.log } = {}) {
+export async function autoUpdate(config, { extensionUpdater = updateExtension, voiceUpdater = updateVoice, refreshLauncher = installLauncher, refreshBootstrap = installVoiceBootstrap, busy = isBusy, log = console.log } = {}) {
   const unlock = await acquireLock(path.join(config.root, 'update.lock'));
   try {
     await recoverPending(config, { busy });
@@ -143,6 +144,7 @@ export async function autoUpdate(config, { extensionUpdater = updateExtension, v
     catch (error) { log(`ยังไม่อัปเดต Extension ใช้รุ่นเดิมต่อ: ${error.message}`); return { error: error.message }; }
     await run(process.execPath, ['scripts/verify-release.mjs'], { cwd: extensionPath(config), timeout: 120000 });
     await refreshLauncher(config, path.join(extensionPath(config), 'scripts/termux'));
+    await refreshBootstrap(config, path.join(extensionPath(config), 'scripts/termux'));
     const channel = JSON.parse(await fs.readFile(path.join(extensionPath(config), 'scripts/termux/voice-update.json'), 'utf8'));
     const voice = await voiceUpdater(config, channel);
     const result = { checkedAt: new Date().toISOString(), extension, voice };

@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { installPack, validatePackIndex } from './pack-installer.mjs';
+import { withRuntimeMaintenance } from './runtime-maintenance.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(process.env.TMRW_VOICE_HOME || path.join(os.homedir(), '.tmrw-voice'));
@@ -92,10 +93,13 @@ async function previewAudio(profileId, language) {
   const id = safeId(profileId); const lang = language === 'ja' ? 'ja' : 'en';
   if (!id) throw Object.assign(new Error('invalid-preview-profile'), { status: 400 });
   const directory = path.join(root, 'previews'); await fs.mkdir(directory, { recursive: true });
-  const cached = path.join(directory, `${id}-${lang}.wav`); const existing = await fs.readFile(cached).catch(() => null);
+  const profile = await fs.readFile(path.join(root, 'profiles', id, 'voice.voiceprofile.npz')).catch(() => null);
+  if (!profile) throw Object.assign(new Error('voice-profile-not-installed'), { status: 404 });
+  const profileDigest = crypto.createHash('sha256').update(profile).digest('hex').slice(0, 16);
+  const cached = path.join(directory, `${id}-${lang}-clone-only-v3-${profileDigest}.wav`); const existing = await fs.readFile(cached).catch(() => null);
   if (existing?.length > 44) return existing;
   const health = await runtimeHealth(); if (!health.ready) throw Object.assign(new Error('runtime-not-ready'), { status: 503 });
-  const spoken = lang === 'ja' ? 'こんにちは。声のサンプルです。' : 'Hello. This is a preview of my voice.';
+  const spoken = lang === 'ja' ? 'こんにちは、今日はどんなお話をしましょうか。' : 'Hello, it is nice to speak with you today.';
   const turn = await runtimeJson('/turn/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_chunks: 1, language: lang === 'ja' ? 'japanese' : 'English', calibration: false, profile_id: id }) });
   await runtimeJson('/turn/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ turn_id: turn.turn_id, index: 0, text: spoken, subtitle: spoken }) });
   const audioResponse = await fetch(`${runtimeUrl}/turn/audio?wait=1&turn_id=${encodeURIComponent(turn.turn_id)}&index=0`);
@@ -137,14 +141,14 @@ async function handle(request, response) {
     if (!characterId || !audioId || !transcript || transcript.length > 5000) throw Object.assign(new Error('invalid-clone-request'), { status: 400 });
     const normalizedAudio = path.join(root, 'incoming', `${audioId}.wav`); const originalAudio = path.join(root, 'incoming', `${audioId}.audio`); const audio = (await fs.stat(normalizedAudio).catch(() => null))?.isFile() ? normalizedAudio : originalAudio; if (!(await fs.stat(audio).catch(() => null))?.isFile()) throw Object.assign(new Error('audio-not-found'), { status: 404 });
     const profileDir = path.join(root, 'profiles', characterId); await fs.mkdir(profileDir, { recursive: true }); const profile = path.join(profileDir, 'voice.voiceprofile.npz');
-    const job = beginJob('clone-voice', async update => {
+    const job = beginJob('clone-voice', update => withRuntimeMaintenance(root, async () => {
       const runtimeWasReachable = (await runtimeHealth()).reachable;
-      if (runtimeWasReachable) {
-        update({ phase: 'pausing-runtime' });
-        const stop = await commandScript('STOP-TMRW-VOICE-MOBILE.sh');
-        await run('bash', [stop], { env: { ...process.env, TMRW_VOICE_HOME: root } });
-      }
       try {
+        if (runtimeWasReachable) {
+          update({ phase: 'pausing-runtime' });
+          const stop = await commandScript('STOP-TMRW-VOICE-MOBILE.sh');
+          await run('bash', [stop], { env: { ...process.env, TMRW_VOICE_HOME: root } });
+        }
         update({ phase: 'extracting-profile' });
         const worker = await activeTool('extract_voice_profile.py'); const python = await voicePython();
         await run(python, [worker, '--audio', audio, '--transcript', transcript, '--language', input.language === 'ja' ? 'japanese' : 'English', '--output', profile]);
@@ -158,7 +162,7 @@ async function handle(request, response) {
           await run('bash', [start], { env: { ...process.env, TMRW_VOICE_HOME: root } });
         }
       }
-    });
+    }));
     return send(response, 202, job);
   }
   return send(response, 404, { ok: false, error: 'not-found' });

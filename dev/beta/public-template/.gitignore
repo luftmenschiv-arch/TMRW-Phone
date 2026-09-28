@@ -1,0 +1,10 @@
+node_modules/
+*.log
+.env
+.env.*
+settings.json
+secrets.json
+data/
+user-data/
+recordings/
+uploads/

@@ -104,6 +104,7 @@ export class CanonicalEventEngine {
   #transactionStores;
   #now;
   #lastMetrics = Object.freeze({ operation: 'none' });
+  #commitListeners = new Set();
 
   constructor({ database, eventTypes, projectors = [], now = () => new Date().toISOString() }) {
     if (!database) throw new TypeError('An open isolated v3 database is required');
@@ -124,6 +125,27 @@ export class CanonicalEventEngine {
 
   get projectorCount() {
     return this.#projectors.length;
+  }
+
+  subscribeCommits(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Commit listener must be a function');
+    this.#commitListeners.add(listener);
+    return () => this.#commitListeners.delete(listener);
+  }
+
+  #publishCommitted(scope, operation, response, metrics = null) {
+    if (response?.replayed || this.#commitListeners.size === 0) return;
+    const eventTypes = [...new Set([response?.event?.eventType, response?.correctionEvent?.eventType].filter(Boolean))];
+    const change = Object.freeze({
+      scope: Object.freeze({ storyId: scope.storyId, branchId: scope.branchId }),
+      operation,
+      eventId: response?.event?.id || null,
+      eventTypes: Object.freeze(eventTypes),
+      commitSequence: Number(response?.event?.commitSequence || metrics?.commitSequence || 0),
+    });
+    for (const listener of [...this.#commitListeners]) {
+      try { listener(change); } catch { /* A UI observer cannot invalidate a committed transaction. */ }
+    }
   }
 
   async append(input) {
@@ -181,6 +203,7 @@ export class CanonicalEventEngine {
       };
     });
     this.#lastMetrics = Object.freeze(committed.metrics);
+    this.#publishCommitted(scope, 'append', committed.response, committed.metrics);
     return committed.response;
   }
 
@@ -220,6 +243,7 @@ export class CanonicalEventEngine {
       return { response: Object.freeze({ event: next, correctionEvent: appendedCorrection.event, replayed: false, cascadedEventIds: Object.freeze([]) }), metrics: { operation: 'revise', sourceEventsScanned: 0, directEventReads: 1, commitSequence: sequence.next, ...projectionMetrics } };
     });
     this.#lastMetrics = Object.freeze(committed.metrics);
+    this.#publishCommitted(scope, 'revise', committed.response, committed.metrics);
     return committed.response;
   }
 
@@ -273,6 +297,7 @@ export class CanonicalEventEngine {
       return { response: Object.freeze({ event: rootAfter, correctionEvent: appendedCorrection.event, replayed: false, cascadedEventIds: Object.freeze(cascadedEventIds) }), metrics: { operation: 'retract', sourceEventsScanned: 0, directEventReads: eventIds.length, cascaded: cascadedEventIds.length, ...projectionMetrics } };
     });
     this.#lastMetrics = Object.freeze(committed.metrics);
+    this.#publishCommitted(scope, 'retract', committed.response, committed.metrics);
     return committed.response;
   }
 
@@ -319,6 +344,7 @@ export class CanonicalEventEngine {
       return { response: Object.freeze({ event: rootAfter, correctionEvent: appendedCorrection.event, replayed: false, cascadedEventIds: Object.freeze(result.cascadedEventIds) }), metrics: { operation: 'restore', sourceEventsScanned: 0, directEventReads: selectedIds.length, restored: restored.length, ...projectionMetrics } };
     });
     this.#lastMetrics = Object.freeze(committed.metrics);
+    this.#publishCommitted(scope, 'restore', committed.response, committed.metrics);
     return committed.response;
   }
 
@@ -364,6 +390,7 @@ export class CanonicalEventEngine {
       return rebuildProjectors({ repositories, scope, projectors: this.#projectors, currentCommitSequence: sequence, updatedAt });
     });
     this.#lastMetrics = Object.freeze({ operation: 'rebuild', ...metrics });
+    this.#publishCommitted(scope, 'rebuild', null, metrics);
     return this.lastOperationMetrics;
   }
 
@@ -376,6 +403,7 @@ export class CanonicalEventEngine {
       return catchUpProjectors({ repositories, scope, projectors: this.#projectors, currentCommitSequence: sequence, updatedAt });
     });
     this.#lastMetrics = Object.freeze({ operation: 'catch-up', ...metrics });
+    if (Number(metrics?.projectionsWritten || 0) + Number(metrics?.projectionsDeleted || 0) + Number(metrics?.aggregateRowsWritten || 0) > 0) this.#publishCommitted(scope, 'catch-up', null, metrics);
     return this.lastOperationMetrics;
   }
 }

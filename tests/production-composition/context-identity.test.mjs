@@ -266,6 +266,32 @@ test('legacy single-character placeholder Accounts may bridge to the active dire
   );
 });
 
+test('returning to a previously mapped card reuses its exact scope without writing or reseeding', async () => {
+  const first = await seedIdentity({ manifestId: 'return-kyle', cardSourceId: 'character:Kyle Rosenberg.png', storySourceId: 'story:kyle-chat', routeSourceId: 'branch:main' });
+  const second = await seedIdentity({ database: first.database, kernel: first.kernel, manifestId: 'return-kaelan', cardSourceId: 'character:Dr. Kaelan Vance.png', storySourceId: 'story:kaelan-chat', routeSourceId: 'branch:main' });
+  const ref = { current: { chat: [], stableSourceIdentity: stableIdentity(first.seed) } };
+  const adapter = contextAdapter(first.database, ref);
+  const before = first.database.diagnostics.writeCommits;
+  assert.deepEqual(await adapter.findExistingScope(stableIdentity(first.seed)), first.scope);
+  ref.current.stableSourceIdentity = stableIdentity(second.seed);
+  assert.deepEqual(await adapter.findExistingScope(stableIdentity(second.seed)), second.scope);
+  assert.deepEqual(await adapter.resolveScope(), second.scope);
+  assert.equal(first.database.diagnostics.writeCommits, before);
+});
+
+test('only a wholly unmapped card can enter fresh provisioning; a partially mapped card fails closed', async () => {
+  const setup = await seedIdentity({ manifestId: 'partial-card', cardSourceId: 'character:existing.png', storySourceId: 'story:existing', routeSourceId: 'branch:main' });
+  const ref = { current: { chat: [], stableSourceIdentity: stableIdentity(setup.seed) } };
+  const adapter = contextAdapter(setup.database, ref);
+  const before = setup.database.diagnostics.writeCommits;
+  assert.equal(await adapter.findExistingScope({ characterCardSourceId: 'character:new.png', storySourceId: 'story:new', routeSourceId: 'branch:main' }), null);
+  await assert.rejects(
+    () => adapter.findExistingScope({ characterCardSourceId: setup.seed.card.sourceCardId, storySourceId: 'story:missing', routeSourceId: 'branch:main' }),
+    /missing Story mapping/i,
+  );
+  assert.equal(setup.database.diagnostics.writeCommits, before);
+});
+
 test('active call resolves its exact migrated counterpart despite a different first cast member', async () => {
   const setup = await seedIdentity({
     manifestId: 's06-preview-call-counterpart',

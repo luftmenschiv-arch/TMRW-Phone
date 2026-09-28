@@ -6,6 +6,7 @@ import { notificationCenterViewModel } from './notifications.mjs';
 import { renderApprovedCallSurface } from './calls/approved-call-surface.mjs';
 import { renderVoiceSetup } from './voice-setup.mjs';
 import { TMRWVoiceManagerClient } from '../platform/voice/tmrw-voice-manager-client.mjs';
+import { PUBLIC_RUNTIME_PACK_INDEX_URL } from '../platform/voice/runtime-pack-release.mjs';
 import { createPreviewIcon } from './app-icons.mjs';
 import { renderGallery } from './gallery.mjs';
 import { renderFiles } from './files.mjs';
@@ -32,6 +33,49 @@ const formatBytes = value => { const bytes = Math.max(0, Number(value) || 0); if
 const normalizeDialNumber = value => String(value || '').replace(/[^0-9+*#]/gu, '');
 const DIAL_KEYS = Object.freeze([['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ'],['*',''],['0','+'],['#','']]);
 const firstDescendant = (node, predicate) => { if (!node) return null; if (predicate(node)) return node; for (const child of node.children || []) { const found = firstDescendant(child, predicate); if (found) return found; } return null; };
+const ROUTE_EVENT_PREFIXES = Object.freeze({
+  messages: ['messaging.', 'social.persona-', 'phone.'],
+  calls: ['calls.', 'phone.'],
+  contacts: ['phone.', 'messaging.'],
+  feed: ['social.'],
+  insungram: ['social.'],
+  live: ['live.'],
+  gallery: ['gallery.'],
+  files: ['files.'],
+  maps: ['maps.'],
+  calendar: ['calendar.', 'time.'],
+  wallet: ['wallet.', 'shop.checkout'],
+  shop: ['shop.', 'wallet.'],
+  weather: ['weather.'],
+  health: ['health.'],
+  notes: ['notes.'],
+  search: ['search.'],
+  settings: ['phone.'],
+  theme: ['phone.'],
+});
+export function shouldRefreshPhoneRoute(route, change) {
+  if (change?.operation === 'rebuild' || change?.operation === 'catch-up') return true;
+  if (route === 'launcher' || route === 'notifications' || route === 'diagnostics') return true;
+  const prefixes = ROUTE_EVENT_PREFIXES[route] || [];
+  return (change?.eventTypes || []).some(type => prefixes.some(prefix => String(type).startsWith(prefix)));
+}
+export function refreshThreadKeepingComposer(screen, nextContent, threadId) {
+  const named = (root, className) => firstDescendant(root, node => String(node.className || '').split(/\s+/u).includes(className));
+  const current = named(screen, 'tmrw-phone-thread-screen');
+  const next = named(nextContent, 'tmrw-phone-thread-screen');
+  if (!current || !next || !threadId || current.dataset.threadId !== threadId || next.dataset.threadId !== threadId) return false;
+  for (const className of ['tmrw-phone-chat-header', 'tmrw-phone-chat-context', 'tmrw-phone-bubbles']) {
+    if (!named(current, className) || !named(next, className)) return false;
+  }
+  for (const className of ['tmrw-phone-chat-header', 'tmrw-phone-chat-context', 'tmrw-phone-bubbles']) {
+    const target = named(current, className);
+    const source = named(next, className);
+    const scrollTop = className === 'tmrw-phone-bubbles' ? target.scrollTop : null;
+    target.replaceChildren(...source.children);
+    if (scrollTop !== null) target.scrollTop = scrollTop;
+  }
+  return true;
+}
 const APP_TITLES = Object.freeze({ contacts: 'Phone', messages: 'Messages', calls: 'Phone', feed: 'Insungram', insungram: 'Insungram', live: 'Live', notifications: 'กิจกรรม', gallery: 'Gallery', files: 'Files', theme: 'Themes', maps: 'Maps', calendar: 'Calendar', wallet: 'กระเป๋าเงิน', shop: 'ร้านค้า', weather: 'Weather', health: 'Health', notes: 'Notes', search: 'Search', guide: 'Guide', settings: 'Settings', diagnostics: 'Diagnostics' });
 const appKind = route => ['feed','insungram','live','messages','notifications'].includes(route) ? 'social' : ['wallet','shop'].includes(route) ? 'commerce' : ['maps','calendar','weather','health'].includes(route) ? 'lifestyle' : ['notes','search','calls','contacts'].includes(route) ? 'personal' : 'utility';
 const addIcon = (document, node, name, size) => { node.append(createPreviewIcon({ document, name, size })); return node; };
@@ -121,7 +165,16 @@ export class TmrwPhoneShell {
   #bootstrapSelectedCastIds = new Set();
   #renderedRoute = null;
   #renderRevision = 0;
+  #messageDrafts = new Map();
+  #socialDrafts = new Map();
+  #activeMessageView = null;
+  #viewportSync = null;
+  #eventEngine = null;
+  #commitUnsubscribe = null;
+  #storeRefreshTimer = null;
+  #storeRefreshPending = false;
   #callRetryAttempts = new Map();
+  #callArchiveWarnings = new Map();
   #playerDisplayNameResolver = null;
   #phoneActivityBusy = false;
   #phoneActivityNotice = null;
@@ -129,7 +182,8 @@ export class TmrwPhoneShell {
   #botNameNotice = null;
   #bootstrapNotice = null;
 
-  constructor({ document, viewModels, controller, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, callBotReply = null, callVoicePresenter = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, playerDisplayName = null, playerDisplayNameResolver = null, playerAvatarUrl = null, activeCharacterDisplayName = null, activeCharacterAvatarUrl = null, selectedDeviceId, ensureAuthoringReady = null, onClose = null }) {
+  constructor({ document, viewModels, controller, eventEngine = null, messageService = null, callService = null, callCoordinator = null, callStoryIntegration = null, callBotReply = null, callVoicePresenter = null, storyContinuation = null, socialService = null, notificationService = null, scope, playerActorId, playerInstanceId, playerDisplayName = null, playerDisplayNameResolver = null, playerAvatarUrl = null, activeCharacterDisplayName = null, activeCharacterAvatarUrl = null, selectedDeviceId, ensureAuthoringReady = null, onClose = null }) {
+    this.#eventEngine = eventEngine;
     if (!document || !viewModels || !controller) throw new TypeError('TmrwPhoneShell requires a DOM document and Phase 7 services');
     this.#activeCharacterAvatarUrl = activeCharacterAvatarUrl;
     this.#playerAvatarUrl = playerAvatarUrl;
@@ -145,7 +199,44 @@ export class TmrwPhoneShell {
     if (this.#root) return this.#root;
     const chrome = createPreviewRootChrome({ document: this.#document, onClose: () => this.close() });
     target.append(chrome.root); this.#root = chrome.root; this.#screen = chrome.screen; this.#sheetLayer = chrome.sheet; this.#toast = chrome.toast; this.#metrics.shellMounts += 1;
+    this.#commitUnsubscribe = this.#eventEngine?.subscribeCommits?.(change => this.#onCommittedChange(change)) || null;
+    this.#root.addEventListener?.('focusout', () => {
+      if (this.#storeRefreshPending) this.#scheduleStoreRefresh();
+    });
+    const viewport = globalThis.visualViewport;
+    if (viewport?.addEventListener) {
+      const sync = () => {
+        if (!this.#root) return;
+        this.#root.style?.setProperty?.('--tmrw-viewport-height', `${Math.max(1, viewport.height)}px`);
+        this.#root.style?.setProperty?.('--tmrw-viewport-top', `${Math.max(0, viewport.offsetTop || 0)}px`);
+        this.#root.dataset.keyboardOpen = String(Number(globalThis.innerHeight || 0) - viewport.height > 120);
+      };
+      viewport.addEventListener('resize', sync);
+      viewport.addEventListener('scroll', sync);
+      this.#viewportSync = () => { viewport.removeEventListener?.('resize', sync); viewport.removeEventListener?.('scroll', sync); };
+      sync();
+    }
     await this.render(); void this.#initializeDetectedVoice(); return this.#root;
+  }
+  #onCommittedChange(change) {
+    if (!this.#root || this.#root.hidden || this.#root.parentNode?.hidden) return;
+    if (change?.scope?.storyId !== this.#scope?.storyId || change?.scope?.branchId !== this.#scope?.branchId) return;
+    if (!shouldRefreshPhoneRoute(this.#router.route, change)) return;
+    this.#storeRefreshPending = true;
+    this.#scheduleStoreRefresh();
+  }
+  #scheduleStoreRefresh() {
+    if (this.#storeRefreshTimer !== null || !this.#storeRefreshPending) return;
+    this.#storeRefreshTimer = globalThis.setTimeout(() => {
+      this.#storeRefreshTimer = null;
+      if (!this.#root || this.#root.hidden || this.#root.parentNode?.hidden) { this.#storeRefreshPending = false; return; }
+      const focused = this.#document.activeElement;
+      const editable = ['input', 'textarea'].includes(String(focused?.tagName || '').toLowerCase())
+        && this.#root.contains?.(focused);
+      if (editable && !(this.#router.route === 'messages' && this.#selectedThreadId)) return;
+      this.#storeRefreshPending = false;
+      void this.renderActive().catch(() => { this.#storeRefreshPending = true; });
+    }, 40);
   }
   open() { if (!this.#root) return false; try { this.#document.activeElement?.blur?.(); this.#root.setAttribute?.('tabindex', '-1'); this.#root.focus?.({ preventScroll: true }); } catch {} this.#presentationView = 'lock'; this.#selectedThreadId = null; this.#selectedLiveSessionId = null; this.#closedCallSurfaceId = null; if (this.#router.route !== 'launcher') this.#router.navigate('launcher'); else void this.renderActive(); this.#document.body?.classList?.add?.('tmrw-phone-no-scroll'); return true; }
   close() { this.#closeSheet(); this.#document.body?.classList?.remove?.('tmrw-phone-no-scroll'); if (this.#onClose) this.#onClose(); else if (this.#root) this.#root.hidden = true; return true; }
@@ -256,8 +347,11 @@ export class TmrwPhoneShell {
     root.dataset.theme = view.settings?.themeId || 'light-blue';
     this.#metrics.eventHistoryScans += view.renderMetrics.canonicalEventHistoryScans;
     this.#selectedCallSessionId = view.activeCallSessionId || this.#selectedCallSessionId;
-    const content = await this.#renderContent(view); if (!isCurrent()) return null; screen.replaceChildren(content);
-    if (refreshingSameRoute && priorScrollTop > 0) {
+    const content = await this.#renderContent(view); if (!isCurrent()) return null;
+    const retainedComposer = route === 'messages' && refreshingSameRoute && this.#selectedThreadId
+      && refreshThreadKeepingComposer(screen, content, String(view.activeThreadId || this.#selectedThreadId));
+    if (!retainedComposer) screen.replaceChildren(content);
+    if (!retainedComposer && refreshingSameRoute && priorScrollTop > 0) {
       const nextScrollContainer = firstDescendant(screen, node => String(node.tagName || '').toLowerCase() === 'main');
       if (nextScrollContainer) nextScrollContainer.scrollTop = priorScrollTop;
     }
@@ -269,6 +363,27 @@ export class TmrwPhoneShell {
 
   async selectDevice(deviceId) { if (deviceId === this.#selectedDeviceId) return; this.#homePageByDevice.set(this.#selectedDeviceId, this.#homePage); this.#controller.close({ scope:this.#scope, deviceId:this.#selectedDeviceId }); this.#selectedDeviceId=deviceId; this.#homePage=this.#homePageByDevice.get(deviceId) || 0; this.#selectedThreadId=null; this.#selectedLiveSessionId=null; this.#selectedCallSessionId=null; this.#callDetailsSessionId=null; this.#closedCallSurfaceId=null; this.#dialpadOpen=false; this.#dialpadDigits=''; this.#dialpadMessage=null; this.#selectedGalleryRecordId=null; this.#selectedFileRecordId=null; this.#locationDraftLabel=''; this.#selectedLocationAudienceIds.clear(); this.#calendarFormMode=null; this.#lastCalendarError=null; this.#selectedWalletRecordId=null; this.#selectedShopRecordId=null; this.#checkoutConfirmationRecordId=null; this.#checkoutResult=null; this.#shopStaleRecordId=null; this.#checkoutBusy=false; this.#lastCommerceError=null; this.#selectedNoteRecordId=null; this.#noteFormMode=null; this.#pendingNoteDeleteId=null; this.#searchQuery=''; this.#submittedSearchQuery=''; this.#searchClearBusy=false; this.#lastPersonalError=null; this.#lastSocialActionError=null; this.#socialBusy=false; this.#socialComposerPostId=null; this.#socialReplyTarget=null; this.#freshFeedPostIds.clear(); this.#feedRefreshNotice=null; this.#phoneActivityNotice=null; this.#pendingRemoval=null; this.#screen?.replaceChildren?.(); await this.render(); }
   async renderActive() { return this.#root ? this.render() : null; }
+  #messageDraftKey(threadId) { return JSON.stringify([this.#scope?.storyId, this.#scope?.branchId, this.#selectedDeviceId, threadId]); }
+  #rememberMessageDraft(key, value) {
+    if (!value) this.#messageDrafts.delete(key);
+    else {
+      this.#messageDrafts.delete(key);
+      this.#messageDrafts.set(key, value);
+      if (this.#messageDrafts.size > 32) this.#messageDrafts.delete(this.#messageDrafts.keys().next().value);
+    }
+  }
+  #socialDraftKey(view, kind, postId = null, parentCommentId = null) {
+    const perspective = view?.opened?.perspective;
+    return JSON.stringify([this.#scope?.storyId, this.#scope?.branchId, perspective?.deviceId, perspective?.accountId, kind, postId, parentCommentId]);
+  }
+  #rememberSocialDraft(key, value) {
+    if (!value) this.#socialDrafts.delete(key);
+    else {
+      this.#socialDrafts.delete(key);
+      this.#socialDrafts.set(key, value);
+      if (this.#socialDrafts.size > 64) this.#socialDrafts.delete(this.#socialDrafts.keys().next().value);
+    }
+  }
 
   async #openSocialComposer(postId, reply = null) {
     this.#focusedPostId = postId;
@@ -306,7 +421,15 @@ export class TmrwPhoneShell {
     const writable = this.#selectedPerspectiveKind === 'my-phone' && Boolean(this.#social && view.opened.perspective.accountId);
     if (this.#lastSocialActionError) feed.append(renderInlineNotice({ document:this.#document, tone:'error', title:'ส่งความเคลื่อนไหวยังไม่สำเร็จ', detail:this.#lastSocialActionError }));
     if (this.#feedRefreshNotice) { const notice=renderInlineNotice({document:this.#document,tone:'info',title:this.#feedRefreshNotice,detail:'โพสต์ที่เพิ่งเข้ามามีป้าย ใหม่ และถูกพาขึ้นมาไว้ด้านบนแล้ว'});notice.classList?.add?.('tmrw-phone-feed-new-notice');feed.append(notice); }
-    if (writable) { const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-feed-intro tmrw-v3-feed-composer'; const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'ข้อความโพสต์'); input.placeholder = 'วันนี้อยากเล่าอะไร…'; const send = element(this.#document, 'button', 'โพสต์'); send.dataset.action = 'create-feed-post'; send.disabled = true; input.addEventListener('input', () => { send.disabled = this.#socialBusy || !String(input.value || '').trim(); }); send.addEventListener('click', () => { if (this.#socialBusy || !String(input.value || '').trim()) return; this.#socialBusy = true; send.disabled = true; void this.#createPost(view, input); }); composer.append(input, send); feed.append(composer); }
+    if (writable) {
+      const draftKey = this.#socialDraftKey(view, 'post');
+      const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-feed-intro tmrw-v3-feed-composer';
+      const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'ข้อความโพสต์'); input.placeholder = 'วันนี้อยากเล่าอะไร…'; input.value = this.#socialDrafts.get(draftKey) || '';
+      const send = element(this.#document, 'button', 'โพสต์'); send.dataset.action = 'create-feed-post'; send.disabled = this.#socialBusy || !String(input.value).trim();
+      input.addEventListener('input', () => { this.#rememberSocialDraft(draftKey, String(input.value || '')); send.disabled = this.#socialBusy || !String(input.value || '').trim(); });
+      send.addEventListener('click', () => { if (this.#socialBusy || !String(input.value || '').trim()) return; this.#socialBusy = true; send.disabled = true; void this.#createPost(view, input, draftKey); });
+      composer.append(input, send); feed.append(composer);
+    }
     let posts = feedViewModel(view.feed).filter(post=>!(view.socialProfile?.hiddenPostIds||[]).includes(post.postId)&&!looksLikeStructuredPromptLeak(post.text));
     if(this.#focusedPostId){posts=posts.filter(post=>post.postId===this.#focusedPostId);const detail=element(this.#document,'div');detail.className='tmrw-phone-feed-detail-bar';detail.append(element(this.#document,'strong','โพสต์และความคิดเห็นทั้งหมด'));const all=element(this.#document,'button','กลับไปดูฟีด');all.addEventListener('click',()=>{this.#focusedPostId=null;void this.renderActive();});detail.append(all);feed.append(detail);}
     for (const post of posts) {
@@ -316,7 +439,21 @@ export class TmrwPhoneShell {
       if (post.commentPreview.length) { const replies=element(this.#document,'div');replies.className='tmrw-phone-post-comments';for(const reply of post.commentPreview){const line=element(this.#document,'div');line.className=reply.parentCommentId?'tmrw-phone-post-comment is-reply':'tmrw-phone-post-comment';const replyLabel=this.#accountLabel(view,reply.authorAccountId,view.feedAccountLabels?.[reply.authorAccountId]||'ชาวเน็ต');line.append(createPreviewAvatar({document:this.#document,label:replyLabel,size:'xs',imageUrl:this.#accountAvatar(view,reply.authorAccountId,replyLabel,reply.actualAuthorInstanceId)}));const copy=element(this.#document,'p');copy.append(element(this.#document,'strong',replyLabel),this.#document.createTextNode?this.#document.createTextNode(` ${reply.text}`):element(this.#document,'span',` ${reply.text}`));line.append(copy);if(writable){const replyButton=element(this.#document,'button','ตอบกลับ');replyButton.type='button';replyButton.dataset.action='reply-feed-comment';replyButton.addEventListener('click',()=>void this.#openSocialComposer(post.postId,reply));line.append(replyButton);}replies.append(line);}article.append(replies); }
       if(this.#socialPendingPostIds.has(post.postId)){const pending=element(this.#document,'div');pending.className='tmrw-phone-social-pending';pending.append(element(this.#document,'span','กำลังมีคนมาตอบ'),element(this.#document,'i'),element(this.#document,'i'),element(this.#document,'i'));article.append(pending);}
       const failure=this.#socialReplyFailures.get(post.postId);if(failure){const notice=element(this.#document,'div');notice.className='tmrw-phone-social-reply-failure';notice.append(element(this.#document,'span','ชาวเน็ตยังตอบไม่ทัน'));const retry=element(this.#document,'button','ลองเรียกอีกครั้ง');retry.dataset.action='retry-social-replies';retry.addEventListener('click',()=>void this.#requestSocialReplies({...failure}));notice.append(retry);article.append(notice);}
-      if(writable&&this.#socialComposerPostId===post.postId){const composer=element(this.#document,'div');composer.className='tmrw-phone-comment-composer';const input=element(this.#document,'textarea');const replying=this.#socialReplyTarget;input.setAttribute('aria-label',replying?'ข้อความตอบกลับ':'ข้อความความคิดเห็น');input.placeholder=replying?`ตอบกลับ ${view.feedAccountLabels?.[replying.authorAccountId]||'ความคิดเห็นนี้'}…`:'เขียนความคิดเห็น…';const controls=element(this.#document,'div');if(replying){const cancel=element(this.#document,'button','ยกเลิกตอบกลับ');cancel.type='button';cancel.addEventListener('click',()=>{this.#socialReplyTarget=null;void this.renderActive();});controls.append(cancel);}const submit=element(this.#document,'button','ส่ง');submit.type='button';submit.dataset.action='submit-feed-comment';submit.disabled=true;input.addEventListener('input',()=>{submit.disabled=!String(input.value||'').trim();});submit.addEventListener('click',()=>void this.#submitSocialComment(view,post,input,replying?(replying.parentCommentId||replying.commentId):null));controls.append(submit);composer.append(input,controls);article.append(composer);}
+      if(writable&&this.#socialComposerPostId===post.postId){
+        const composer=element(this.#document,'div');composer.className='tmrw-phone-comment-composer';
+        const input=element(this.#document,'textarea');const replying=this.#socialReplyTarget;
+        const parentCommentId=replying?(replying.parentCommentId||replying.commentId):null;
+        const draftKey=this.#socialDraftKey(view,'comment',post.postId,parentCommentId);
+        input.setAttribute('aria-label',replying?'ข้อความตอบกลับ':'ข้อความความคิดเห็น');
+        input.placeholder=replying?`ตอบกลับ ${view.feedAccountLabels?.[replying.authorAccountId]||'ความคิดเห็นนี้'}…`:'เขียนความคิดเห็น…';
+        input.value=this.#socialDrafts.get(draftKey)||'';
+        const controls=element(this.#document,'div');
+        if(replying){const cancel=element(this.#document,'button','ยกเลิกตอบกลับ');cancel.type='button';cancel.addEventListener('click',()=>{this.#socialReplyTarget=null;void this.renderActive();});controls.append(cancel);}
+        const submit=element(this.#document,'button','ส่ง');submit.type='button';submit.dataset.action='submit-feed-comment';submit.disabled=!String(input.value).trim();
+        input.addEventListener('input',()=>{this.#rememberSocialDraft(draftKey,String(input.value||''));submit.disabled=!String(input.value||'').trim();});
+        submit.addEventListener('click',()=>{if(submit.disabled)return;submit.disabled=true;void this.#submitSocialComment(view,post,input,parentCommentId,draftKey);});
+        controls.append(submit);composer.append(input,controls);article.append(composer);
+      }
       feed.append(article);
     }
     if (!posts.length) feed.append(renderLivingState({ document:this.#document, state:'empty', title:'ฟีดยังเงียบอยู่แป๊บหนึ่ง', detail:'กดอัปเดตมือถือเพื่อชวนเรื่องราวล่าสุดเข้ามาในฟีด' }));
@@ -397,7 +534,10 @@ export class TmrwPhoneShell {
   #renderThread(view) {
     const thread = (view.threadRows || []).find(row => row.threadId === this.#selectedThreadId) || (view.threadRows || [])[0] || null;
     const title = thread?.label || 'ข้อความ'; const subtitle = thread?.secondary || (thread ? `${thread.participantCount} คน` : (view.messages.length ? `${view.messages.length} ข้อความ` : 'ยังไม่มีข้อความ'));
-    const root = element(this.#document, 'div'); root.className = 'tmrw-phone-thread-screen'; root.append(createPreviewStatusBar({ document: this.#document }));
+    this.#activeMessageView = view;
+    const root = element(this.#document, 'div'); root.className = 'tmrw-phone-thread-screen';
+    root.dataset.threadId = String(view.activeThreadId || thread?.threadId || this.#selectedThreadId);
+    root.append(createPreviewStatusBar({ document: this.#document }));
     const header = element(this.#document, 'header'); header.className = 'tmrw-phone-chat-header'; const back = element(this.#document, 'button'); addIcon(this.#document, back, 'back', 23); back.addEventListener('click', () => { this.#selectedThreadId = null; void this.renderActive(); });
     header.append(back, createPreviewAvatar({ document: this.#document, label: title, size: 'sm',imageUrl:thread?.avatarUrl||this.#accountAvatar(view,thread?.counterpartAccountId,title,thread?.counterpartInstanceId) })); const info = element(this.#document, 'div'); info.append(element(this.#document, 'strong', title), element(this.#document, 'small', subtitle)); header.append(info);
     const callTarget=(view.communicationTargets||[]).find(target=>target.accountId===thread?.counterpartAccountId)||null;const call = element(this.#document, 'button');call.setAttribute('aria-label','โทร');call.disabled=!callTarget;addIcon(this.#document, call, 'phone', 21);if(callTarget)call.addEventListener('click',()=>void this.#startDirectCall(view,callTarget)); const more = element(this.#document, 'button');more.setAttribute('aria-label','เครื่องมือแชท');addIcon(this.#document, more, 'more', 21);more.addEventListener('click',()=>this.#showChatTools(view,thread,callTarget)); header.append(call, more); root.append(header);
@@ -412,7 +552,30 @@ export class TmrwPhoneShell {
     }
     if(this.#messageReplyBusy){const typing=element(this.#document,'div');typing.className='tmrw-phone-typing';typing.append(element(this.#document,'i'),element(this.#document,'i'),element(this.#document,'i'));bubbles.append(typing);}
     root.append(bubbles);
-    const writable=this.#selectedPerspectiveKind==='my-phone';const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-readonly-composer tmrw-v3-message-composer'; const plus = element(this.#document, 'button');plus.disabled=!writable;addIcon(this.#document, plus, 'plus', 20);if(writable)plus.addEventListener('click',()=>this.#showChatAttachmentSheet(view)); const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'ข้อความ'); input.placeholder = writable?'พิมพ์ข้อความ…':'โทรศัพท์ของบอทเปิดอ่านอย่างเดียว';input.disabled=!writable; const send = element(this.#document, 'button'); send.className = 'is-send'; send.disabled = true; addIcon(this.#document, send, 'send', 20); input.addEventListener('input', () => { send.disabled = !writable||!String(input.value || '').trim(); }); let busy = false; send.addEventListener('click', () => { if (busy || send.disabled||!writable) return; busy = true; send.disabled = true; void this.#sendMessage(view, input).finally(() => { busy = false; }); }); composer.append(plus, input, send); root.append(composer); const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-phone-home-indicator'; root.append(indicator); return root;
+    const writable = this.#selectedPerspectiveKind === 'my-phone';
+    const draftKey = this.#messageDraftKey(view.activeThreadId || thread?.threadId || this.#selectedThreadId);
+    const composer = element(this.#document, 'div'); composer.className = 'tmrw-phone-readonly-composer tmrw-v3-message-composer';
+    const plus = element(this.#document, 'button'); plus.disabled = !writable; addIcon(this.#document, plus, 'plus', 20);
+    if (writable) plus.addEventListener('click', () => this.#showChatAttachmentSheet(this.#activeMessageView || view));
+    const input = element(this.#document, 'textarea'); input.setAttribute('aria-label', 'ข้อความ');
+    input.placeholder = writable ? 'พิมพ์ข้อความ…' : 'โทรศัพท์ของบอทเปิดอ่านอย่างเดียว';
+    input.disabled = !writable; input.value = this.#messageDrafts.get(draftKey) || '';
+    const send = element(this.#document, 'button'); send.className = 'is-send';
+    send.disabled = !writable || !String(input.value || '').trim(); addIcon(this.#document, send, 'send', 20);
+    input.addEventListener('input', () => {
+      this.#rememberMessageDraft(draftKey, String(input.value || ''));
+      send.disabled = !writable || !String(input.value || '').trim();
+    });
+    let busy = false;
+    send.addEventListener('click', () => {
+      if (busy || send.disabled || !writable) return;
+      busy = true; send.disabled = true;
+      void this.#sendMessage(this.#activeMessageView || view, input, draftKey).finally(() => {
+        busy = false; send.disabled = !String(input.value || '').trim();
+      });
+    });
+    composer.append(plus, input, send); root.append(composer);
+    const indicator = element(this.#document, 'div'); indicator.className = 'tmrw-phone-home-indicator'; root.append(indicator); return root;
   }
 
   #renderLive(view) {
@@ -537,6 +700,8 @@ export class TmrwPhoneShell {
     const summary=element(this.#document,'dl');summary.className='tmrw-phone-call-details-summary';
     for(const [label,value] of [['วันที่',detail.dateLabel],['เวลาเริ่ม',detail.timeLabel],['สถานะ',detail.statusLabel],['ระยะเวลา',detail.durationLabel],['ภาษาของเสียง',detail.languageSummary]])summary.append(element(this.#document,'dt',label),element(this.#document,'dd',value));
     body.append(hero,summary);
+    const archiveWarning=this.#callArchiveWarnings.get(detail.callSessionId);
+    if(archiveWarning)body.append(renderInlineNotice({document:this.#document,tone:'error',title:'บันทึกเสียงย้อนหลังไม่ครบ',detail:archiveWarning}));
     if(detail.callbackTarget){const callback=element(this.#document,'button','โทรกลับ');callback.type='button';callback.className='tmrw-phone-call-details-callback';callback.dataset.callAction='callback';callback.addEventListener('click',()=>{this.#callDetailsSessionId=null;this.#selectedCallSessionId=null;void this.#startOutgoing(view,detail.callbackTarget);});body.append(callback);}
     if(detail.audioArtifacts.length){const archive=element(this.#document,'section');archive.className='tmrw-phone-call-audio-archive';archive.append(element(this.#document,'h3','เสียงจากสายนี้'));const actions=element(this.#document,'div');actions.className='tmrw-phone-call-audio-actions';const replay=element(this.#document,'button','ฟังทั้งสาย');replay.type='button';replay.dataset.callAudioAction='replay-all';replay.addEventListener('click',()=>void this.#playArchivedAudio(detail,detail.audioArtifacts));const stop=element(this.#document,'button','หยุด');stop.type='button';stop.dataset.callAudioAction='stop';stop.addEventListener('click',()=>this.#callVoicePresenter?.stopArchivedPlayback?.(detail.callSessionId));const keep=element(this.#document,'button',detail.audioKept?'นำออกจากคลังถาวร':'เก็บสายนี้ไว้');keep.type='button';keep.dataset.callAudioAction='keep';keep.addEventListener('click',()=>void this.#setCallAudioKept(detail,!detail.audioKept));actions.append(replay,stop,keep);archive.append(actions);body.append(archive);}
     const transcript=element(this.#document,'section');transcript.className='tmrw-phone-call-details-transcript';transcript.append(element(this.#document,'h3','บทสนทนา'));
@@ -619,6 +784,8 @@ export class TmrwPhoneShell {
         onAction: action => call ? this.#transitionCall(view, call, action) : null,
         onSend: input => call ? this.#sendCallText(view, call, input) : null,
         turnState: this.#callTurnStates.get(island.callSessionId) || null,
+        archiveWarning: this.#callArchiveWarnings.get(island.callSessionId) || null,
+        onDismissArchiveWarning: () => { this.#callArchiveWarnings.delete(island.callSessionId); void this.renderActive(); },
         captionsVisible: view.settings.voiceCaptionsEnabled !== false,
         onToggleCaptions: enabled => void this.#setVoiceCaptions(enabled),
         onRetry: () => this.#retryCallTurn(island.callSessionId),
@@ -671,7 +838,7 @@ export class TmrwPhoneShell {
     if(route==='calls') { if (this.#selectedPerspectiveKind === 'my-phone' && this.#legacyCallArchive === null) this.#legacyCallArchive = await legacyCallArchive().catch(() => []); return this.#renderCallsWithConnectivity(view); }
     if(route==='gallery') return this.#utilityWrap(route,renderGallery({document:this.#document,items:view.galleryItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedGalleryRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='gallery'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedGalleryRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'gallery',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeGalleryItem(view,item)}));
     if(route==='files') return this.#utilityWrap(route,renderFiles({document:this.#document,items:view.fileItems,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,selectedRecordId:this.#selectedFileRecordId,pendingRemovalRecordId:this.#pendingRemoval?.kind==='file'?this.#pendingRemoval.recordId:null,onOpen:recordId=>{this.#selectedFileRecordId=recordId;this.#pendingRemoval=null;void this.renderActive();},onRequestRemove:recordId=>{this.#pendingRemoval={kind:'file',recordId};void this.renderActive();},onCancelRemove:()=>{this.#pendingRemoval=null;void this.renderActive();},onConfirmRemove:item=>this.#removeFileItem(view,item)}));
-    if(route==='maps') return this.#utilityWrap(route,renderMaps({document:this.#document,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,items:view.locationItems,audiences:view.locationAudienceChoices,selectedAudienceIds:[...this.#selectedLocationAudienceIds],draftLabel:this.#locationDraftLabel,viewerAccountId:view.opened.perspective.accountId,viewerDeviceId:view.opened.perspective.deviceId,onDraft:value=>{this.#locationDraftLabel=value;void this.renderActive();},onToggleAudience:accountId=>{if(this.#selectedLocationAudienceIds.has(accountId))this.#selectedLocationAudienceIds.delete(accountId);else this.#selectedLocationAudienceIds.add(accountId);void this.renderActive();},onCheckIn:()=>this.#createLocation(view,'check-in'),onShare:()=>this.#createLocation(view,'shared'),onStartLive:()=>this.#createLocation(view,'live'),onEndLive:item=>this.#endLiveLocation(view,item)}));
+    if(route==='maps') return this.#utilityWrap(route,renderMaps({document:this.#document,authorizationGranted:view.opened.authorization.granted,error:view.utilityError||this.#lastUtilityError,items:view.locationItems,audiences:view.locationAudienceChoices,selectedAudienceIds:[...this.#selectedLocationAudienceIds],draftLabel:this.#locationDraftLabel,viewerAccountId:view.opened.perspective.accountId,viewerDeviceId:view.opened.perspective.deviceId,onDraft:value=>{this.#locationDraftLabel=value;},onToggleAudience:accountId=>{if(this.#selectedLocationAudienceIds.has(accountId))this.#selectedLocationAudienceIds.delete(accountId);else this.#selectedLocationAudienceIds.add(accountId);void this.renderActive();},onCheckIn:()=>this.#createLocation(view,'check-in'),onShare:()=>this.#createLocation(view,'shared'),onStartLive:()=>this.#createLocation(view,'live'),onEndLive:item=>this.#endLiveLocation(view,item)}));
     if(route==='calendar') return this.#utilityWrap(route,renderCalendar({document:this.#document,view:view.calendarView,recipients:view.calendarRecipients,authorizationGranted:view.opened.authorization.granted,error:view.calendarError||this.#lastCalendarError,activeTab:this.#calendarViewTab,formMode:this.#calendarFormMode,onStartForm:mode=>{this.#calendarFormMode=mode;this.#lastCalendarError=null;void this.renderActive();},onCancelForm:()=>{this.#calendarFormMode=null;this.#lastCalendarError=null;void this.renderActive();},onCreateReminder:input=>this.#createCalendarItem(view,'reminder',input),onCreateInvitation:input=>this.#createCalendarItem(view,'invitation',input),onAccept:item=>this.#respondCalendarInvitation(view,item,'accept'),onDecline:item=>this.#respondCalendarInvitation(view,item,'decline')}));
     if(route==='wallet') return this.#utilityWrap(route,renderWallet({document:this.#document,view:view.walletView,authorizationGranted:view.opened.authorization.granted,error:view.commerceError||this.#lastCommerceError,selectedRecordId:this.#selectedWalletRecordId,onSelect:recordId=>{this.#selectedWalletRecordId=recordId;void this.renderActive();}}));
     if(route==='shop') return this.#utilityWrap(route,renderShop({document:this.#document,view:view.shopView,walletView:view.walletView,authorizationGranted:view.opened.authorization.granted,error:view.commerceError||this.#lastCommerceError,selectedRecordId:this.#selectedShopRecordId,confirmationRecordId:this.#checkoutConfirmationRecordId,staleRecordId:this.#shopStaleRecordId,checkoutResult:this.#checkoutResult,checkoutBusy:this.#checkoutBusy,onSelect:recordId=>{this.#selectedShopRecordId=recordId;this.#checkoutConfirmationRecordId=null;this.#checkoutResult=null;this.#shopStaleRecordId=null;void this.renderActive();},onRequestCheckout:recordId=>{this.#checkoutConfirmationRecordId=recordId;void this.renderActive();},onCancelCheckout:()=>{this.#checkoutConfirmationRecordId=null;void this.renderActive();},onConfirmCheckout:item=>this.#checkoutShopItem(view,item),onRefreshItem:recordId=>{this.#selectedShopRecordId=recordId;this.#checkoutConfirmationRecordId=null;this.#checkoutResult=null;this.#shopStaleRecordId=null;void this.renderActive();}}));
@@ -767,13 +934,17 @@ export class TmrwPhoneShell {
   #showChatSearch(){if(!this.#sheetLayer)return;const backdrop=element(this.#document,'button');backdrop.className='tmrw-phone-action-backdrop';backdrop.addEventListener('click',()=>this.#closeSheet());const sheet=element(this.#document,'section');sheet.className='tmrw-phone-profile-editor';sheet.append(element(this.#document,'i'),element(this.#document,'h2','ค้นหาในแชท'));const input=element(this.#document,'input');input.placeholder='พิมพ์คำที่ต้องการค้นหา';input.value=this.#chatSearchQuery;const search=element(this.#document,'button','ค้นหา');search.className='is-primary';search.addEventListener('click',()=>{this.#chatSearchQuery=String(input.value||'').trim();this.#closeSheet();void this.renderActive();});sheet.append(input,search);this.#sheetLayer.className='is-open';this.#sheetLayer.replaceChildren(backdrop,sheet);input.focus?.();}
   #showChatAttachmentSheet(view){const recent=feedViewModel(view.feed).slice(0,4);const actions=[{label:'ส่งโปรไฟล์ของฉัน',run:()=>this.#sendTextToThread(view,view.activeThreadId,`โปรไฟล์ของ ${this.#ownerLabel(view)}`)},...recent.map(post=>({label:`แชร์โพสต์: ${post.text.slice(0,28)}`,run:()=>this.#sendTextToThread(view,view.activeThreadId,post.text)}))];this.#showActionSheet('ส่งไปในแชท',actions);}
   async #sendTextToThread(view,threadId,text){const perspective=view.opened.perspective;if(!this.#messaging||!threadId||!perspective?.accountId)return false;const sequence=++this.#messageSequence;try{await this.#messaging.sendMessage({scope:this.#scope,threadId,senderAccountId:perspective.accountId,actualAuthorActorId:perspective.actualAuthorActorId||perspective.accountOwnerActorId,actualAuthorInstanceId:perspective.actualAuthorInstanceId||perspective.accountOwnerInstanceId,deviceId:perspective.deviceId,text:String(text||''),source:{authority:'tmrw-v3-ui',kind:'live-phone',recordId:`share:${perspective.deviceId}:${sequence}`,version:'1'},producer:'phase-social-shell',idempotencyKey:`share:${perspective.deviceId}:${sequence}`});await this.renderActive();this.#toastMessage('ส่งแล้ว');return true;}catch(error){this.#lastMessageError=error instanceof Error?error.message:String(error);await this.renderActive();return false;}}
-  async #sendMessage(view, input) {
-    const text = String(input.value || '').trim(); if (!text || !this.#messaging || !view.activeThreadId || !view.opened.perspective.accountId) return false;
+  async #sendMessage(view, input, draftKey) {
+    const initialDraft = String(input.value || '');
+    const text = initialDraft.trim(); if (!text || !this.#messaging || !view.activeThreadId || !view.opened.perspective.accountId) return false;
     const perspective = view.opened.perspective; const actualAuthorActorId = perspective.actualAuthorActorId || perspective.accountOwnerActorId; const actualAuthorInstanceId = perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId;
     try {
       this.#lastMessageError = null;
       await this.#messaging.sendMessage({ scope: this.#scope, threadId: view.activeThreadId, senderAccountId: perspective.accountId, actualAuthorActorId, actualAuthorInstanceId, deviceId: perspective.deviceId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: `compose:${perspective.deviceId}:${++this.#messageSequence}`, version: '1' }, producer: 'phase8-shell', idempotencyKey: `compose:${perspective.deviceId}:${this.#messageSequence}` });
-      input.value = '';
+      if (String(input.value || '').startsWith(initialDraft)) {
+        input.value = String(input.value || '').slice(initialDraft.length);
+        this.#rememberMessageDraft(draftKey, String(input.value || ''));
+      }
       await this.renderActive();
       if(typeof this.#models.respondToDirectMessage==='function'){this.#messageReplyBusy=true;await this.renderActive();try{await this.#ensureAuthoringReady?.();await this.#models.respondToDirectMessage({scope:this.#scope,playerInstanceId:this.#player.instanceId,threadId:view.activeThreadId,playerAccountId:perspective.accountId,messageText:text});}catch(error){this.#lastMessageError=`ส่งข้อความแล้ว แต่คู่สนทนายังตอบไม่ได้: ${error instanceof Error?error.message:String(error)}`;}finally{this.#messageReplyBusy=false;await this.renderActive();}}
       return true;
@@ -783,26 +954,31 @@ export class TmrwPhoneShell {
       return false;
     }
   }
-  async #createPost(view, input) {
-    const text = String(input.value || '').trim(); const perspective = view?.opened?.perspective;
+  async #createPost(view, input, draftKey) {
+    const originalDraft = String(input.value || ''); const text = originalDraft.trim(); const perspective = view?.opened?.perspective;
     if (!text || !this.#social || !perspective?.accountId) { this.#socialBusy = false; return false; }
+    this.#rememberSocialDraft(draftKey, originalDraft);
     const sequence = ++this.#socialSequence;
+    let createdPostId = null;
     try {
       this.#lastSocialActionError = null;
       const result = await this.#social.createPost({ scope: this.#scope, authorAccountId: perspective.accountId, actualAuthorActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualAuthorInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, text, audience: { kind: 'public' }, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: `social-post:${perspective.deviceId}:${sequence}`, version: '1' }, producer: 'phase15-shell', idempotencyKey: `social-post:${perspective.deviceId}:${sequence}` });
-      input.value = ''; await this.renderActive(); void this.#requestSocialReplies({ postId:result.post.postId, parentCommentId:null, actionText:text, actionKind:'post' }); return true;
+      createdPostId = result.post.postId;
+      if (this.#socialDrafts.get(draftKey) === originalDraft) { this.#socialDrafts.delete(draftKey); input.value = ''; }
+      return true;
     } catch (error) {
-      this.#lastSocialActionError = error instanceof Error ? error.message : String(error); await this.renderActive(); return false;
-    } finally { this.#socialBusy = false; }
+      this.#lastSocialActionError = error instanceof Error ? error.message : String(error); return false;
+    } finally { this.#socialBusy = false; await this.renderActive(); if (createdPostId) void this.#requestSocialReplies({ postId:createdPostId, parentCommentId:null, actionText:text, actionKind:'post' }); }
   }
   async #togglePostLike(view, post) {
     const perspective=view?.opened?.perspective;if(this.#selectedPerspectiveKind!=='my-phone'||!this.#social||!perspective?.accountId)return false;const sequence=++this.#socialSequence;
     try{this.#lastSocialActionError=null;await this.#social.setEngagement({scope:this.#scope,targetId:post.postId,targetKind:'post',kind:'like',actorAccountId:perspective.accountId,actualActorId:perspective.actualAuthorActorId||perspective.accountOwnerActorId,actualInstanceId:perspective.actualAuthorInstanceId||perspective.accountOwnerInstanceId,active:!post.likedByViewer,source:{authority:'tmrw-v3-ui',kind:'live-phone',recordId:`social-like:${perspective.deviceId}:${post.postId}:${sequence}`,version:'1'},producer:'phase15-shell',idempotencyKey:`social-like:${perspective.deviceId}:${post.postId}:${sequence}`});await this.renderActive();return true;}
     catch(error){this.#lastSocialActionError=error instanceof Error?error.message:String(error);await this.renderActive();return false;}
   }
-  async #submitSocialComment(view,post,input,parentCommentId=null){
-    const text=String(input?.value||'').trim();const perspective=view?.opened?.perspective;if(!text||this.#selectedPerspectiveKind!=='my-phone'||!this.#social||!perspective?.accountId)return false;const sequence=++this.#socialSequence;
-    try{this.#lastSocialActionError=null;const result=await this.#social.createComment({scope:this.#scope,postId:post.postId,parentCommentId,authorAccountId:perspective.accountId,actualAuthorActorId:perspective.actualAuthorActorId||perspective.accountOwnerActorId,actualAuthorInstanceId:perspective.actualAuthorInstanceId||perspective.accountOwnerInstanceId,deviceId:perspective.deviceId,text,source:{authority:'tmrw-v3-ui',kind:'live-phone',recordId:`social-comment:${perspective.deviceId}:${post.postId}:${sequence}`,version:'1'},producer:'phase15-shell',idempotencyKey:`social-comment:${perspective.deviceId}:${post.postId}:${sequence}`});input.value='';this.#socialComposerPostId=null;this.#socialReplyTarget=null;await this.renderActive();void this.#requestSocialReplies({postId:post.postId,parentCommentId:result.comment.commentId,actionText:text,actionKind:'comment'});return true;}
+  async #submitSocialComment(view,post,input,parentCommentId=null,draftKey=this.#socialDraftKey(view,'comment',post.postId,parentCommentId)){
+    const originalDraft=String(input?.value||'');const text=originalDraft.trim();const perspective=view?.opened?.perspective;if(!text||this.#selectedPerspectiveKind!=='my-phone'||!this.#social||!perspective?.accountId)return false;const sequence=++this.#socialSequence;
+    this.#rememberSocialDraft(draftKey,originalDraft);
+    try{this.#lastSocialActionError=null;const result=await this.#social.createComment({scope:this.#scope,postId:post.postId,parentCommentId,authorAccountId:perspective.accountId,actualAuthorActorId:perspective.actualAuthorActorId||perspective.accountOwnerActorId,actualAuthorInstanceId:perspective.actualAuthorInstanceId||perspective.accountOwnerInstanceId,deviceId:perspective.deviceId,text,source:{authority:'tmrw-v3-ui',kind:'live-phone',recordId:`social-comment:${perspective.deviceId}:${post.postId}:${sequence}`,version:'1'},producer:'phase15-shell',idempotencyKey:`social-comment:${perspective.deviceId}:${post.postId}:${sequence}`});if(this.#socialDrafts.get(draftKey)===originalDraft){this.#socialDrafts.delete(draftKey);input.value='';if(this.#socialComposerPostId===post.postId){this.#socialComposerPostId=null;this.#socialReplyTarget=null;}}await this.renderActive();void this.#requestSocialReplies({postId:post.postId,parentCommentId:result.comment.commentId,actionText:text,actionKind:'comment'});return true;}
     catch(error){this.#lastSocialActionError=error instanceof Error?error.message:String(error);await this.renderActive();return false;}
   }
   async #requestSocialReplies({postId,parentCommentId=null,actionText='',actionKind='comment'}){
@@ -857,12 +1033,19 @@ export class TmrwPhoneShell {
     await this.renderActive();
   }
   async #sendCallText(view, call, input) {
-    const text = String(input.value || '').trim(); if (!text || !call || this.#callTurnStates.get(call.callSessionId)?.locked) return false; const perspective = view.opened.perspective; const sequence = ++this.#callSequence; let userCommit = null;
+    const text = String(input.value || '').trim(); if (!text || !call || this.#callTurnStates.get(call.callSessionId)?.locked) return false;
+    const perspective = view.opened.perspective; const sequence = ++this.#callSequence;
+    const key = `${this.#callCoordinator ? 'phase18-call-text' : 'call-text'}:${perspective.deviceId}:${this.#callActionNonce}:${sequence}`;
     this.#callRetryAttempts.delete(call.callSessionId);
+    return this.#submitCallText({ scope: this.#scope, call, input, text, key, perspective, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId });
+  }
+  async #submitCallText(submission) {
+    const { scope, call, input, text, key, perspective, playerActorId, playerInstanceId } = submission;
+    let userCommit = null;
     try {
       this.#lastCallError = null;
-      if (this.#callCoordinator) { const key = 'phase18-call-text:' + perspective.deviceId + ':' + this.#callActionNonce + ':' + sequence; userCommit = await this.#callCoordinator.sendText({ scope: this.#scope, deviceId: perspective.deviceId, playerActorId: this.#player.actorId, playerInstanceId: this.#player.instanceId, callSessionId: call.callSessionId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, idempotencyKey: key }); }
-      else if (this.#calls && perspective.accountId) { const key = 'call-text:' + perspective.deviceId + ':' + this.#callActionNonce + ':' + sequence; userCommit = await this.#calls.addTranscript({ scope: this.#scope, callSessionId: call.callSessionId, speakerAccountId: perspective.accountId, actualAuthorActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualAuthorInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, producer: 'phase9-shell', idempotencyKey: key }); }
+      if (this.#callCoordinator) userCommit = await this.#callCoordinator.sendText({ scope, deviceId: perspective.deviceId, playerActorId, playerInstanceId, callSessionId: call.callSessionId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, idempotencyKey: key });
+      else if (this.#calls && perspective.accountId) userCommit = await this.#calls.addTranscript({ scope, callSessionId: call.callSessionId, speakerAccountId: perspective.accountId, actualAuthorActorId: perspective.actualAuthorActorId || perspective.accountOwnerActorId, actualAuthorInstanceId: perspective.actualAuthorInstanceId || perspective.accountOwnerInstanceId, deviceId: perspective.deviceId, text, source: { authority: 'tmrw-v3-ui', kind: 'live-phone', recordId: key, version: '1' }, producer: 'phase9-shell', idempotencyKey: key });
       input.value = '';
       if (userCommit) {
         const timingId = String(userCommit.event?.id || userCommit.transcript?.transcriptEntryId || '').trim();
@@ -871,7 +1054,7 @@ export class TmrwPhoneShell {
       if (userCommit && this.#callBotReply && this.#callVoicePresenter) return this.#runCallReply(call, userCommit);
       this.#failCallTurn(call.callSessionId, 'ระบบตอบกลับด้วยเสียงยังไม่พร้อม', 'ลองตอบใหม่', () => this.#runCallReply(call, userCommit));
       return false;
-    } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); this.#failCallTurn(call.callSessionId, 'ส่งข้อความไม่สำเร็จ', 'ลองตอบใหม่', () => this.#sendCallText(view, call, input)); return false; }
+    } catch (error) { this.#lastCallError = error instanceof Error ? error.message : String(error); this.#failCallTurn(call.callSessionId, 'ส่งข้อความไม่สำเร็จ', 'ลองส่งใหม่', () => this.#submitCallText(submission)); return false; }
   }
   #setCallTurnState(callSessionId, state) {
     const id = String(callSessionId || '').trim(); if (!id) return;
@@ -938,6 +1121,17 @@ export class TmrwPhoneShell {
       commit: () => this.#callBotReply.commitPreparedReply({ scope: this.#scope, prepared }),
       onUpdate: update => this.#setCallTurnState(callSessionId, { ...update, locked: true }),
     });
+    const history=result?.audioHistory;
+    if(history?.status==='failed'||history?.status==='partial'){
+      const played=result?.status==='played';
+      const message=history.status==='partial'
+        ? `${played?'เสียงเล่นแล้ว แต่':'เสียงบางช่วง'}บันทึกไว้ฟังย้อนหลังได้เพียง ${history.savedSegments}/${history.totalSegments} ช่วง`
+        : `${played?'เสียงเล่นแล้ว แต่':'เสียงบางช่วง'}บันทึกไว้ฟังย้อนหลังไม่สำเร็จ`;
+      this.#callArchiveWarnings.set(callSessionId,message);
+      if(this.#callArchiveWarnings.size>32)this.#callArchiveWarnings.delete(this.#callArchiveWarnings.keys().next().value);
+      this.#toastMessage(message);
+      void this.renderActive();
+    }
     if (activeController.signal.aborted || result?.status === 'cancelled') return false;
     if (result?.status === 'played') {
       this.#callTurnControllers.delete(callSessionId); this.#callTurnRetries.delete(callSessionId); this.#callRetryAttempts.delete(callSessionId); this.#setCallTurnState(callSessionId, null); return true;
@@ -1025,11 +1219,15 @@ export class TmrwPhoneShell {
     finally { this.#voiceManagerBusy = false; await this.renderActive(); }
   }
   async #installLocalVoice() {
+    if (!PUBLIC_RUNTIME_PACK_INDEX_URL) {
+      this.#toastMessage('ติดตั้ง Local Voice ด้วยคำสั่ง Termux ใน README ของ TMRW Phone · เมื่อติดตั้งแล้ว กดตรวจการเชื่อมต่ออีกครั้ง · ตัวอย่างเสียงฟังได้ทันที');
+      return false;
+    }
     if (this.#voiceManagerBusy) return false; this.#voiceManagerBusy = true; await this.renderActive();
     try {
       const android = /Android/iu.test(globalThis.navigator?.userAgent || '');
       const packId = android ? 'tmrw-local-voice-android-arm64' : 'tmrw-local-voice-windows-x64';
-      const manifestUrl = 'https://github.com/luftmenschiv-arch/TMRW-Phone-V3/releases/latest/download/pack-index.json';
+      const manifestUrl = PUBLIC_RUNTIME_PACK_INDEX_URL;
       await this.#voiceManager.installPack({ manifestUrl, packId, onUpdate: job => this.#toastMessage(job.phase === 'download' && job.total ? `กำลังดาวน์โหลด ${Math.round((job.completed / job.total) * 100)}%` : 'กำลังติดตั้ง Local Voice…') });
       await this.#voiceManager.startRuntime({ onUpdate: () => this.#toastMessage('กำลังเปิด Local Voice…') });
       this.#voiceManagerHealth = await this.#voiceManager.health(); await this.#testVoiceRuntime(); return true;
@@ -1281,5 +1479,5 @@ export class TmrwPhoneShell {
       return false;
     }
   }
-  dispose() { try { this.#callVoicePresenter?.dispose?.(); } catch {} if (!this.#root) return; if (this.#homePagerTimer != null) { clearTimeout(this.#homePagerTimer); this.#homePagerTimer = null; } this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
+  dispose() { try { this.#callVoicePresenter?.dispose?.(); } catch {} this.#commitUnsubscribe?.(); this.#commitUnsubscribe = null; if (this.#storeRefreshTimer !== null) globalThis.clearTimeout(this.#storeRefreshTimer); this.#storeRefreshTimer = null; this.#storeRefreshPending = false; this.#viewportSync?.(); this.#viewportSync = null; if (!this.#root) return; if (this.#homePagerTimer != null) { clearTimeout(this.#homePagerTimer); this.#homePagerTimer = null; } this.#controller.close({ scope: this.#scope, deviceId: this.#selectedDeviceId }); this.#root.remove(); this.#root = null; }
 }

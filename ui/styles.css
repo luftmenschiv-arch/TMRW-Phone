@@ -46,6 +46,8 @@
 #tmrw-phone-root .tmrw-phone-contact-actions { flex-direction: row; gap: 5px; }
 #tmrw-phone-root .tmrw-phone-contact-actions > button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 12px; background: #edf5fa; color: #39779e; }
 #tmrw-phone-root .tmrw-v3-message-composer textarea { flex: 1 1 auto; min-width: 0; min-height: 38px; max-height: 96px; resize: none; border: 0; outline: 0; background: transparent; color: inherit; }
+#tmrw-phone-root .tmrw-v3-message-composer textarea,
+#tmrw-phone-root .tmrw-phone-map-panel input { font-size: 16px; }
 #tmrw-phone-root .tmrw-v3-feed-composer textarea { width: 100%; min-height: 64px; resize: vertical; border: 1px solid var(--tmrw-line); border-radius: 14px; background: var(--tmrw-card); color: var(--tmrw-ink); padding: 10px 12px; }
 #tmrw-phone-root .tmrw-v3-feed-composer { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 10px; }
 #tmrw-phone-root .tmrw-v3-feed-composer textarea { grid-column: 1 / -1; }

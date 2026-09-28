@@ -31,6 +31,14 @@ await fs.mkdir(path.join(stage, 'profiles', 'tmrw-male-core'), { recursive: true
 await fs.mkdir(path.join(stage, 'profiles', 'tmrw-female-core'), { recursive: true });
 await fs.copyFile(path.join(repositoryRoot, 'voice-packs', 'profiles', 'tmrw-male-core.voiceprofile.npz'), path.join(stage, 'profiles', 'tmrw-male-core', 'voice.voiceprofile.npz'));
 await fs.copyFile(path.join(repositoryRoot, 'voice-packs', 'profiles', 'tmrw-female-core.voiceprofile.npz'), path.join(stage, 'profiles', 'tmrw-female-core', 'voice.voiceprofile.npz'));
+const presetCatalog = JSON.parse(await fs.readFile(path.join(repositoryRoot, 'voice-packs', 'catalog', 'presets.v1.json'), 'utf8'));
+for (const preset of presetCatalog.presets) {
+  const sourceProfile = path.join(repositoryRoot, 'voice-packs', 'profiles', `${preset.id}.voiceprofile.npz`);
+  if (!(await fs.stat(sourceProfile).catch(() => null))?.isFile()) throw new Error(`Missing distinct voice profile: ${preset.id}`);
+  const destination = path.join(stage, 'profiles', preset.id);
+  await fs.mkdir(destination, { recursive: true });
+  await fs.copyFile(sourceProfile, path.join(destination, 'voice.voiceprofile.npz'));
+}
 for (const file of ['tmrw_call_runtime_v093_deadline_gate.py', 'tmrw_voice_bridge.py']) {
   const candidates = [path.join(stage, 'runtime', file), path.join(stage, file)];
   for (const candidate of candidates) if ((await fs.stat(candidate).catch(() => null))?.isFile()) {

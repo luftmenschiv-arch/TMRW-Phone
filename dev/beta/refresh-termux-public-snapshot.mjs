@@ -9,7 +9,7 @@ if (!process.argv[2]) throw new Error('Pass existing reviewed public checkout');
 const origin = execFileSync('git', ['-C', repo, 'remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
 if (origin.replace(/\.git$/u, '') !== 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone') throw new Error('not-public-player-repo');
 const dest = path.join(repo, 'scripts/termux'); await fs.mkdir(dest, { recursive: true });
-for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'install.sh', 'auto-update.mjs', 'launch.mjs', 'launcher-tools.mjs', 'voice-update.json']) await fs.writeFile(path.join(dest, file), (await fs.readFile(path.join(source, 'installers/android', file), 'utf8')).replace(/\r\n/gu, '\n'));
+for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'install.sh', 'auto-update.mjs', 'launch.mjs', 'launcher-tools.mjs', 'voice-update.json', 'install-voice-bootstrap.mjs', 'voice-bootstrap-entry.mjs', 'voice-supervisor.mjs']) await fs.writeFile(path.join(dest, file), (await fs.readFile(path.join(source, 'installers/android', file), 'utf8')).replace(/\r\n/gu, '\n'));
 const release = JSON.parse(await fs.readFile(path.join(repo, 'release.json'), 'utf8'));
 release.version = '0.1.0-beta.4'; release.components.extension = release.version;
 release.components.voicePack = '1.0.0-beta.1'; release.components.termuxInstaller = '1.0.0-beta.2';

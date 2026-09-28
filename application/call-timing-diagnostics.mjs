@@ -1,5 +1,6 @@
 const DEFAULT_MAX_TURNS = 32;
 const DEFAULT_MAX_EVENTS = 96;
+export const CALL_FIRST_AUDIO_BUDGET_MS = 15000;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -19,6 +20,7 @@ function safeDetail(detail = {}) {
   if (typeof detail.observable === 'boolean') result.observable = detail.observable;
   if (detail.outcome) result.outcome = String(detail.outcome).slice(0, 80);
   if (Number.isFinite(detail.durationMs) && detail.durationMs >= 0) result.durationMs = Math.round(detail.durationMs);
+  if (Number.isSafeInteger(detail.outputCharacters) && detail.outputCharacters >= 0) result.outputCharacters = detail.outputCharacters;
   return Object.freeze(result);
 }
 
@@ -32,6 +34,7 @@ function frozenRecord(record, now) {
     startedAt: record.startedAt,
     status: record.status,
     timeToFirstAudioMs: firstPlayback ? firstPlayback.offsetMs : null,
+    firstAudioOverBudget: firstPlayback ? firstPlayback.offsetMs > CALL_FIRST_AUDIO_BUDGET_MS : null,
     totalTurnMs: record.finishedAt === null ? Math.max(0, Math.round(now - record.startedMono)) : Math.max(0, Math.round(record.finishedAt - record.startedMono)),
     lastPhase: last?.phase || null,
     events,
@@ -75,7 +78,14 @@ export class CallTimingDiagnostics {
     if (!this.#records.has(id)) this.begin(id, { callSessionId: detail.callSessionId });
     const record = this.#records.get(id);
     const point = finite(this.#now(), record.startedMono);
-    record.events.push(Object.freeze({ phase: phaseName, offsetMs: Math.max(0, Math.round(point - record.startedMono)), ...safeDetail(detail) }));
+    const offsetMs = Math.max(0, Math.round(point - record.startedMono));
+    record.events.push(Object.freeze({ phase: phaseName, offsetMs, ...safeDetail(detail) }));
+    if (phaseName === 'playback-start' && !record.firstAudioObserved) {
+      record.firstAudioObserved = true;
+      if (offsetMs > CALL_FIRST_AUDIO_BUDGET_MS) {
+        try { globalThis.console?.warn?.('[TMRW Phone] call first audio exceeded latency budget', { elapsedMs: offsetMs, budgetMs: CALL_FIRST_AUDIO_BUDGET_MS }); } catch {}
+      }
+    }
     if (record.events.length > this.#maxEvents) record.events.splice(0, record.events.length - this.#maxEvents);
     return true;
   }

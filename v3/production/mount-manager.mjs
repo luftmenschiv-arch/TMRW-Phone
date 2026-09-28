@@ -187,6 +187,7 @@ export class ProductionMountManager {
       shell = this.#shellFactory({
         document: this.#document,
         viewModels: services.viewModels,
+        eventEngine: this.#runtime.composition.eventEngine,
         controller: services.phoneController,
         messageService: services.messages,
         callService: services.calls,

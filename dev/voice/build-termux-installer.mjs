@@ -12,7 +12,7 @@ if (index.baseUrl !== releaseBase + '/' || index.packs.some(p => p.parts.some(pa
 const output = path.resolve(outputArg);
 if (await fs.stat(output).catch(() => null)) throw new Error('output-exists');
 await fs.mkdir(path.join(output, 'installer'), { recursive: true });
-for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'auto-update.mjs', 'launcher-tools.mjs', 'launch.mjs']) await fs.writeFile(path.join(output, 'installer', file), (await fs.readFile(path.join(source, file), 'utf8')).replace(/\r\n/gu, '\n'));
+for (const file of ['download.mjs', 'install-runtime.mjs', 'setup.mjs', 'start.mjs', 'auto-update.mjs', 'launcher-tools.mjs', 'launch.mjs', 'install-voice-bootstrap.mjs', 'voice-bootstrap-entry.mjs', 'voice-supervisor.mjs']) await fs.writeFile(path.join(output, 'installer', file), (await fs.readFile(path.join(source, file), 'utf8')).replace(/\r\n/gu, '\n'));
 await run('tar', ['-czf', path.join(output, 'installer.tar.gz'), '-C', output, 'installer']);
 await fs.copyFile(indexArg, path.join(output, 'install-index.json'));
 const pins = { RELEASE_BASE: releaseBase, INSTALLER_SHA256: await sha256(path.join(output, 'installer.tar.gz')), INDEX_SHA256: await sha256(path.join(output, 'install-index.json')) };

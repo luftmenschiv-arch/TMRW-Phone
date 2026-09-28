@@ -54,6 +54,7 @@ function promptFor({ transcript, botAccountId, language, targetName, savedName }
     'Each pair must carry exactly the same meaning, names, terms of address, and emotion.',
     `Use one to ${MAX_REPLY_SEGMENTS} short, naturally speakable segments. Split only at semantic sentence boundaries.`,
     'Dialogue only. Do not add narration, action markers, speaker labels, quotation marks, metadata, or explanations.',
+    'spoken_text must contain only words the caller can hear over the phone; never describe gestures, thoughts, or a scene.',
     'Natural written laughter that the voice can speak is allowed inside spoken dialogue.',
     'Treat the transcript below as the authoritative call conversation and answer its final CALLER turn.',
     '',
@@ -65,10 +66,15 @@ function promptFor({ transcript, botAccountId, language, targetName, savedName }
 }
 
 function jsonCandidate(value) {
-  const text = String(value || '').trim().replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '').trim();
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-  return first >= 0 && last > first ? text.slice(first, last + 1) : null;
+  const raw = String(value || '').trim();
+  const fence = '```';
+  if (raw.startsWith(fence) !== raw.endsWith(fence)) return null;
+  const text = raw.startsWith(fence) ? raw.slice(fence.length, -fence.length).replace(/^json\s*/iu, '').trim() : raw;
+  return text.startsWith('{') && text.endsWith('}') ? text : null;
+}
+
+function hasStageDirection(value) {
+  return /\*[^*\n]+\*|\[[^\]\n]+\]/u.test(value);
 }
 
 function parseGeneratedReply(value) {
@@ -77,12 +83,13 @@ function parseGeneratedReply(value) {
   try {
     const parsed = JSON.parse(jsonCandidate(raw));
     const source = Array.isArray(parsed?.segments) ? parsed.segments : [];
-    const segments = source.slice(0, MAX_REPLY_SEGMENTS).map((segment, index) => Object.freeze({
+    if (!source.length || source.length > MAX_REPLY_SEGMENTS) return null;
+    const segments = source.map((segment, index) => Object.freeze({
       index,
       subtitleThai: String(segment?.subtitle_th || '').trim(),
       spokenText: String(segment?.spoken_text || '').trim(),
     })).filter(segment => segment.subtitleThai && segment.spokenText);
-    if (!segments.length || segments.length !== Math.min(source.length, MAX_REPLY_SEGMENTS)) return null;
+    if (segments.length !== source.length || segments.some(segment => hasStageDirection(segment.subtitleThai) || hasStageDirection(segment.spokenText))) return null;
     return Object.freeze({
       subtitleText: segments.map(segment => segment.subtitleThai).join(' ').trim(),
       segments: Object.freeze(segments),
@@ -264,13 +271,20 @@ export class CallBotReplyCoordinator {
         removeReasoning: true,
         trimToSentence: false,
         jsonSchema: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['segments'],
-          properties: {
-            segments: {
-              type: 'array', minItems: 1, maxItems: MAX_REPLY_SEGMENTS,
-              items: { type: 'object', additionalProperties: false, required: ['subtitle_th', 'spoken_text'], properties: { subtitle_th: { type: 'string' }, spoken_text: { type: 'string' } } },
+          name: 'tmrw_phone_call_reply',
+          strict: true,
+          // SillyTavern otherwise replaces unparseable provider text with "{}".
+          // Preserve it only in memory for validation; never log or persist it.
+          returnInvalid: true,
+          value: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['segments'],
+            properties: {
+              segments: {
+                type: 'array', minItems: 1, maxItems: MAX_REPLY_SEGMENTS,
+                items: { type: 'object', additionalProperties: false, required: ['subtitle_th', 'spoken_text'], properties: { subtitle_th: { type: 'string' }, spoken_text: { type: 'string' } } },
+              },
             },
           },
         },
@@ -278,7 +292,7 @@ export class CallBotReplyCoordinator {
       this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'llm-complete', { observable: false });
       if (signal?.aborted) return generationFailure('generation-cancelled');
       const reply = parseGeneratedReply(generated);
-      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'structured-validation', { outcome: reply ? 'valid' : 'invalid' });
+      this.#timing?.mark?.(String(commit.event?.id || userTranscript.transcriptEntryId), 'structured-validation', { outcome: reply ? 'valid' : 'invalid', outputCharacters: String(generated ?? '').length, segmentCount: reply?.segments?.length || 0 });
       if (!reply) return generationFailure('invalid-structured-model-response', null, true);
       return Object.freeze({
         status: 'prepared',

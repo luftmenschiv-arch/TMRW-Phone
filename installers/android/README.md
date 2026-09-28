@@ -14,9 +14,14 @@ checksums are inserted by `dev/voice/build-termux-installer.mjs`.
    **4 GiB of free space during installation**, in addition to Termux packages.
 3. Open ST normally, configure its model/API, and refresh after any current
    generation finishes. Choose English or Japanese in TMRW's voice settings.
-4. After closing Termux, run `tmrw-start` next time. `tmrw-start --voice-only`
-   starts just voice; `tmrw-start --stop-voice` stops only its own voice services.
-   Set `TMRW_ST_URL` when ST uses a port other than 8000; no ST config is rewritten.
+4. Restart ST once after installation, then continue using the same ST command
+   or shortcut. The installer adds a managed server plugin and enables
+   `enableServerPlugins`, keeping a backup of `config.yaml`. Voice starts in the
+   background and recovers after a service failure without blocking ST startup.
+   `tmrw-start` remains available for updates; `tmrw-start --stop-voice` pauses
+   automatic recovery, and `tmrw-start --voice-only` resumes it.
+   This source change needs a new installer release; older downloads do not
+   gain the server plugin merely by refreshing the browser extension.
 
 `--st=/absolute/path/to/SillyTavern` selects a non-default ST installation.
 An existing legacy Phone or custom voice installation requires a reviewed

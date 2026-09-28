@@ -72,8 +72,10 @@ export class TMRWLocalVoiceAdapter {
   #audioTimeoutMs;
   #refs = new Set();
   #readyByCall = new Map();
+  #ensureRuntime;
 
-  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = TMRW_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 20000 } = {}) {
+  constructor({ fetchImpl = globalThis.fetch?.bind?.(globalThis) || null, baseUrl = TMRW_LOCAL_RUNTIME_BASE_URL, createObjectURL = globalThis.URL?.createObjectURL?.bind?.(globalThis.URL) || null, revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind?.(globalThis.URL) || null, healthTimeoutMs = 1200, requestTimeoutMs = 2500, audioTimeoutMs = 20000, ensureRuntime = null } = {}) {
+    this.#ensureRuntime = typeof ensureRuntime === 'function' ? ensureRuntime : null;
     this.#fetch = typeof fetchImpl === 'function' ? fetchImpl : null;
     this.#baseUrl = String(baseUrl || TMRW_LOCAL_RUNTIME_BASE_URL).replace(/\/$/, '');
     this.#createObjectURL = typeof createObjectURL === 'function' ? createObjectURL : null;
@@ -143,7 +145,14 @@ export class TMRWLocalVoiceAdapter {
     }
     if (cached?.endpoint === endpoint && cached?.language === language && cached?.pending) return cached.pending;
     this.#readyByCall.delete(callId);
-    const pending = this.health({ signal, baseUrl: endpoint, onTiming, language }).then(result => {
+    const pending = this.health({ signal, baseUrl: endpoint, onTiming, language }).then(async result => {
+      if (!result.ready && !signal?.aborted && endpoint === TMRW_LOCAL_RUNTIME_BASE_URL && this.#ensureRuntime) {
+        emitTiming(onTiming, 'runtime-recovery-start', { language });
+        let recovered = false;
+        try { recovered = await this.#ensureRuntime({ signal }); } catch {}
+        if (recovered && !signal?.aborted) result = await this.health({ signal, baseUrl: endpoint, onTiming, language });
+        emitTiming(onTiming, 'runtime-recovery-end', { language, outcome: result.ready ? 'ready' : 'unavailable' });
+      }
       if (result.ready && !signal?.aborted) this.#readyByCall.set(callId, Object.freeze({ endpoint, language, ready: true }));
       else this.#readyByCall.delete(callId);
       return Object.freeze({ ...result, language, cached: false });
@@ -187,23 +196,34 @@ export class TMRWLocalVoiceAdapter {
     if (!startResponse.ok || start?.ok !== true || !start?.turn_id) { this.invalidateCall(requests[0].callSessionId); throw Object.assign(new Error('turn-start-failed'), { code: 'turn-start-failed' }); }
     emitTiming(onTiming, 'runtime-turn-ready', { segmentCount: requests.length, language: requests[0].language });
     const turnId = String(start.turn_id);
+    // Preserve ordered pushes, but let the first chunk synthesize while later
+    // chunks are being accepted. A failed push is surfaced at its own index.
+    const pushReady = [];
+    let pushChain = Promise.resolve();
     for (let index = 0; index < requests.length; index += 1) {
       const request = requests[index];
-      emitTiming(onTiming, 'runtime-chunk-push-start', { segmentIndex: index, segmentCount: requests.length, language: request.language });
-      let pushResponse;
-      try { pushResponse = await this.#fetchTimed('/turn/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ turn_id: turnId, index, text: request.canonicalText, subtitle: request.subtitleText }),
-      }, this.#requestTimeoutMs, signal, endpoint); }
-      catch (error) { this.invalidateCall(request.callSessionId); throw error; }
-      const push = await responseJson(pushResponse);
-      if (!pushResponse.ok || push?.ok !== true) { this.invalidateCall(request.callSessionId); throw Object.assign(new Error('turn-push-failed'), { code: 'turn-push-failed' }); }
-      emitTiming(onTiming, 'runtime-chunk-push-end', { segmentIndex: index, segmentCount: requests.length, language: request.language, outcome: 'accepted' });
+      pushChain = pushChain.then(async () => {
+        emitTiming(onTiming, 'runtime-chunk-push-start', { segmentIndex: index, segmentCount: requests.length, language: request.language });
+        try {
+          const pushResponse = await this.#fetchTimed('/turn/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ turn_id: turnId, index, text: request.canonicalText, subtitle: request.subtitleText }),
+          }, this.#requestTimeoutMs, signal, endpoint);
+          const push = await responseJson(pushResponse);
+          if (!pushResponse.ok || push?.ok !== true) throw Object.assign(new Error('turn-push-failed'), { code: 'turn-push-failed' });
+          emitTiming(onTiming, 'runtime-chunk-push-end', { segmentIndex: index, segmentCount: requests.length, language: request.language, outcome: 'accepted' });
+        } catch (error) { this.invalidateCall(request.callSessionId); throw error; }
+      });
+      pushReady.push(pushChain.then(() => null, error => error));
     }
+    const firstPushError = await pushReady[0];
+    if (firstPushError) throw firstPushError;
     const cache = new Map();
     const fetchAudio = async index => {
       try {
+        const pushError = await pushReady[index];
+        if (pushError) throw pushError;
         emitTiming(onTiming, 'audio-fetch-start', { segmentIndex: index, segmentCount: requests.length, language: requests[index].language });
         const audioResponse = await this.#fetchTimed(`/turn/audio?wait=1&turn_id=${encodeURIComponent(turnId)}&index=${index}`, { method: 'GET' }, this.#audioTimeoutMs, signal, endpoint);
         if (!audioResponse.ok) return failedResult('audio-fetch-failed');

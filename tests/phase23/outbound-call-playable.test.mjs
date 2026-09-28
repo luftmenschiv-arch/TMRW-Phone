@@ -79,8 +79,11 @@ test('outbound reply stays uncommitted until bilingual Thai/Japanese segments ar
   assert.match(h.prompts[0].quietPrompt, /natural Japanese/);
   assert.match(h.prompts[0].quietPrompt, /Never answer as a different character/);
   assert.doesNotMatch(h.prompts[0].quietPrompt, /เฮคเตอร์/);
-  assert.equal(h.prompts[0].jsonSchema.properties.segments.maxItems, 3);
-  assert.deepEqual(h.prompts[0].jsonSchema.properties.segments.items.required, ['subtitle_th', 'spoken_text']);
+  assert.equal(h.prompts[0].jsonSchema.name, 'tmrw_phone_call_reply');
+  assert.equal(h.prompts[0].jsonSchema.strict, true);
+  assert.equal(h.prompts[0].jsonSchema.returnInvalid, true);
+  assert.equal(h.prompts[0].jsonSchema.value.properties.segments.maxItems, 3);
+  assert.deepEqual(h.prompts[0].jsonSchema.value.properties.segments.items.required, ['subtitle_th', 'spoken_text']);
 
   const committed = await h.coordinator.commitPreparedReply({ scope, prepared });
   assert.equal(committed.committed, true);
@@ -126,6 +129,19 @@ test('invalid one-language model output fails closed instead of being spoken or 
   assert.equal(result.reason, 'invalid-structured-model-response');
   assert.equal(h.writes.length, 0);
 });
+
+for (const [label, response] of [
+  ['roleplay prose around JSON', 'He smiles. {"segments":[{"subtitle_th":"สวัสดี","spoken_text":"Hello."}]}'],
+  ['action markers inside speech', JSON.stringify({ segments: [{ subtitle_th: 'สวัสดี', spoken_text: '*smiles* Hello.' }] })],
+  ['four segments that would otherwise be silently truncated', JSON.stringify({ segments: Array.from({ length: 4 }, () => ({ subtitle_th: 'สวัสดี', spoken_text: 'Hello.' })) })],
+]) {
+  test(`${label} fails closed without an incomplete or narrated call reply`, async () => {
+    const h = coordinatorHarness(async () => response);
+    const result = await h.coordinator.prepareReplyToCommittedUserTranscript({ scope, playerInstanceId: 'character-instance:user', commit: userCommit });
+    assert.equal(result.reason, 'invalid-structured-model-response');
+    assert.equal(h.writes.length, 0);
+  });
+}
 
 test('generation cancellation exits without a late transcript commit', async () => {
   const stopped = [];
@@ -464,6 +480,20 @@ test('active Call UI locks typing during work, keeps hangup available, and expos
   const speaking = renderApprovedCallSurface({ document, island, turnState: { phase: 'speaking', locked: true, subtitleThai: 'อรุณสวัสดิ์ครับ' }, captionsVisible: false });
   assert.doesNotMatch(allText(speaking), /กำลังพูด/);
   assert.doesNotMatch(allText(speaking), /อรุณสวัสดิ์ครับ/);
+});
+
+test('Call UI warns that played audio was not fully saved without locking the call', () => {
+  const document = new FakeDocument();
+  let dismissed = 0;
+  const island = { kind: 'active', state: 'active', callSessionId: 'call:archive-warning', counterpartLabel: 'Kaelan Vance', counterpartAccountId: 'account:bot', title: 'Call', actions: [{ id: 'end', enabled: true }], transcript: [userTranscript] };
+  const active = renderApprovedCallSurface({ document, island, archiveWarning: 'เสียงเล่นแล้ว แต่บันทึกไว้ฟังย้อนหลังไม่สำเร็จ', onDismissArchiveWarning: () => { dismissed += 1; } });
+  assert.match(allText(find(active, node => node.attributes?.get?.('role') === 'alert')), /บันทึกไว้ฟังย้อนหลังไม่สำเร็จ/);
+  assert.equal(find(active, node => node.attributes?.get?.('aria-label') === 'Call text').disabled, false);
+  find(active, node => node.attributes?.get?.('aria-label') === 'ปิดคำเตือนการบันทึกเสียง').click();
+  assert.equal(dismissed, 1);
+  const ended = renderApprovedCallSurface({ document, island: { ...island, kind: 'ended', state: 'ended' }, archiveWarning: 'เสียงเล่นแล้ว แต่บันทึกไว้ฟังย้อนหลังไม่สำเร็จ' });
+  assert.match(allText(find(ended, node => node.attributes?.get?.('role') === 'alert')), /บันทึกไว้ฟังย้อนหลังไม่สำเร็จ/);
+  assert.match(allText(ended), /ข้อความสนทนาถูกบันทึกไว้แล้ว/);
 });
 
 test('same-route Call state refresh keeps the current surface visible while view data hydrates', async () => {

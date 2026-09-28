@@ -125,8 +125,61 @@ test('production presenter persists runtime bytes after canonical bot transcript
     commit: async () => ({ committed: true, transcript: { transcriptEntryId: 'transcript:persist', callSessionId: 'call:persist' } }),
   });
   assert.equal(result.status, 'played');
+  assert.deepEqual(result.audioHistory, { status: 'saved', savedSegments: 1, failedSegments: 0, totalSegments: 1 });
   assert.equal(stored.length, 1);
   assert.equal(stored[0].artifact.audioBlob, blob);
   assert.equal(stored[0].artifact.subtitleThai, 'สวัสดีครับ');
   assert.equal(stored[0].artifact.spokenText, 'Good morning.');
+});
+
+test('call playback starts before audio history finishes writing, then awaits archive durability', async () => {
+  let finishWrite;
+  const writeGate = new Promise(resolve => { finishWrite = resolve; });
+  const events = [];
+  const presenter = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en' }) },
+    adapter: { render: async () => ({ status: 'ready', audioArtifactRef: 'blob:ready', audioBlob: wav(4), durationMs: 500 }), release() {} },
+    playbackController: { status: {}, async play() { events.push('play'); return { status: 'completed' }; }, cancelCall() { return false; } },
+    voiceAudioHistoryService: { async registerDerivedArtifact() { events.push('store-start'); await writeGate; events.push('store-end'); } },
+  });
+  const outcome = presenter.presentPreparedBotReply({
+    scope: { storyId: 'story:fast-call', branchId: 'branch:fast-call' },
+    playerInstanceId: 'instance:user',
+    prepared: { status: 'prepared', preparedId: 'prepared:fast', callSessionId: 'call:fast', language: 'en', botBinding: { actorId: 'actor:bot', instanceId: 'instance:bot' }, segments: [{ subtitleThai: 'สวัสดีครับ', spokenText: 'Hello.' }] },
+    commit: async () => ({ committed: true, transcript: { transcriptEntryId: 'transcript:fast', callSessionId: 'call:fast' } }),
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(events.includes('play'), 'playback should start while archive storage is pending');
+  assert.ok(events.includes('store-start'));
+  assert.ok(!events.includes('store-end'));
+  finishWrite();
+  assert.equal((await outcome).status, 'played');
+  assert.ok(events.indexOf('play') < events.indexOf('store-end'));
+});
+
+test('playback success reports partial or failed archive storage separately', async () => {
+  const played = [];
+  const presenter = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en' }) },
+    adapter: { render: async request => ({ status: 'ready', audioArtifactRef: `blob:${request.canonicalText}`, audioBlob: wav(5), durationMs: 200 }), release() {} },
+    playbackController: { status: {}, async play(input) { played.push(input); return { status: 'completed' }; }, cancelCall() { return false; } },
+    voiceAudioHistoryService: { async registerDerivedArtifact({ artifact }) { if (artifact.segmentIndex === 1) throw new Error('quota exceeded'); return artifact; } },
+  });
+  const base = { scope: { storyId: 'story:archive-warning', branchId: 'branch:archive-warning' }, playerInstanceId: 'instance:user', commit: async () => ({ committed: true, transcript: { transcriptEntryId: 'transcript:archive-warning', callSessionId: 'call:archive-warning' } }) };
+  const result = await presenter.presentPreparedBotReply({ ...base, prepared: { status: 'prepared', preparedId: 'prepared:archive-warning', callSessionId: 'call:archive-warning', language: 'en', botBinding: { actorId: 'actor:bot', instanceId: 'instance:bot' }, segments: [{ subtitleThai: 'หนึ่ง', spokenText: 'One.' }, { subtitleThai: 'สอง', spokenText: 'Two.' }] } });
+  assert.equal(result.status, 'played', 'a failed archive write must not interrupt live playback');
+  assert.deepEqual(result.audioHistory, { status: 'partial', savedSegments: 1, failedSegments: 1, totalSegments: 2 });
+  assert.equal(played.length, 2);
+
+  const unavailable = new CallVoicePresenter({
+    voiceProfileService: { resolve: async () => ({ profileName: 'male-polite-dangerous', language: 'en', defaultDelivery: 'natural', traits: {}, providerNeutral: true }) },
+    settingsService: { get: async () => ({ voiceCallsEnabled: true, botCallsWithVoice: true, voiceLanguagePreference: 'en' }) },
+    adapter: { render: async () => ({ status: 'ready', audioArtifactRef: 'blob:only', audioBlob: wav(6), durationMs: 100 }) },
+    playbackController: { status: {}, async play() { return { status: 'completed' }; }, cancelCall() { return false; } },
+  });
+  const missingHistory = await unavailable.presentPreparedBotReply({ ...base, prepared: { status: 'prepared', preparedId: 'prepared:archive-unavailable', callSessionId: 'call:archive-warning', language: 'en', botBinding: { actorId: 'actor:bot', instanceId: 'instance:bot' }, segments: [{ subtitleThai: 'สาม', spokenText: 'Three.' }] } });
+  assert.equal(missingHistory.status, 'played');
+  assert.deepEqual(missingHistory.audioHistory, { status: 'failed', savedSegments: 0, failedSegments: 1, totalSegments: 1 });
 });

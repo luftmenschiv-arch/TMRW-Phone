@@ -8,3 +8,5 @@
 .tmrw-call-authority-turn-stage{display:flex;flex-direction:column;gap:10px}
 .tmrw-phone-call-start-error{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:#fff0f0;color:#9d3030;font-size:13px;text-align:center}
 .tmrw-call-authority-input{font-size:16px;touch-action:manipulation}
+.tmrw-call-authority-archive-warning{margin:8px 24px 0;padding:9px 12px;border-radius:12px;background:#fff1df;color:#7a420e;display:flex;align-items:center;gap:8px;font-family:'Noto Sans Thai',sans-serif;font-size:12px;line-height:1.4}
+.tmrw-call-authority-archive-warning span{flex:1}.tmrw-call-authority-archive-warning button{flex:0 0 auto;min-height:30px!important;padding:4px 8px!important;border:0!important;background:transparent!important;color:inherit!important;font-size:12px}

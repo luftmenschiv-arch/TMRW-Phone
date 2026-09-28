@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { setupPhase15 } from '../phase15/social-fixtures.mjs';
+import { setupPhase15, postFrom } from '../phase15/social-fixtures.mjs';
 import { AdaptiveWorldPulseService } from '../../application/playable-bootstrap/adaptive-world-pulse.mjs';
 import { PhoneShellViewModels } from '../../ui/view-models.mjs';
 import { TmrwPhoneShell } from '../../ui/shell.mjs';
+import { TmrwPhoneShell as ProductionPhoneShell } from '../../v3/ui/shell.mjs';
 
 const settle=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function waitFor(predicate,label){for(let index=0;index<180;index+=1){if(await predicate())return;await settle();}throw new Error(`${label} did not settle`);}
@@ -25,3 +26,58 @@ test('My Phone posts, likes, comments and receives live replies while Their Phon
   const main=find(shell.root,node=>String(node.className||'').includes('tmrw-phone-social-content'));main.scrollTop=500;find(shell.root,node=>node.dataset?.action==='refresh-feed').click();await waitFor(()=>/เพิ่ม 3 โพสต์ใหม่แล้ว/.test(allText(shell.root))&&find(shell.root,node=>String(node.className||'').includes('tmrw-phone-social-content'))?.scrollTop===0,'new feed notice');assert.ok(find(shell.root,node=>String(node.className||'').includes('tmrw-phone-post')&&String(node.className||'').includes('is-new')));
   await c.overrides.grant({scope:c.scope,deviceId:c.alice.deviceId,action:'inspect',playerActorId:c.user.actorId,playerInstanceId:c.user.instanceId});await shell.selectDevice(c.alice.deviceId);assert.equal(find(shell.root,node=>node.dataset?.action==='create-feed-post'),null);assert.equal(find(shell.root,node=>node.dataset?.action==='toggle-feed-like')?.disabled,true);
 });
+
+for (const [label, Shell] of [['source', TmrwPhoneShell], ['production', ProductionPhoneShell]]) {
+  test(`${label} feed keeps post and comment drafts across redraws and failed sends`, async () => {
+    const c = await setupPhase15({ castSize: 1, manifestId: `social-drafts-${label}` });
+    const seeded = await postFrom(c, c.alice, { key: `draft-seed-${label}`, text: 'โพสต์สำหรับทดสอบร่าง' });
+    let postAttempts = 0;
+    let commentAttempts = 0;
+    const social = {
+      createPost: async request => { if (++postAttempts === 1) throw new Error('post unavailable'); return c.social.createPost(request); },
+      createComment: async request => { if (++commentAttempts === 1) throw new Error('comment unavailable'); return c.social.createComment(request); },
+      setEngagement: request => c.social.setEngagement(request),
+    };
+    const shell = new Shell({ document:c.document, viewModels:c.viewModels, controller:c.controller, messageService:c.messages, callService:c.calls, socialService:social, scope:c.scope, playerActorId:c.user.actorId, playerInstanceId:c.user.instanceId, selectedDeviceId:c.user.deviceId });
+    await shell.mount(c.target);
+    find(shell.root, node => node.dataset?.action === 'unlock').click();
+    await waitFor(() => find(shell.root, node => node.dataset?.app === 'insungram'), 'draft home');
+    find(shell.root, node => node.dataset?.app === 'insungram').click();
+    await waitFor(() => find(shell.root, node => node.attributes?.get('aria-label') === 'ฟีด'), 'draft social');
+    find(shell.root, node => node.attributes?.get('aria-label') === 'ฟีด').click();
+    await waitFor(() => shell.metrics.router === 'feed' && find(shell.root, node => node.dataset?.action === 'create-feed-post'), 'draft feed');
+
+    input(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความโพสต์'), 'ร่างโพสต์ยังอยู่');
+    await shell.renderActive();
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความโพสต์').value, 'ร่างโพสต์ยังอยู่');
+    assert.equal(find(shell.root, node => node.dataset?.action === 'create-feed-post').disabled, false);
+    const article = find(shell.root, node => node.dataset?.postId === seeded.post.postId);
+    find(article, node => node.dataset?.action === 'toggle-feed-like').click();
+    await waitFor(() => find(shell.root, node => node.dataset?.postId === seeded.post.postId && find(node, child => child.dataset?.action === 'toggle-feed-like')?.attributes?.get('aria-pressed') === 'true'), 'draft like');
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความโพสต์').value, 'ร่างโพสต์ยังอยู่');
+
+    find(shell.root, node => node.dataset?.action === 'create-feed-post').click();
+    await waitFor(() => /post unavailable/.test(allText(shell.root)), 'failed post');
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความโพสต์').value, 'ร่างโพสต์ยังอยู่');
+    assert.equal(find(shell.root, node => node.dataset?.action === 'create-feed-post').disabled, false);
+    find(shell.root, node => node.dataset?.action === 'create-feed-post').click();
+    await waitFor(() => postAttempts === 2 && find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความโพสต์')?.value === '', 'successful post retry');
+    assert.equal((await c.social.listFeed({ scope:c.scope, viewerAccountId:c.user.accountId, limit:20 })).items.some(row => row.text === 'ร่างโพสต์ยังอยู่'), true);
+
+    find(find(shell.root, node => node.dataset?.postId === seeded.post.postId), node => node.dataset?.action === 'open-feed-comment').click();
+    await waitFor(() => find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น'), 'draft comment composer');
+    input(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น'), 'ร่างคอมเมนต์ยังอยู่');
+    await shell.renderActive();
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น').value, 'ร่างคอมเมนต์ยังอยู่');
+    find(shell.root, node => node.dataset?.action === 'submit-feed-comment').click();
+    await waitFor(() => /comment unavailable/.test(allText(shell.root)), 'failed comment');
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น').value, 'ร่างคอมเมนต์ยังอยู่');
+    assert.equal(find(shell.root, node => node.dataset?.action === 'submit-feed-comment').disabled, false);
+    find(shell.root, node => node.dataset?.action === 'submit-feed-comment').click();
+    await waitFor(() => commentAttempts === 2 && !find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น'), 'successful comment retry');
+    assert.equal((await c.social.listComments({ scope:c.scope, viewerAccountId:c.user.accountId, postId:seeded.post.postId, limit:20 })).items.some(row => row.text === 'ร่างคอมเมนต์ยังอยู่'), true);
+    find(find(shell.root, node => node.dataset?.postId === seeded.post.postId), node => node.dataset?.action === 'open-feed-comment').click();
+    await waitFor(() => find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น'), 'reopened comment composer');
+    assert.equal(find(shell.root, node => node.attributes?.get('aria-label') === 'ข้อความความคิดเห็น').value, '');
+  });
+}

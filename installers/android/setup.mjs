@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { installRuntime } from './install-runtime.mjs';
 import { run, sha256, checkedPack, acquireLock } from './download.mjs';
 import { installLauncher } from './launcher-tools.mjs';
+import { installVoiceBootstrap } from './install-voice-bootstrap.mjs';
 import { isBusy } from './auto-update.mjs';
 
 const PUBLIC_REPOSITORY = 'https://github.com/luftmenschiv-arch/SillyTavern-Extension-TMRW-Phone.git';
@@ -89,13 +90,14 @@ export async function setup({ indexFile, indexHash, st, root, noStart = false, l
   if ((await fs.lstat(launcher)).isSymbolicLink()) throw new Error('unsafe-launcher-directory');
   const config = { root, st: path.resolve(st), runtimePort: Number(process.env.TMRW_VOICE_PORT || 18769), managerPort: Number(process.env.TMRW_VOICE_MANAGER_PORT || 18768) };
   await installLauncher(config, here);
+  await installVoiceBootstrap(config, here);
   const dispatcher = path.join(launcher, `dispatcher-${crypto.randomUUID()}.tmp`);
   await fs.copyFile(path.join(here, 'launch.mjs'), dispatcher);
   await fs.rename(dispatcher, path.join(launcher, 'start.mjs'));
   await fs.writeFile(path.join(launcher, 'config.json'), JSON.stringify(config));
   if (!priorWrapper) await fs.writeFile(wrapper, wrapperText, { flag: 'wx', mode: 0o700 });
   if (!noStart) console.log(await run('bash', [path.join(installed.target, 'bin/START-TMRW-VOICE-SERVICES.sh')], { env: { ...process.env, TMRW_VOICE_HOME: root } }));
-  console.log(`ติดตั้งสำเร็จ (beta) — เปิด ST ตามปกติแล้วรีเฟรชหลังงานที่ค้างจบ\nครั้งต่อไปเปิด Termux แล้วพิมพ์ tmrw-start\nตรวจอัปเดต Extension/เสียงแยกกันเมื่อเริ่มใช้งาน โดยไม่ล้างแชท/IndexedDB/ประวัติโทร`);
+  console.log(`ติดตั้งสำเร็จ (beta) — ปิดและเปิด ST อีกครั้งเมื่อจบงานที่ค้าง\nต่อไปเปิด ST ด้วยคำสั่งเดิมได้ บริการเสียงจะเริ่มเบื้องหลังอัตโนมัติ\ntmrw-start ยังใช้ตรวจอัปเดต Extension/แพ็กเสียงแยกกันได้`);
   return installed;
   } finally { await unlock(); }
 }

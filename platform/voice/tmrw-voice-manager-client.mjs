@@ -1,5 +1,11 @@
 export const TMRW_VOICE_MANAGER_BASE_URL = 'http://127.0.0.1:18768';
-const PRESET_PREVIEW_PATH = '/scripts/extensions/third-party/TMRW-Phone-V3/voice-packs/previews/';
+// Resolve from the installed module, including ST's per-user extension route.
+export function presetPreviewBaseUrl(moduleUrl = import.meta.url) {
+  const packed = new URL(moduleUrl).pathname.endsWith('/v3/platform/voice/tmrw-voice-manager-client.mjs');
+  return new URL(packed ? '../../../voice-packs/previews/' : '../../voice-packs/previews/', moduleUrl).href;
+}
+const PRESET_PREVIEW_PATH = presetPreviewBaseUrl();
+const PRESET_PREVIEW_VERSION = 'clone-only-20260926';
 
 export class TMRWVoiceManagerClient {
   #fetch;
@@ -20,7 +26,7 @@ export class TMRWVoiceManagerClient {
   profiles() { return this.#json('/v1/profiles'); }
   presetPreviewUrl({ profileId, language = 'en' }) {
     return /^(?:male|female)-[a-z0-9-]+$/u.test(profileId)
-      ? `${PRESET_PREVIEW_PATH}${profileId}-${language === 'ja' ? 'ja' : 'en'}.wav`
+      ? `${PRESET_PREVIEW_PATH}${profileId}-${language === 'ja' ? 'ja' : 'en'}.wav?v=${PRESET_PREVIEW_VERSION}`
       : null;
   }
   async preview({ profileId, language = 'en' }) {
